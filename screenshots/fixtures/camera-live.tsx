@@ -5,7 +5,7 @@ import { WidgetCard } from '../../src/components/widgets/WidgetCard';
 import { ExpandedOverlay } from '../../src/components/shared/ExpandedOverlay';
 import { Video } from 'lucide-react';
 import { serverConnection } from '../../src/server/connection';
-import { setCameraSnapshotAccount } from '../../src/lib/camera-snapshot-cache';
+import { cameraSnapshotCacheGeneration, cameraSnapshotCacheKey, setCameraSnapshot, setCameraSnapshotAccount } from '../../src/lib/camera-snapshot-cache';
 import type { CameraLiveEvent } from '../../src/lib/camera-live';
 import '../../src/index.css';
 
@@ -17,12 +17,18 @@ const params = new URLSearchParams(location.search);
 canvas.width = params.has('landscape') ? 960 : 540;
 canvas.height = params.has('landscape') ? 540 : 960;
 const ctx = canvas.getContext('2d')!;
-ctx.fillStyle = '#497d88'; ctx.fillRect(0, 0, 540, 960);
-ctx.fillStyle = '#e8ad5c'; ctx.fillRect(20, 20, 500, 40); ctx.fillRect(20, 900, 500, 40);
+ctx.fillStyle = '#497d88'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+ctx.fillStyle = '#e8ad5c'; ctx.fillRect(20, 20, canvas.width - 40, 40); ctx.fillRect(20, canvas.height - 60, canvas.width - 40, 40);
 const jpeg = canvas.toDataURL('image/jpeg').split(',')[1];
+const capturedAt = new Date(Date.now() - 28_000).toISOString();
+if (params.has('cached')) setCameraSnapshot(cameraSnapshotCacheKey('home', 'camera-0'), {
+  dataUrl: `data:image/jpeg;base64,${jpeg}`, capturedAt, width: canvas.width, height: canvas.height, source: 'stream',
+}, cameraSnapshotCacheGeneration());
 const listeners = new Set<(event: CameraLiveEvent) => void>();
 const viewers = new Map<string, { accessory: string; state: 'queued' | 'streaming' }>();
 let seq = 0;
+let starts = 0;
+let snapshots = 0;
 const emit = (event: CameraLiveEvent) => listeners.forEach(listener => listener(event));
 const status = (id: string) => ({ watchId: id, streamId: viewers.get(id)?.accessory, state: viewers.get(id)?.state ?? 'stopped', queuePosition: 1 });
 const frame = (watchId: string) => {
@@ -36,7 +42,10 @@ serverConnection.subscribeToBroadcasts = listener => { listeners.add(listener); 
 serverConnection.request = (async (action: string, payload: Record<string, unknown>) => {
   const id = payload.watchId as string;
   if (action === 'camera.live.start') {
-    if (params.get('phase') === 'paused') return { watchId: id, state: 'stopped' };
+    starts++;
+    if (params.get('phase') === 'paused' && starts === 1) return { watchId: id, state: 'stopped' };
+    if (params.get('phase') === 'error' && starts === 1) throw { code: 'CAMERA_RELAY_CHANGED' };
+    if (params.get('phase') === 'snapshot') throw { code: 'UNKNOWN_ACTION' };
     if (params.get('phase') === 'queued') return { watchId: id, state: 'queued', queuePosition: 2 };
     const distinct = new Set([...viewers.values()].filter(v => v.state === 'streaming').map(v => v.accessory));
     const accessory = payload.accessoryId as string;
@@ -53,7 +62,8 @@ serverConnection.request = (async (action: string, payload: Record<string, unkno
       }
     }
   } else if (action === 'camera.snapshot') {
-    return { jpeg, capturedAt: new Date().toISOString(), width: canvas.width, height: canvas.height, source: 'stream', mimeType: 'image/jpeg' };
+    document.documentElement.dataset.snapshotRequests = String(++snapshots);
+    return { jpeg, capturedAt, width: canvas.width, height: canvas.height, source: 'stream', mimeType: 'image/jpeg' };
   }
   return status(id);
 }) as typeof serverConnection.request;

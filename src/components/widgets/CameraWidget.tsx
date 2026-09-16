@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState } from 'react';
-import { Video, RefreshCw, Loader2, Play, X } from 'lucide-react';
+import { Video, RefreshCw, Loader2, Play, X, Clock3 } from 'lucide-react';
 import { WidgetCard, useWidgetColors } from './WidgetCard';
 import { WidgetProps, getCharacteristic } from './types';
 import { useCameraSnapshot } from '@/hooks/useCameraSnapshot';
@@ -14,6 +14,7 @@ import { CameraTilePreview } from './CameraTilePreview';
 import { describeCameraFailure, describeCaptureAge } from '@/lib/camera-snapshot';
 import { isCommunity } from '@/lib/config';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
+import './camera-feed.css';
 
 /** Header-only dismissal; camera controls stay with the preview below. */
 export function CameraCloseButton() {
@@ -45,6 +46,7 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
   const { dataUrl: image, capturedAt, source, width, height } = latest ?? {};
   const liveLabel = describeLiveView(live.phase, live.queuePosition, live.reason);
   const canResume = accessory.camera?.stream && ['error', 'stopped'].includes(live.phase);
+  const canRefresh = !live.usesLive && !canResume;
   const portrait = !!width && !!height && height > width;
   const aspect = width && height && width > 0 && height > 0 ? width / height : 16 / 9;
   useExpandedOverlayWidth(expanded ? (portrait ? 560 : 960) : undefined);
@@ -55,43 +57,17 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [expanded]);
-  const imageAge = capturedAt
-    ? `${source === 'stream' ? 'Captured' : 'Requested'} ${describeCaptureAge(capturedAt, now)}`
-    : undefined;
+  const imageAge = capturedAt ? describeCaptureAge(capturedAt, now) : undefined;
+  const imageAgeLabel = imageAge ? `${source === 'stream' ? 'Captured' : 'Requested'} ${imageAge}` : undefined;
+  const imageAgeTitle = source === 'stream' ? `${imageAgeLabel} · ${capturedAt}`
+    : `${imageAgeLabel} · ${capturedAt} — Request time; HomeKit may supply an older image.`;
+  const statusLabel = liveLabel ?? (status.kind === 'error' ? describeCameraFailure(status.failure) : image ? 'Snapshot' : 'Loading…');
+  const statusDot = live.phase === 'live' ? 'bg-red-400'
+    : ['queued', 'connecting', 'error'].includes(live.phase) || status.kind === 'error' ? 'bg-amber-400' : 'bg-white/70';
 
   return (
-    <div className="flex w-full flex-col items-center gap-2" data-camera-preview>
-        <div className="flex w-full items-center justify-between gap-2 rounded-xl bg-black/80 p-2 text-xs text-white/90" data-camera-toolbar>
-          <span className="min-w-0">
-            {liveLabel ? <span>
-              {live.phase === 'live' && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-red-400" aria-hidden="true" />}
-              {liveLabel}
-            </span> : status.kind === 'error' ? describeCameraFailure(status.failure) : !imageAge && 'Loading…'}
-            {live.phase !== 'live' && imageAge && <time dateTime={capturedAt}
-              className={liveLabel || status.kind === 'error' ? 'mt-0.5 block text-white/65' : ''}
-              title={source === 'stream' ? capturedAt : 'Request time — HomeKit may supply an older image.'}>
-              {imageAge}
-            </time>}
-          </span>
-          <div className="flex shrink-0 gap-1">
-            {canResume && <button type="button" aria-label="Resume live view"
-              onClick={(e) => { e.stopPropagation(); live.resume(); }}
-              className="flex min-h-11 items-center justify-center gap-1.5 rounded-full px-3 hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
-              <Play className="h-4 w-4" aria-hidden="true" />Resume
-            </button>}
-            {!live.usesLive && !canResume && <button
-              type="button"
-              disabled={refreshing}
-              onClick={(e) => { e.stopPropagation(); refresh(); }}
-              className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/15 disabled:opacity-60"
-              aria-label="Refresh snapshot"
-              aria-busy={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>}
-          </div>
-        </div>
-      <div ref={frameRef} data-camera-frame className="relative max-w-full shrink-0 overflow-hidden rounded-xl bg-black/80"
+    <div className="flex w-full flex-col items-center" data-camera-preview>
+      <div ref={frameRef} data-camera-frame className="camera-feed relative max-w-full shrink-0 overflow-hidden rounded-xl bg-black/80"
         style={{ width: `min(100%, calc(${maxHeight === undefined ? 'max(0px, 100dvh - 180px)' : `${maxHeight}px`} * ${aspect}))`, aspectRatio: aspect }}>
         {image ? (
           <img src={image} alt={`${accessory.name} ${live.phase === 'live' ? 'live view' : 'snapshot'}`} width={width} height={height}
@@ -105,6 +81,31 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
             )}
           </div>
         )}
+        <div data-camera-toolbar data-camera-feed-overlay
+          className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2 pb-1 pt-8 text-xs leading-4 text-white">
+          <div data-camera-status-row className="flex h-11 min-w-0 items-center gap-2 whitespace-nowrap">
+            <div className="flex h-11 min-w-0 flex-1 items-center gap-1.5" role="status">
+              {canResume || canRefresh ? <button type="button"
+                aria-label={canResume ? 'Resume live view' : 'Refresh snapshot'}
+                title={canResume ? 'Resume live view' : 'Refresh snapshot'}
+                disabled={!canResume && refreshing} aria-busy={!canResume && refreshing}
+                onClick={(e) => { e.stopPropagation(); if (canResume) live.resume(); else refresh(); }}
+                className="flex h-11 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left hover:bg-white/10 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
+                {canResume ? <Play className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  : <RefreshCw className={`h-4 w-4 shrink-0 ${refreshing ? 'animate-spin' : ''}`} aria-hidden="true" />}
+                <span data-camera-status-label className="min-w-0 truncate" title={statusLabel}>{statusLabel}</span>
+              </button> : <>
+                <span className={`camera-feed-dot h-1.5 w-1.5 shrink-0 rounded-full ${statusDot}`} aria-hidden="true" />
+                <span data-camera-status-label className="min-w-0 truncate" title={statusLabel}>{statusLabel}</span>
+              </>}
+            </div>
+            {live.phase !== 'live' && imageAge && <time dateTime={capturedAt}
+              className="camera-feed-age shrink-0 items-center gap-1.5 whitespace-nowrap text-white/80"
+              aria-label={imageAgeLabel} title={imageAgeTitle}>
+              <Clock3 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{imageAge}
+            </time>}
+          </div>
+        </div>
       </div>
     </div>
   );
