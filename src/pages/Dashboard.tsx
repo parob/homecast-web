@@ -7536,7 +7536,7 @@ const Dashboard = () => {
     // On a phone a crumb is a plain link back: the switcher lives on the
     // page's own name below, not on both.
     if (!showWebHomeMenu || (className && largeHeading)) {
-      if (onPlainClick) return <button type="button" className={className} onClick={onPlainClick}>{name}</button>;
+      if (onPlainClick) return <button type="button" data-expanded-overlay-dismiss className={className} onClick={onPlainClick}>{name}</button>;
       return <>{name}{isHeading && headingStatusDot}</>;
     }
     // As a heading the chevron is the native bar's: a small filled disc after
@@ -7551,7 +7551,7 @@ const Dashboard = () => {
               trigger in the trigger's own shape, and a square box around
               the words left a hard-edged rectangle of undimmed page. The
               negative margins keep the text where it was. */}
-          <button type="button" data-tour="home-selector" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
+          <button type="button" data-expanded-overlay-dismiss data-tour="home-selector" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
             <span className="truncate">{name}</span>
             {asHeading ? discChevron : (
               <ChevronDown className="h-4 w-4 shrink-0" />
