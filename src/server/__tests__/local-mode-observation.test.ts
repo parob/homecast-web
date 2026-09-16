@@ -172,4 +172,80 @@ describe('Local Mode observation', () => {
     expect(homekit.startObserving).toHaveBeenCalledTimes(1);
     expect(homekit.resetObservationTimeout.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
+
+  it.each([true, false])('does not resume observation after Local Mode ended during a pending start (success=%s)', async (success) => {
+    let finishStart!: () => void;
+    homekit.startObserving.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      finishStart = () => success
+        ? resolve({ success: true, observing: true })
+        : reject(new Error('start completed after Local Mode ended'));
+    }));
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(1);
+
+    setLocalModeOverride('off');
+    await settle();
+    expect(controller.isActive()).toBe(false);
+    finishStart();
+    await settle();
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    expect(homekit.startObserving).toHaveBeenCalledTimes(1);
+    expect(homekit.resetObservationTimeout).not.toHaveBeenCalled();
+  });
+
+  it('ignores an old retry result after a new Local Mode session has started', async () => {
+    let rejectRetry!: (error: Error) => void;
+    homekit.startObserving
+      .mockRejectedValueOnce(new Error('initial start failed'))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectRetry = reject;
+      }));
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_100);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(2);
+
+    setLocalModeOverride('off');
+    await settle();
+    expect(controller.isActive()).toBe(false);
+    setLocalModeOverride('on');
+    await settle();
+    expect(controller.isActive()).toBe(true);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(3);
+
+    rejectRetry(new Error('previous session retry failed'));
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(3);
+    expect(homekit.resetObservationTimeout).toHaveBeenCalled();
+  });
+
+  it('ignores a failed keepalive from the previous Local Mode session', async () => {
+    let rejectReset!: (error: Error) => void;
+    homekit.resetObservationTimeout.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectReset = reject;
+    }));
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_100);
+    expect(homekit.resetObservationTimeout).toHaveBeenCalledTimes(1);
+
+    setLocalModeOverride('off');
+    await settle();
+    setLocalModeOverride('on');
+    await settle();
+    expect(homekit.startObserving).toHaveBeenCalledTimes(2);
+    rejectReset(new Error('previous session keepalive failed'));
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(homekit.startObserving).toHaveBeenCalledTimes(2);
+    expect(homekit.resetObservationTimeout).toHaveBeenCalledTimes(2);
+  });
 });
