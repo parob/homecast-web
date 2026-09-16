@@ -93,7 +93,7 @@ test.describe('Community mode - first launch', () => {
 });
 
 test.describe('Community mode - relay not ready', () => {
-  test('shows relay not ready with change mode button', async ({ page }) => {
+  test('offers retry, another address, and Cloud Mode when the relay is unavailable', async ({ page }) => {
     await setupCommunityClient(page, 'localhost:9999');
     // Don't mock the relay — let the fetch fail
     await page.goto('/login');
@@ -101,8 +101,14 @@ test.describe('Community mode - relay not ready', () => {
     await expect(page.getByText('Relay not ready')).toBeVisible({ timeout: 10000 });
     // Should show the relay address it tried
     await expect(page.getByText('localhost:9999')).toBeVisible();
-    // Should have a proper change mode button
-    await expect(page.getByRole('button', { name: /change relay connection/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /switch to cloud mode/i })).toBeVisible();
+    await page.getByRole('button', { name: 'Use a different address' }).click();
+    await expect(page.getByLabel('Relay address')).toHaveValue('http://localhost:9999');
+    await page.getByLabel('Relay address').fill('https://relay.example.test');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByLabel('Relay address')).not.toBeVisible();
+    await expect(page.getByText('http://localhost:9999', { exact: true })).toBeVisible();
   });
 });
 
@@ -120,7 +126,7 @@ test.describe('Community mode - auth enabled', () => {
     await expect(page.getByLabel('Username')).toBeVisible();
     await expect(page.getByLabel('Password')).toBeVisible();
     // Should have change mode button (proper button, not tiny text)
-    const changeModeBtn = page.getByRole('button', { name: /change relay connection/i });
+    const changeModeBtn = page.getByRole('button', { name: /switch to cloud mode/i });
     await expect(changeModeBtn).toBeVisible();
   });
 });
@@ -138,30 +144,38 @@ test.describe('Community mode - auth disabled', () => {
   });
 });
 
-test.describe('Cloud mode - login page', () => {
-  // Note: on localhost, isCommunity is true so we can't test cloud-specific UI (email form, sign-up).
-  // These tests verify mode-switching buttons which appear in both modes.
+test.describe('Community mode - switching to Cloud Mode', () => {
+  // The Community login offers Cloud Mode in both the native shell and browser.
 
   test('shows change mode button in native app', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('cookie-consent', 'granted');
       // Simulate native app bridge
-      (window as any).webkit = { messageHandlers: { homecast: { postMessage: () => {} } } };
+      (window as any).__modeMessages = [];
+      (window as any).webkit = { messageHandlers: { homecast: {
+        postMessage: (message: unknown) => (window as any).__modeMessages.push(message),
+      } } };
       (window as any).__HOMECAST_COMMUNITY__ = true;
     });
     await mockCommunityRelay(page, { authEnabled: true, relayReady: true });
     await page.goto('/login');
 
-    // In community mode with native app, button says "Change relay connection"
-    await expect(page.getByRole('button', { name: /change relay connection/i })).toBeVisible({ timeout: 10000 });
+    const switchButton = page.getByRole('button', { name: /switch to cloud mode/i });
+    await expect(switchButton).toBeVisible({ timeout: 10000 });
+    await switchButton.click();
+    expect(await page.evaluate(() => (window as any).__modeMessages)).toContainEqual({ action: 'resetMode' });
   });
 
-  test('shows change mode button for browser clients in community mode', async ({ page }) => {
+  test('switches browser clients to the Cloud login instead of reloading the relay', async ({ page }) => {
     await setupCommunityClient(page, 'mymac.local:5656');
     await mockCommunityRelay(page, { authEnabled: true, relayReady: true });
     await page.goto('/login');
 
-    await expect(page.getByRole('button', { name: /change relay connection/i })).toBeVisible({ timeout: 10000 });
+    await page.route('https://homecast.cloud/login', route => route.fulfill({
+      contentType: 'text/html', body: '<h1>Cloud login destination</h1>',
+    }));
+    await page.getByRole('button', { name: /switch to cloud mode/i }).click();
+    await expect(page).toHaveURL('https://homecast.cloud/login');
   });
 });
 

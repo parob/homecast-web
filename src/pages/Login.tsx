@@ -27,8 +27,9 @@ function switchMode() {
   if (win.webkit?.messageHandlers?.homecast) {
     win.webkit.messageHandlers.homecast.postMessage({ action: 'resetMode' });
   } else {
-    // Browser client: reload to show setup flow
-    window.location.reload();
+    // The relay's origin always serves Community mode. Reloading it cannot
+    // switch modes, so browser clients must leave for the Cloud login.
+    window.location.assign('https://homecast.cloud/login');
   }
 }
 
