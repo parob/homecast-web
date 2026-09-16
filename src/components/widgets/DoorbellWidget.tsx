@@ -7,10 +7,13 @@ import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { CameraTileFrame } from './CameraTileFrame';
 import { CameraTilePreview } from './CameraTilePreview';
+import { CameraModeControls } from './CameraModeControls';
 import { isCommunity } from '@/lib/config';
 
 export const DoorbellWidget: React.FC<WidgetProps> = memo(({
   accessory,
+  onToggle,
+  getEffectiveValue,
   compact,
   expanded,
   onExpandToggle,
@@ -100,7 +103,9 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
       onToggleShowHidden={onToggleShowHidden}
       onShare={onShare}
       locationSubtitle={locationSubtitle}
-    />
+    >
+      {preview.expanded && <CameraModeControls accessory={accessory} onToggle={onToggle} getEffectiveValue={getEffectiveValue} />}
+    </WidgetCard>
     </CameraTileFrame>
   );
 });
