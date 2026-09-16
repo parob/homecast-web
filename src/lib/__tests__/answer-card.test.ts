@@ -144,7 +144,7 @@ describe('the server says nothing may serve the home', () => {
     const c = at({ ...gone('offline'), managed: true });
     expect(c.tone).toBe('bad');
     expect(c.verdict).toBe("County Hall can't be reached");
-    expect(c.because).toBe("The cloud relay isn't answering. Your iPhone and your internet are both fine.");
+    expect(c.because).toBe('Homecast reports that no relay is serving this home.');
     expect(c.reconnect).toBe(false);
     expect(c.note).toMatch(/reconnect automatically/);
     expect(c.showChain).toBe(true);
@@ -152,7 +152,7 @@ describe('the server says nothing may serve the home', () => {
 
   it('tells a self-hosted owner what to go and check', () => {
     const c = at(gone('offline'));
-    expect(c.because).toContain('check that the relay is on and online');
+    expect(c.because).toContain('Check that your relay is on and online');
     expect(c.note).toBeNull();
   });
 
