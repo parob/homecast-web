@@ -17,6 +17,7 @@
 // or not anyone is looking, and both the panel and the remote dump read from it.
 
 import type { RelayActivityEntry } from './websocket';
+import { cameraLogMetadata } from '@/lib/camera-log';
 
 type Listener = (entry: RelayActivityEntry) => void;
 
@@ -93,7 +94,7 @@ function boundPayloads(entry: RelayActivityEntry): RelayActivityEntry {
   for (const key of PAYLOAD_KEYS) {
     const value = (entry as Record<string, unknown>)[key];
     if (value === undefined) continue;
-    const small = summariseForActivity(value);
+    const small = summariseForActivity(cameraLogMetadata(entry.action, value));
     if (small !== value) {
       bounded = bounded ?? { ...entry };
       (bounded as Record<string, unknown>)[key] = small;
