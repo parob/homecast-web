@@ -81,6 +81,14 @@ describe('recording', () => {
 });
 
 describe('payload bounding', () => {
+  it('never records camera pixels, even when the image is below the size limit', () => {
+    const response = { jpeg: 'PRIVATE_CAMERA_PIXELS', width: 320, height: 180, source: 'stream' };
+    mod.emitLocalRelayActivity({ lane: 'bridge', at: 1, action: 'camera.snapshot', phase: 'ok', response });
+    expect(JSON.stringify(mod.getBufferedActivity())).not.toContain('PRIVATE_CAMERA_PIXELS');
+    expect(mod.getBufferedActivity()[0].response).toMatchObject({ width: 320, height: 180, source: 'stream' });
+    expect(response.jpeg).toBe('PRIVATE_CAMERA_PIXELS');
+  });
+
   // Measured on the live relay before this existed: a single bridge-lane
   // `accessories.list` response was 1.6 MB, the buffer held 12 MB across 320
   // entries, and asking for a 300-entry page disconnected the relay outright.

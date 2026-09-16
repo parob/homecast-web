@@ -22,14 +22,15 @@ import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
 import { errorCode } from '../lib/describe-error';
+import { cameraLogMetadata } from '../lib/camera-log';
 import { canServeLocally, resolveLocalHomeId } from './relay-routing';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from './local-activity';
 
 /** Bounded like the socket lane's payloads — a sync_all carries every automation. */
-function summariseCloudMessage(message: { payload?: unknown }): unknown {
-  const payload = message.payload;
+function summariseCloudMessage(message: { action?: string; payload?: unknown }): unknown {
+  const payload = cameraLogMetadata(message.action, message.payload);
   if (payload === null || payload === undefined) return undefined;
   try {
     const json = JSON.stringify(payload);
@@ -822,13 +823,13 @@ export class ServerWebSocket {
       liveHomeIds: this.liveHomeIds,
       unservableHomeIds: this.unservableHomeIds,
     })) {
-      if (import.meta.env.DEV) console.log(`[ServerWS] Local request: ${action}`, payload);
+      if (import.meta.env.DEV) console.log(`[ServerWS] Local request: ${action}`, cameraLogMetadata(action, payload));
       try {
         const localPayload = localHomeId && localHomeId !== homeKey
           ? { ...payload, homeId: localHomeId }
           : payload;
         const result = await executeHomeKitAction(action, localPayload);
-        if (import.meta.env.DEV) console.log(`[ServerWS] Local response: ${action}`, result);
+        if (import.meta.env.DEV) console.log(`[ServerWS] Local response: ${action}`, cameraLogMetadata(action, result));
 
         // Nothing to publish here: every write path announces itself from
         // relay-write.ts, which is the whole point of that module. This used to
@@ -880,7 +881,7 @@ export class ServerWebSocket {
     }
 
     // Browser mode / server-routed request - send over WebSocket
-    if (import.meta.env.DEV) console.log(`[ServerWS] Remote request: ${action}`, payload);
+    if (import.meta.env.DEV) console.log(`[ServerWS] Remote request: ${action}`, cameraLogMetadata(action, payload));
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       // Fails fast rather than waiting out REQUEST_TIMEOUT, which is right —
@@ -1836,7 +1837,7 @@ export class ServerWebSocket {
       this.consecutiveFailures = 0;
       pending.reject(new HomecastError(message.error.code, message.error.message, message._trace));
     } else {
-      if (import.meta.env.DEV) console.log(`[ServerWS] Response received: ${message.action}`, message.payload);
+      if (import.meta.env.DEV) console.log(`[ServerWS] Response received: ${message.action}`, cameraLogMetadata(pending.action, message.payload));
       this.consecutiveFailures = 0;
       pending.resolve(message.payload);
     }
