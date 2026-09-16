@@ -12,6 +12,7 @@ import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
 import { clearPersistedHomeKitCache } from '@/hooks/useHomeKitData';
 import { clearSeriesCache } from '@/history/seriesCache';
+import { clearCameraSnapshots } from '@/lib/camera-snapshot-cache';
 import { diagnoseConnection } from '@/lib/connectionDiagnosis';
 import { unregisterThisDevice } from '@/lib/device-identity';
 
@@ -63,6 +64,7 @@ function clearAuthToken() {
   // Same argument for Analytics: recorded history is per-user data behind a
   // per-home opt-in, and must not outlive the session that fetched it.
   clearSeriesCache();
+  clearCameraSnapshots();
   // Same for Local Mode's id map, which is now adopted before auth answers
   // (see `loadLast`) and so would otherwise outlive the account that minted it.
   // Gated like the load below, so a browser never pulls the native chunk.
@@ -583,6 +585,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           apolloClient.clearStore();
           clearSeriesCache();
+          clearCameraSnapshots();
         }
       }
     };
