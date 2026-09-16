@@ -65,6 +65,17 @@ describe('thisDeviceNoun', () => {
     expect(thisDeviceNoun()).toBe('iPad');
   });
 
+  it.each([
+    ['Mozilla/5.0 (iPad; CPU OS 26_3 like Mac OS X)', 0],
+    ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 5],
+  ])('uses the native Mac identity before browser heuristics (%s)', (agent, points) => {
+    ua(agent);
+    touches(points);
+    window.isHomecastMacApp = true;
+    (window as unknown as Record<string, unknown>).isHomeKitRelayCapable = true;
+    expect(thisDeviceNoun()).toBe('Mac');
+  });
+
   it('is a Mac only where it could be the relay', () => {
     ua('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15');
     expect(thisDeviceNoun()).toBe('device');
