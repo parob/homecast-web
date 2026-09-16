@@ -5,6 +5,7 @@ import { ColoredSwitch } from './shared';
 import { WidgetProps, getCharacteristic } from './types';
 import { useCameraSnapshot } from '@/hooks/useCameraSnapshot';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
+import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { describeCameraFailure, describeCaptureAge } from '@/lib/camera-snapshot';
 import { isCommunity } from '@/lib/config';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
@@ -104,6 +105,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   // (absent on relays that predate it), and the owner switched cameras on.
   const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
   const showHero = !compact && !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
+  const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
 
   // Simple status text
   const getStatusText = () => {
@@ -123,12 +125,12 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
-      expanded={expanded}
-      onExpandToggle={onExpandToggle}
+      expanded={preview.expanded}
+      onExpandToggle={preview.onExpandToggle}
       onDebug={onDebug}
       heroShape="block"
       heroStack
-      hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={expanded === true} /> : undefined}
+      hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={preview.expanded} /> : undefined}
 
 
 

@@ -1,9 +1,10 @@
 import React, { memo } from 'react';
-import { Bell, Battery, BatteryLow, BatteryWarning } from 'lucide-react';
+import { Bell, Video, Battery, BatteryLow, BatteryWarning } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { CameraSnapshotHero } from './CameraWidget';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
+import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { isCommunity } from '@/lib/config';
 
 export const DoorbellWidget: React.FC<WidgetProps> = memo(({
@@ -31,8 +32,10 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
   onShare,
   locationSubtitle,
 }) => {
+  const hasCamera = accessory.camera?.snapshot === true || accessory.camera?.stream === true;
   const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
   const showHero = !compact && !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
+  const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
   // Battery info
   const batteryLevelChar = getCharacteristic(accessory, 'battery_level');
   const lowBatteryChar = getCharacteristic(accessory, 'status_low_battery');
@@ -52,8 +55,8 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
     <WidgetCard
       title={accessory.name}
       subtitle={
-        <span className="flex items-center gap-2">
-          <span className="text-muted-foreground">Doorbell</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="text-muted-foreground">{hasCamera ? 'Doorbell camera' : 'Doorbell'}</span>
           {hasBattery && (
             <span className={`flex items-center gap-0.5 ${isLowBattery ? 'text-amber-500' : 'text-muted-foreground'}`}>
               <BatteryIcon className="h-3 w-3" />
@@ -62,18 +65,18 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
           )}
         </span>
       }
-      icon={<Bell className="h-4 w-4" />}
+      icon={hasCamera ? <Video className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
       serviceType="doorbell"
       iconStyle={iconStyle}
       isOn={hasMotion}
       isReachable={accessory.isReachable}
       accessory={accessory}
       compact={compact}
-      expanded={expanded}
+      expanded={preview.expanded}
       heroShape="block"
       heroStack
-      hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={expanded === true} /> : undefined}
-      onExpandToggle={onExpandToggle}
+      hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={preview.expanded} /> : undefined}
+      onExpandToggle={preview.onExpandToggle}
       onDebug={onDebug}
       
       
