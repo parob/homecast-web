@@ -423,3 +423,31 @@ describe('the connection message, which replaced the toasts', () => {
     vi.useRealTimers();
   });
 });
+
+describe('one home’s route across the badge, popover and native header', () => {
+  it('follows normal → waiting → backup → normal without inventing a socket failure', async () => {
+    const native = await import('@/native/native-header');
+    const publish = vi.spyOn(native, 'publishHeaderState').mockReturnValue(true);
+    mockHomes = [{ id: HOME, name: 'County Hall', isCloudManaged: true }];
+    heard(fact({ by: 'cloud-mini', kind: 'cloud' }));
+    const { rerender } = render(<StatusBadge homeId={HOME} homeName="County Hall" accountType="cloud" />);
+    expect(publish).toHaveBeenLastCalledWith({ statusColor: '#10b981', subtitle: '' });
+    act(() => heard(fact({ state: 'waiting', by: null, kind: null, graceEndsAt: new Date(Date.now() + 180000).toISOString() })));
+    expect(screen.getByRole('button').textContent).toBe('Waiting for backup');
+    expect(publish).toHaveBeenLastCalledWith({ statusColor: '#f59e0b', subtitle: 'Waiting for backup' });
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText("County Hall can't be reached right now")).toBeTruthy();
+    expect(screen.getByText(/takes over in 3 min/)).toBeTruthy();
+    act(() => heard(fact({ by: 'another-backup-mac', kind: 'self_hosted' })));
+    expect(screen.getByText('County Hall is working')).toBeTruthy();
+    expect(screen.getByText(/Your backup relay is serving/)).toBeTruthy();
+    expect(publish).toHaveBeenLastCalledWith({ statusColor: '#f59e0b', subtitle: 'Standing in' });
+    act(() => heard(fact({ by: 'cloud-mini', kind: 'cloud' })));
+    expect(publish).toHaveBeenLastCalledWith({ statusColor: '#10b981', subtitle: '' });
+    // Switching to an unmeasured home must not inherit the previous green dot.
+    rerender(<StatusBadge homeId="other-home" homeName="George Street" accountType="cloud" />);
+    expect(screen.getByText('Checking the route to George Street…')).toBeTruthy();
+    expect(publish.mock.calls.at(-1)?.[0].statusColor).not.toBe('#10b981');
+    publish.mockRestore();
+  });
+});

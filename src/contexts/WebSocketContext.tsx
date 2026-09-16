@@ -6,10 +6,11 @@ import { type ConnectionQuality, isDegraded } from '../server/connection-quality
 import { setPendingWriteUrgency } from '../lib/pending-writes';
 import { invalidateHomeKitCache, invalidateHomeCaches, revalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { recordRelayStatusUpdate } from '../lib/relay-diagnostics';
-import { ingestHomeServingPush } from '@/server/home-serving';
+import { ingestHomeServingPush, invalidateHomeServing } from '@/server/home-serving';
 import { useLocalMode } from '../hooks/useLocalMode';
 import { localIdentity } from '../server/local-identity';
 import { toast } from 'sonner';
+import { isCommunity } from '@/lib/config';
 
 // Logger - dev only to avoid Chrome energy warnings from high-frequency logging
 const noop = () => {};
@@ -267,7 +268,10 @@ export const WebSocketProvider = ({ children }: { children: ReactNode }) => {
       }
       // A glance away is not an absence. Only a real gap can have cost us
       // events, and re-asking on every tab switch would be pure noise.
-      if (hiddenSince && Date.now() - hiddenSince > HIDDEN_GAP_MS) revalidate('foregrounded');
+      if (hiddenSince && Date.now() - hiddenSince > HIDDEN_GAP_MS) {
+        if (!isCommunity) invalidateHomeServing();
+        revalidate('foregrounded', 0);
+      }
       hiddenSince = 0;
     };
     document.addEventListener('visibilitychange', onVisibility);

@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { isRelayCapable } from '@/native/homekit-bridge';
 import { isCommunity } from '@/lib/config';
-import { ingestHomesList, setRefetch } from '@/server/home-serving';
+import { beginHomesList, isHomesListCurrent, ingestHomesList, setRefetch } from '@/server/home-serving';
 import { serverConnection, getDeviceId } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
 import { isAccessoryResponsive } from '../lib/accessoryFreshness';
@@ -641,7 +641,11 @@ function useCachedData<T>(
  */
 export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataResult<HomeKitHome[]> {
   const fetcher = useCallback(async () => {
+    const startedAt = beginHomesList();
     const result = await serverConnection.request<{ homes: HomeKitHome[] }>('homes.list');
+    // The cache may have joined an in-flight request across a resume. Reject
+    // that old read so the existing bounded retry asks on the current connection.
+    if (!isHomesListCurrent(startedAt)) throw new Error('Connection changed while checking homes');
     const homes = result?.homes ?? [];
     // Every homes.list answer is one of the two things that may write the
     // serving store. Community mode has no cloud and no relay but this Mac,
@@ -649,7 +653,7 @@ export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataRes
     // is registered with the store as a side effect of reading it.
     const community = isCommunity && isRelayCapable();
     if (community) getDeviceId();
-    ingestHomesList(homes, { community });
+    ingestHomesList(homes, { community, startedAt });
     return homes;
   }, []);
 

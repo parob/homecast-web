@@ -27,6 +27,7 @@ let mockUptime: { uptimePercent7d: number } | undefined;
 vi.mock('@/hooks/useHomeKitData', () => ({ useHomes: () => ({ data: mockHomes }) }));
 vi.mock('@/server/connection', () => ({
   serverConnection: {
+    subscribe: () => () => {},
     getState: () => ({ connectionState: mockConnectionState, relayStatus: null, relayRoles: null }),
   },
 }));
@@ -80,7 +81,7 @@ describe('AnswerCardView', () => {
   it('offers the note, and no button, for a dead cloud relay', () => {
     render(<AnswerCardView card={card({ serving: fact({ state: 'offline', by: null, kind: null }), relayServing: fact({ state: 'offline', by: null, kind: null }) })} onReconnect={vi.fn()} />);
     expect(screen.getByText("George Street can't be reached")).toBeTruthy();
-    expect(screen.getByText(/Homecast has been notified/)).toBeTruthy();
+    expect(screen.getByText(/Homecast will reconnect automatically/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /reconnect/i })).toBeNull();
   });
 

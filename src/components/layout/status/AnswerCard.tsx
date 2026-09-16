@@ -16,7 +16,6 @@
  * came to say "Offline" over a home that worked.
  */
 
-import { useEffect, useState } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { ChevronRight, Info, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -24,10 +23,7 @@ import { Button } from '@/components/ui/button';
 import { GET_HOME_UPTIME } from '@/lib/graphql/queries';
 import type { UptimeSummary } from '@/components/settings/UptimeSection';
 import type { AnswerCard, CardTone } from '@/lib/answer-card';
-import { relaySectionState, type RelayConnectionState, type RelaySectionState } from '@/lib/relay-section-state';
-import { serverConnection } from '@/server/connection';
-import { useHomes } from '@/hooks/useHomeKitData';
-import { effectiveServing, getThisDevice, subscribeHomeServing } from '@/server/home-serving';
+import { useRelayDuty } from '@/hooks/useRelayDuty';
 import { ConnectionChain } from './ConnectionChain';
 
 const DOT: Record<CardTone, string> = {
@@ -186,17 +182,6 @@ export function ReliabilityRow({ homeId, onOpen }: ReliabilityRowProps) {
   );
 }
 
-const DUTY: Record<RelaySectionState, { value: string; tone: CardTone; pulse?: boolean }> = {
-  connected_active: { value: 'Active relay', tone: 'ok' },
-  connected_standby: { value: 'Standing by', tone: 'ok' },
-  connected_cloud_standby: { value: 'Standing by', tone: 'ok' },
-  connected_cloud_waiting: { value: 'Taking over…', tone: 'warn', pulse: true },
-  connected_cloud_serving: { value: 'Standing in', tone: 'warn' },
-  connected_cloud_offline: { value: 'Standing by', tone: 'idle' },
-  connecting: { value: 'Connecting…', tone: 'idle', pulse: true },
-  reconnecting: { value: 'Reconnecting…', tone: 'idle', pulse: true },
-  disconnected: { value: 'Disconnected', tone: 'bad' },
-};
 
 interface RelayRowProps {
   /** Opens Settings → Relay. Absent hides the chevron. */
@@ -209,26 +194,6 @@ interface RelayRowProps {
  * uptime, the client and subscription counts are all on the page this opens.
  */
 export function RelayRow({ onOpen }: RelayRowProps) {
-  const [connectionState, setConnectionState] = useState<RelayConnectionState>(
-    () => serverConnection.getState().connectionState,
-  );
-  // The socket state is sampled while this is on screen — a second is the
-  // cadence the old section used, and it is only ever running while open.
-  useEffect(() => {
-    const t = setInterval(() => setConnectionState(serverConnection.getState().connectionState), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const [, bumpServing] = useState(0);
-  useEffect(() => subscribeHomeServing(() => bumpServing(n => n + 1)), []);
-  const { data: homes } = useHomes();
-
-  const verdict = relaySectionState({
-    connectionState,
-    community: false,
-    homes: homes ?? [],
-    serving: effectiveServing,
-    thisDevice: getThisDevice(),
-  });
-  const duty = DUTY[verdict.state];
+  const duty = useRelayDuty();
   return <StatusRow label="This Mac" value={duty.value} tone={duty.tone} pulse={duty.pulse} onOpen={onOpen} />;
 }

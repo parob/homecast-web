@@ -33,6 +33,7 @@
  * so the rules are tested rather than eyeballed against a throttled browser.
  */
 
+import { browserLogger } from '@/lib/browser-logger';
 import type { HomeKitHome } from '@/native/homekit-bridge';
 
 export type ServingState = 'served' | 'waiting' | 'reconnecting' | 'offline';
@@ -124,6 +125,11 @@ export function servedByThisDevice(serving: HomeServing | null, thisDevice: stri
   return !!serving && serving.state === 'served' && !!thisDevice && serving.by === thisDevice;
 }
 
+/** A cloud-plan home currently routed through a customer's relay. */
+export function isBackupServing(serving: HomeServing | null, managed: boolean): boolean {
+  return managed && serving?.state === 'served' && serving.kind === 'self_hosted';
+}
+
 // ---------------------------------------------------------------------------
 // The store.
 // ---------------------------------------------------------------------------
@@ -131,6 +137,24 @@ export function servedByThisDevice(serving: HomeServing | null, thisDevice: stri
 type Listener = (homeId: string, serving: HomeServing | null) => void;
 
 const facts = new Map<string, HomeServing>();
+let revision = 0;
+let invalidatedAt = 0;
+const changedAt = new Map<string, number>();
+
+/** Capture before asking for a list; a push received during it must win. */
+export function beginHomesList(): number { return revision; }
+export function isHomesListCurrent(startedAt: number): boolean { return startedAt >= invalidatedAt; }
+
+/** Reconnect/resume/logout: old facts and in-flight lists no longer prove availability. */
+export function invalidateHomeServing(): void {
+  invalidatedAt = ++revision;
+  const ids = [...facts.keys()];
+  facts.clear();
+  changedAt.clear();
+  staleAsked.clear();
+  if (ids.length) browserLogger.logInfo('home_serving_invalidated', { statusVersion: 1, homeIds: ids, revision });
+  for (const id of ids) for (const fn of listeners) fn(id, null);
+}
 const listeners = new Set<Listener>();
 let thisDevice: string | null = null;
 let deviceServing: (homeId: string) => { active: boolean; since?: string | null } = () => ({ active: false });
@@ -146,12 +170,16 @@ function same(a: HomeServing | null, b: HomeServing | null): boolean {
     && a.since === b.since && a.graceEndsAt === b.graceEndsAt;
 }
 
-function set(homeId: string, serving: HomeServing): void {
+function set(homeId: string, serving: HomeServing, source: 'list' | 'push'): void {
   const k = key(homeId);
   const prev = facts.get(k) ?? null;
   facts.set(k, serving);
+  changedAt.set(k, ++revision);
   staleAsked.delete(k);
-  if (!same(prev, serving)) for (const fn of listeners) fn(k, serving);
+  if (!same(prev, serving)) {
+    browserLogger.logInfo('home_serving_changed', { statusVersion: 1, homeId: k, source, previous: prev, serving, revision });
+    for (const fn of listeners) fn(k, serving);
+  }
 }
 
 /** Every `homes.list` answer passes through here. */
@@ -161,19 +189,24 @@ export type ServingSourceHome =
 
 export function ingestHomesList(
   homes: ReadonlyArray<ServingSourceHome>,
-  opts: { community?: boolean } = {},
+  opts: { community?: boolean; startedAt?: number } = {},
 ): void {
   for (const home of homes) {
     if (!home?.id) continue;
+    if (opts.startedAt !== undefined && (opts.startedAt < invalidatedAt
+      || (changedAt.get(key(home.id)) ?? 0) > opts.startedAt)) {
+      browserLogger.logInfo('home_serving_stale_list', { statusVersion: 1, homeId: key(home.id), startedAt: opts.startedAt, revision });
+      continue;
+    }
     if (opts.community) {
       // No cloud, no relay but this Mac: the fact is a constant and this is
       // the only place it is ever written. The same path that copes with an
       // older server copes with no server.
-      set(home.id, { state: 'served', by: thisDevice, kind: 'self_hosted', since: null, graceEndsAt: null });
+      set(home.id, { state: 'served', by: thisDevice, kind: 'self_hosted', since: null, graceEndsAt: null }, 'list');
       continue;
     }
     const parsed = parseServing(home.serving) ?? synthesiseServing(home);
-    if (parsed) set(home.id, parsed);
+    if (parsed) set(home.id, parsed, 'list');
   }
 }
 
@@ -181,13 +214,13 @@ export function ingestHomesList(
 export function ingestHomeServingPush(message: { homeId?: unknown; serving?: unknown }): void {
   if (typeof message.homeId !== 'string' || !message.homeId) return;
   const parsed = parseServing(message.serving);
-  if (parsed) set(message.homeId, parsed);
+  if (parsed) set(message.homeId, parsed, 'push');
 }
 
 /**
  * The server's fact for a home, as last heard, uncomposed. Surfaces read
- * `effectiveServing`; the one legitimate reader of this is the connection
- * chain, whose relay node is drawn from the server's fact precisely because
+ * `effectiveServing` for availability; relay duty and the connection chain
+ * read the server's fact directly because
  * Local Mode is the thing bypassing it.
  */
 export function getHomeServing(homeId: string): HomeServing | null {
@@ -249,6 +282,9 @@ export function setRefetch(fn: typeof refetch): void { refetch = fn; }
 /** Test seam. */
 export function resetHomeServing(): void {
   facts.clear();
+  changedAt.clear();
+  revision = 0;
+  invalidatedAt = 0;
   listeners.clear();
   staleAsked.clear();
   thisDevice = null;
