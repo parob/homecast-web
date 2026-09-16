@@ -946,10 +946,10 @@ async function executeHomeKitActionInner(
       return await HomeKit.cameraRequestScreenRecording();
 
     case 'camera.snapshot': {
-      const { accessoryId, maxWidth, maxAgeSec } = payload as { accessoryId: string; maxWidth?: number; maxAgeSec?: number };
+      const { accessoryId, maxWidth, maxAgeSec, allowStaleOnError } = payload as { accessoryId: string; maxWidth?: number; maxAgeSec?: number; allowStaleOnError?: boolean };
       if (!accessoryId) throw Object.assign(new Error('accessoryId required'), { code: ErrorCode.INVALID_REQUEST });
       if (!isAccessoryAllowed(accessoryId)) throw Object.assign(new Error('Accessory not in plan'), { code: ErrorCode.PERMISSION_DENIED });
-      return await HomeKit.cameraSnapshot(accessoryId, { maxWidth, maxAgeSec });
+      return await HomeKit.cameraSnapshot(accessoryId, { maxWidth, maxAgeSec, allowStaleOnError: allowStaleOnError === true });
     }
 
     case 'camera.live.start': {

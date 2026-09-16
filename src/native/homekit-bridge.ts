@@ -236,6 +236,8 @@ export interface CameraSnapshot {
   width: number;
   height: number;
   cached: boolean;
+  stale?: boolean;
+  refreshError?: { code: string; message: string };
 }
 
 export interface CameraLiveStatus {
@@ -909,7 +911,7 @@ export const HomeKit = {
   },
 
   /** A still, served from the relay's cache when younger than `maxAgeSec`. */
-  async cameraSnapshot(accessoryId: string, options: { maxWidth?: number; maxAgeSec?: number } = {}): Promise<CameraSnapshot> {
+  async cameraSnapshot(accessoryId: string, options: { maxWidth?: number; maxAgeSec?: number; allowStaleOnError?: boolean } = {}): Promise<CameraSnapshot> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
     return bridge.call<CameraSnapshot>('camera.snapshot', { accessoryId, ...options });
