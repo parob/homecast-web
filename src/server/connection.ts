@@ -13,7 +13,7 @@ import type { ConnectionQuality } from './connection-quality';
 import { invalidateHomeServing } from './home-serving';
 import { isRelayCapable, isRelayEnabled } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
-import { invalidateHomeKitCache } from '../hooks/useHomeKitData';
+import { invalidateHomeKitCache, revalidateHomeKitCache } from '../hooks/useHomeKitData';
 import { beginRequest, logEvent, type RequestHandle } from '../lib/request-log';
 import { browserLogger } from '../lib/browser-logger';
 import { DEVICE_ID_STORAGE_KEY } from '../lib/device-id';
@@ -57,6 +57,7 @@ export interface LocalModeRouter {
   isActive(): boolean;
   canServe(action: string, payload: Record<string, unknown>): boolean;
   request<T>(action: string, payload: Record<string, unknown>): Promise<T>;
+  resyncIdentity?(): Promise<void>;
 }
 
 let localModeRouter: LocalModeRouter | null = null;
@@ -67,6 +68,16 @@ export function setLocalModeRouter(router: LocalModeRouter | null): void {
 
 function getLocalModeRouter(): LocalModeRouter | null {
   return localModeRouter;
+}
+
+/** Native batch errors are per-change strings; singular/cloud errors carry codes. */
+function hasMissingReference(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as { code?: string; message?: string; error?: unknown; changes?: unknown[] };
+  if (/^(IDENTITY|HOME|ROOM|ACCESSORY|SCENE|SERVICE_GROUP|CHARACTERISTIC)_NOT_FOUND$/.test(v.code ?? '')) return true;
+  const message = typeof v.error === 'string' ? v.error : v.message;
+  if (typeof message === 'string' && /\b(?:accessory|home|room|scene|service group) not found\b|\binvalid accessory id\b|\bcharacteristic '.+' not found\b/i.test(message)) return true;
+  return hasMissingReference(v.error) || (Array.isArray(v.changes) && v.changes.some(hasMissingReference));
 }
 
 export interface ServerConnectionState {
@@ -495,6 +506,34 @@ const SUBSCRIPTION_RENEWAL_CHECK_INTERVAL = 60000; // Check every minute
 const SUBSCRIPTION_RENEWAL_THRESHOLD = 150000; // Renew when <150s remaining
 
 class ServerConnection {
+  private referenceRecoveryAt = new Map<string, number>();
+  private referenceRecoveryPending = new Set<string>();
+
+  /** Repair the shared read/identity layer for every caller, without replaying writes. */
+  private recoverMissingReferences(outcome: unknown, payload: Record<string, unknown>): void {
+    if (!hasMissingReference(outcome)) return;
+    const homeId = typeof payload.homeId === 'string' ? payload.homeId : undefined;
+    const key = homeId?.toUpperCase() ?? '*';
+    const last = this.referenceRecoveryAt.get(key);
+    if (this.referenceRecoveryPending.has(key) || (last !== undefined && Date.now() - last < 30_000)) return;
+    this.referenceRecoveryAt.set(key, Date.now());
+    this.referenceRecoveryPending.add(key);
+    // A batch can have 100 missing members. Coalesce recovery, and keep the
+    // original outcome: successfully applied writes must never be repeated.
+    void (async () => {
+      try {
+        await getLocalModeRouter()?.resyncIdentity?.();
+      } catch (error) {
+        console.warn('[ServerConnection] Identity refresh failed:', error);
+      } finally {
+        // This cache uses live ids; the UI uses stable ids. Clear it before
+        // asking the affected home's subscribers to read the current topology.
+        clearCommunityCache();
+        revalidateHomeKitCache(homeId);
+        this.referenceRecoveryPending.delete(key);
+      }
+    })();
+  }
   private websocket: ServerWebSocket | null = null;
   private listeners: Set<StateListener> = new Set();
   private broadcastListeners: Set<BroadcastListener> = new Set();
@@ -912,11 +951,13 @@ class ServerConnection {
 
     try {
       const result = await this.routeRequest<T>(action, payload, via, span.traceId);
+      this.recoverMissingReferences(result, payload);
       log.ok(via.transport);
       noteRelayOutcome(payload, via.transport, null);
       span.done({ success: true, transport: via.transport });
       return result;
     } catch (err) {
+      this.recoverMissingReferences(err, payload);
       log.fail(err);
       noteRelayOutcome(payload, via.transport, err);
       span.done({

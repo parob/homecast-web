@@ -14,6 +14,8 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+vi.mock('../../hooks/useHomeKitData', () => ({ revalidateHomeKitCache: vi.fn() }));
+
 const homekit = vi.hoisted(() => ({
   getStatus: vi.fn(async () => ({
     ready: true, authorized: true, restricted: false, determined: true, homeCount: 1,

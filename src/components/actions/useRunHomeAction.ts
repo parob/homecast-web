@@ -78,7 +78,7 @@ function isUnsupportedAction(error: unknown): boolean {
 
 /** Pairs a change back to the write that asked for it. */
 function writeKey(accessoryId: string, characteristicType: string): string {
-  return `${accessoryId}\u0000${characteristicType}`;
+  return `${accessoryId.toUpperCase()}\u0000${characteristicType.toUpperCase()}`;
 }
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));

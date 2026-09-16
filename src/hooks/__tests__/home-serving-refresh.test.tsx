@@ -27,13 +27,16 @@ it('feeds a real homes-list response to the store without overwriting a newer pu
   expect(getHomeServing('A')?.state).toBe('waiting');
 });
 
-it('retries when resume joins a list started before the missing-broadcast interval', async () => {
+it('refreshes on resume without accepting a list started before the missing-broadcast interval', async () => {
   renderHook(() => useHomes());
+  let answerCurrent: (value: unknown) => void = () => {};
+  request.mockImplementationOnce(() => new Promise(resolve => { answerCurrent = resolve; }));
   act(() => { invalidateHomeServing(); revalidateHomeKitCache(); });
-  request.mockResolvedValue({ homes: [{ id: 'a', name: 'A', serving: waiting }] });
+  expect(request).toHaveBeenCalledTimes(2);
   await act(async () => { answer({ homes: [{ id: 'a', name: 'A', serving: served }] }); });
   expect(getHomeServing('A')).toBeNull();
+  await act(async () => { answerCurrent({ homes: [{ id: 'a', name: 'A', serving: waiting }] }); });
+  expect(getHomeServing('A')?.state).toBe('waiting');
   await act(async () => { await vi.advanceTimersByTimeAsync(3500); });
   expect(request).toHaveBeenCalledTimes(2);
-  expect(getHomeServing('A')?.state).toBe('waiting');
 });
