@@ -102,6 +102,8 @@ export interface NativeHeaderState {
    * while one is open, the way a presented sheet covers the Home app's bar.
    */
   covered?: boolean;
+  /** A widget is expanded over the page: the bar stays, dimmed behind it. */
+  dimmed?: boolean;
   /**
    * What the ☰ button offers natively: the current home's rooms and room
    * groups, the collections and their groups. Homes are not here — they
@@ -338,6 +340,7 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   if (state.menu !== undefined) message.menu = state.menu;
   if (state.appearance !== undefined) message.appearance = state.appearance;
   if (state.covered !== undefined) message.covered = state.covered;
+  if (state.dimmed !== undefined) message.dimmed = state.dimmed;
   if (state.navigation !== undefined) message.navigation = state.navigation;
 
   return post(message);
@@ -498,26 +501,42 @@ export function isPageCovered(root: HTMLElement | Document = document): boolean 
     .some((el) => !el.closest(POPPER_WRAPPER));
 }
 
+/** An expanded widget's panel, while open (see `ExpandedOverlay`). */
+export const NATIVE_HEADER_DIM_SELECTOR = '[data-expanded-overlay="open"]';
+
+/** Whether a widget is expanded over the page — the bar dims behind it. */
+export function isPageDimmed(root: HTMLElement | Document = document): boolean {
+  return root.querySelector(NATIVE_HEADER_DIM_SELECTOR) !== null;
+}
+
 /**
- * Publish `covered` whenever a web overlay opens or closes.
+ * Publish `covered` whenever a web overlay opens or closes, and `dimmed`
+ * whenever a widget expands or collapses.
  *
  * Watched on the DOM rather than lifted from state on purpose: the dashboard
  * owns dozens of dialogs and sheets, each with its own flag, and every future
  * one would have to remember to report itself. Radix stamps them all the same
  * way, so one observer covers them all. Returns a teardown.
+ *
+ * An expanded widget is not a cover: the page's own header stays reachable
+ * over it (activating it dismisses the widget), so the bar stays too — but
+ * behind the page's scrim, which the native bar floats above, it would read
+ * as the one thing not dimmed. It dims itself instead.
  */
 export function watchNativeHeaderCover(root: HTMLElement = document.body): () => void {
   if (!isNativeHeaderAvailable()) return () => {};
-  let last: boolean | null = null;
+  let lastCovered: boolean | null = null;
+  let lastDimmed: boolean | null = null;
   const check = () => {
     const covered = isPageCovered(root);
-    if (covered !== last) {
-      last = covered;
-      publishHeaderState({ covered });
-    }
+    const dimmed = isPageDimmed(root);
+    const state: NativeHeaderState = {};
+    if (covered !== lastCovered) { lastCovered = covered; state.covered = covered; }
+    if (dimmed !== lastDimmed) { lastDimmed = dimmed; state.dimmed = dimmed; }
+    if (Object.keys(state).length > 0) publishHeaderState(state);
   };
   const observer = new MutationObserver(check);
-  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', NATIVE_HEADER_COVER_ATTR] });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', NATIVE_HEADER_COVER_ATTR, 'data-expanded-overlay'] });
   check();
   return () => observer.disconnect();
 }

@@ -355,9 +355,10 @@ describe('stepping aside for web overlays', () => {
   it('reports covered while a Radix dialog or sheet is open, and once per change', async () => {
     const sent = installNativeBuild();
     const stop = watchNativeHeaderCover(document.body);
-    // The initial check publishes the resting state exactly once.
+    // The initial check publishes the resting state exactly once (with the
+    // dim flag, which rests alongside it).
     expect(sent.filter((m) => (m as { covered?: boolean }).covered !== undefined)).toEqual([
-      { action: 'header.setState', covered: false },
+      { action: 'header.setState', covered: false, dimmed: false },
     ]);
 
     const sheet = document.createElement('div');
@@ -380,7 +381,7 @@ describe('stepping aside for web overlays', () => {
     bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'false');
     document.body.appendChild(bar);
     const stop = watchNativeHeaderCover(document.body);
-    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false, dimmed: false });
 
     bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'true');
     await Promise.resolve();
@@ -390,6 +391,21 @@ describe('stepping aside for web overlays', () => {
     await Promise.resolve();
     expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
 
+    stop();
+  });
+
+  it('reports dimmed while a widget is expanded, and not covered', async () => {
+    const sent = installNativeBuild();
+    const stop = watchNativeHeaderCover(document.body);
+    const panel = document.createElement('div');
+    panel.setAttribute('data-expanded-overlay', 'open');
+    document.body.appendChild(panel);
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', dimmed: true });
+    panel.setAttribute('data-expanded-overlay', 'closing');
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', dimmed: false });
+    panel.remove();
     stop();
   });
 

@@ -4271,15 +4271,32 @@ const Dashboard = () => {
     };
   }, [homes.length, accessories.length, anyRelayNotConnected, hasContentAccess, selectedHomeId, refetchHomes, refetchAccessories]);
 
-  // Refetch settings + accessories when relay changes accessory selection (free plan)
+  // Refetch settings when they change anywhere, and the accessories only if
+  // the free plan's included set is what changed — that is the one setting
+  // that alters which accessories this page may show. Every settings save
+  // comes back as this broadcast, including this page's own (the last view
+  // it saves, debounced, two seconds after a navigation), and reloading the
+  // accessories for each of those emptied the grid for a moment: the page
+  // lost its height, the scroll offset clamped to the top, and the home you
+  // had just come back to jumped to its top two seconds later.
+  const includedAccessoryIdsRef = useRef(includedAccessoryIds);
+  includedAccessoryIdsRef.current = includedAccessoryIds;
   useEffect(() => {
     const unsubscribe = serverConnection.subscribeToBroadcasts((message) => {
-      if (message.type === 'settings_updated') {
-        if (import.meta.env.DEV) console.log('[Dashboard] Settings updated, refetching');
-        refetchSettings();
+      if (message.type !== 'settings_updated') return;
+      if (import.meta.env.DEV) console.log('[Dashboard] Settings updated, refetching');
+      const before = includedAccessoryIdsRef.current;
+      refetchSettings().then((result) => {
+        let after: string[] = [];
+        try {
+          const parsed = JSON.parse(result.data?.settings?.data ?? '{}');
+          if (Array.isArray(parsed.includedAccessoryIds)) after = parsed.includedAccessoryIds as string[];
+        } catch { /* unreadable settings: leave the accessories be */ }
+        const same = after.length === before.length && after.every((id, i) => id === before[i]);
+        if (same) return;
         invalidateHomeKitCache('accessories', { prefix: true });
         refetchAccessories();
-      }
+      }).catch(() => { /* the poll and the next broadcast will catch up */ });
     });
     return unsubscribe;
   }, [refetchSettings, refetchAccessories]);
