@@ -25,6 +25,35 @@ afterEach(() => {
 });
 
 describe('cached read lifecycle', () => {
+  describe.each([
+    ['useAccessoriesForHomes', 'accessories'],
+    ['useAllServiceGroups', 'serviceGroups'],
+  ] as const)('%s', (hookName, dataKey) => {
+    it.each([false, true])('ignores a previous home selection finishing late (manual refresh=%s)', async (manual) => {
+      const old = deferred();
+      const current = deferred();
+      const data = (id: string) => ({ [dataKey]: [{ id, name: id, services: [] }] });
+      request.mockImplementation((_action, payload) => payload.homeId === 'H2'
+        ? current.promise
+        : manual ? Promise.resolve(data('A1')) : old.promise);
+      const useData = (await import('../useHomeKitData'))[hookName];
+      const { result, rerender } = renderHook(({ homes }) => useData(homes), { initialProps: { homes: ['H1'] } });
+      await act(async () => {});
+      let refreshed: Promise<void> | undefined;
+      if (manual) {
+        request.mockImplementation((_action, payload) => payload.homeId === 'H2' ? current.promise : old.promise);
+        act(() => { refreshed = result.current.refetch(); });
+      }
+      rerender({ homes: ['H2'] });
+      await act(async () => { old.resolve(data('A1')); await refreshed; });
+      expect(result.current.data).toBeNull();
+      expect(result.current.loading).toBe(true);
+      await act(async () => { current.resolve(data('A2')); });
+      expect(result.current.loading).toBe(false);
+      expect(result.current.data?.[0].id).toBe('A2');
+    });
+  });
+
   it('settles every consumer of one shared request', async () => {
     const pending = deferred();
     request.mockReturnValue(pending.promise);

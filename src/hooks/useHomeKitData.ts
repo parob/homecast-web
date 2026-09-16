@@ -775,6 +775,7 @@ export function useAccessoriesForHomes(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
 
   // Create stable key for home IDs
   const homeIdsKey = homeIds.slice().sort().join(',');
@@ -798,6 +799,8 @@ export function useAccessoriesForHomes(
   // Fetch accessories for each home and store in cache
   useEffect(() => {
     mountedRef.current = true;
+    const generation = ++readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     if (options.skip || homeIds.length === 0) {
       setLoading(false);
@@ -842,11 +845,11 @@ export function useAccessoriesForHomes(
         .catch(() => [] as HomeKitAccessory[])
       )
     ).then(() => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setLoading(false);
       }
     }).catch(err => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       }
@@ -910,6 +913,7 @@ export function useAccessoriesForHomes(
     error,
     refetch: async () => {
       // Force refetch all homes
+      const generation = readGenerationRef.current;
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
@@ -920,7 +924,7 @@ export function useAccessoriesForHomes(
           .catch(() => {})
         )
       );
-      setLoading(false);
+      if (mountedRef.current && generation === readGenerationRef.current) setLoading(false);
     },
   };
 }
@@ -957,6 +961,7 @@ export function useAllServiceGroups(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
 
   const homeIdsKey = homeIds.slice().sort().join(',');
   // Re-runs the fan-out below when a revalidation is requested (socket
@@ -976,6 +981,8 @@ export function useAllServiceGroups(
 
   useEffect(() => {
     mountedRef.current = true;
+    const generation = ++readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     if (options.skip || homeIds.length === 0) {
       setLoading(false);
@@ -999,9 +1006,9 @@ export function useAllServiceGroups(
         ).catch(() => {})
       )
     ).then(() => {
-      if (mountedRef.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }).catch(err => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       }
@@ -1048,6 +1055,7 @@ export function useAllServiceGroups(
     loading,
     error,
     refetch: async () => {
+      const generation = readGenerationRef.current;
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
@@ -1057,7 +1065,7 @@ export function useAllServiceGroups(
             .catch(() => {})
         )
       );
-      setLoading(false);
+      if (mountedRef.current && generation === readGenerationRef.current) setLoading(false);
     },
   };
 }
