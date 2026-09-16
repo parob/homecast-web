@@ -6,6 +6,7 @@ import { DoorbellWidget } from '../DoorbellWidget';
 import { AccessoryWidget } from '../AccessoryWidget';
 import { useState } from 'react';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
+import { clearCameraSnapshots, setCameraSnapshotAccount } from '@/lib/camera-snapshot-cache';
 
 // jsdom has no matchMedia; the mobile hook asks for it at render.
 window.matchMedia = window.matchMedia || (((query: string) => ({
@@ -76,6 +77,8 @@ const baseProps = {
 } as const;
 
 beforeEach(() => {
+  clearCameraSnapshots();
+  setCameraSnapshotAccount('test-account');
   observers.clear();
   request.mockReset();
   baseProps.onToggle.mockClear();

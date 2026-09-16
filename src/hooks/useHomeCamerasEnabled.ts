@@ -1,6 +1,8 @@
 import { useQuery } from '@apollo/client/react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { GET_HOME_CAMERAS_ENABLED } from '@/lib/graphql/queries';
 import { isCommunity } from '@/lib/config';
+import { cameraSnapshotCacheGeneration, setCameraHomeEnabled, subscribeCameraSnapshots } from '@/lib/camera-snapshot-cache';
 
 interface Response { homeCamerasEnabled: boolean | null }
 
@@ -34,10 +36,18 @@ function devCamerasFlag(): boolean {
  * reads false and shows state only, as it always did.
  */
 export function useHomeCamerasEnabled(homeId: string | undefined): boolean {
+  const generation = useSyncExternalStore(subscribeCameraSnapshots, cameraSnapshotCacheGeneration);
   const { data } = useQuery<Response>(GET_HOME_CAMERAS_ENABLED, {
     variables: { homeId: homeId ?? '' },
     skip: isCommunity || !homeId,
     errorPolicy: 'ignore',
   });
+  useEffect(() => {
+    // Missing data during reconnect is not a revocation. An explicit owner
+    // opt-out, however, erases every retained still for this home.
+    if (homeId && typeof data?.homeCamerasEnabled === 'boolean') {
+      setCameraHomeEnabled(homeId, data.homeCamerasEnabled);
+    }
+  }, [homeId, data?.homeCamerasEnabled, generation]);
   return data?.homeCamerasEnabled === true || devCamerasFlag();
 }

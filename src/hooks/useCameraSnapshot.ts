@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { serverConnection } from '@/server/connection';
 import {
   isPermanentCameraFailure,
@@ -11,10 +11,14 @@ import {
 } from '@/lib/camera-snapshot';
 import {
   cameraSnapshotCacheGeneration,
+  cameraSnapshotAccount,
+  cameraSnapshotCacheRevision,
   cameraSnapshotCacheKey,
   deleteCameraSnapshot,
   getCameraSnapshot,
   setCameraSnapshot,
+  restoreCameraSnapshot,
+  subscribeCameraSnapshots,
 } from '@/lib/camera-snapshot-cache';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import { queueCameraRequest } from '@/lib/camera-request-queue';
@@ -35,13 +39,17 @@ function toFailure(err: unknown): CameraFailure {
 export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean, preview = false) {
   const supported = accessory.camera?.snapshot === true;
   const key = cameraSnapshotCacheKey(accessory.homeId, accessory.id);
-  const cached = getCameraSnapshot(key);
-  const [state, setState] = useState<{ key: string; status: SnapshotStatus }>({
-    key, status: cached ? { kind: 'ready', ...cached } : { kind: 'idle' },
+  const generation = useSyncExternalStore(subscribeCameraSnapshots, cameraSnapshotCacheGeneration);
+  const cached = useSyncExternalStore(subscribeCameraSnapshots, () => getCameraSnapshot(key));
+  const [state, setState] = useState<{ key: string; generation: number; status: SnapshotStatus }>({
+    key, generation, status: { kind: 'idle' },
   });
   // A keyed grid can reuse a mounted hero for another accessory. Never show
   // that other camera's pixels, even for the render before the effect runs.
-  const status: SnapshotStatus = state.key === key ? state.status : { kind: 'idle' };
+  const current = state.key === key && state.generation === generation ? state.status : { kind: 'idle' as const };
+  const status: SnapshotStatus = current.kind === 'error'
+    ? { kind: 'error', failure: current.failure, ...cached }
+    : cached ? { kind: 'ready', ...cached } : current;
   const [refreshingKey, setRefreshingKey] = useState<string | null>(null);
   const [pageVisible, setPageVisible] = useState(
     typeof document === 'undefined' ? true : document.visibilityState !== 'hidden'
@@ -50,24 +58,28 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
   const failures = useRef(0);
 
   useEffect(() => {
+    // Restore even while offscreen or closed; this does not wake the camera.
+    // Disk reads never block a fresh request and cannot overwrite its result.
+    if (supported) void restoreCameraSnapshot(key);
+  }, [key, supported, generation]);
+
+  useEffect(() => {
     const onVisibility = () => setPageVisible(document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   useEffect(() => {
-    if (!shouldPollSnapshots({ supported, expanded, pageVisible })) return;
+    if (!cameraSnapshotAccount() || !shouldPollSnapshots({ supported, expanded, pageVisible })) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const generation = cameraSnapshotCacheGeneration();
     const stale = () => cancelled || generation !== cameraSnapshotCacheGeneration();
 
     const tick = async () => {
       if (stale()) return;
+      const revision = cameraSnapshotCacheRevision(key);
       setRefreshingKey(key);
-      setState((s) => ({ key, status: s.key === key &&
-        (s.status.kind === 'ready' || (s.status.kind === 'error' && s.status.dataUrl))
-        ? s.status : { kind: 'loading' } }));
+      setState({ key, generation, status: { kind: 'loading' } });
       try {
         const result = await queueCameraRequest(accessory.homeId, preview ? 0 : 1, () => {
           // The tile may leave the viewport or sign out while queued.
@@ -89,9 +101,9 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
           height: result.height,
           source: result.source,
         };
-        setCameraSnapshot(key, next, generation);
+        setCameraSnapshot(key, next, generation, revision);
         failures.current = 0;
-        setState({ key, status: { kind: 'ready', ...next } });
+        setState({ key, generation, status: { kind: 'idle' } });
       } catch (err) {
         if (stale()) return;
         const failure = toFailure(err);
@@ -99,8 +111,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
         if (['PERMISSION_DENIED', 'UNAUTHORIZED', 'CAMERAS_DISABLED'].includes(failure.code)) {
           deleteCameraSnapshot(key);
         }
-        const previous = getCameraSnapshot(key);
-        setState({ key, status: { kind: 'error', failure, ...previous } });
+        setState({ key, generation, status: { kind: 'error', failure } });
         if (isPermanentCameraFailure(failure.code)) return;
       } finally {
         if (!stale()) setRefreshingKey(null);
@@ -113,7 +124,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [accessory.id, accessory.homeId, key, supported, expanded, pageVisible, refreshToken, preview]);
+  }, [accessory.id, accessory.homeId, key, supported, expanded, pageVisible, refreshToken, preview, generation]);
 
   return {
     status,

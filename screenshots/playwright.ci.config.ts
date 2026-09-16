@@ -8,6 +8,7 @@ const port = Number(process.env.PLAYWRIGHT_PORT ?? 8098);
 export default defineConfig({
   ...base,
   testMatch: [
+    'camera-cache-reload.spec.ts',
     'automation-editor.spec.ts',
     'initial-home-selection.spec.ts',
     'login-flows.spec.ts',

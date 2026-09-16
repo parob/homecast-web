@@ -12,7 +12,7 @@ import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
 import { clearPersistedHomeKitCache } from '@/hooks/useHomeKitData';
 import { clearSeriesCache } from '@/history/seriesCache';
-import { clearCameraSnapshots } from '@/lib/camera-snapshot-cache';
+import { clearCameraSnapshots, setCameraSnapshotAccount } from '@/lib/camera-snapshot-cache';
 import { diagnoseConnection } from '@/lib/connectionDiagnosis';
 import { unregisterThisDevice } from '@/lib/device-identity';
 
@@ -465,6 +465,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Disk-backed camera stills must only be read in the verified account's
+  // namespace. Do not clear on the initial null user: that is an auth check,
+  // not a sign-out. Explicit sign-out paths clear both memory and disk.
+  useEffect(() => {
+    if (user?.id) setCameraSnapshotAccount(user.id);
+  }, [user?.id]);
 
   // Point Local Mode's identity cache at whoever is signed in. Keyed by user so
   // switching accounts cannot serve one person's home layout against another's
