@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@apollo/client/react';
+import { useApolloClient } from '@apollo/client/react';
+import { print } from 'graphql';
 import { Search, Wifi, WifiOff, Home, User, ChevronDown, ChevronRight, Clock, Key } from 'lucide-react';
-import { GET_ME, GET_CACHED_HOMES } from '@/lib/graphql/queries';
+import { GET_MQTT_HOMES } from '@/lib/graphql/queries';
 import {
   isMqttDomain, getApiBase, getAuthHeaders, getJWT, useIsLgUp,
   requestMqttToken, mqttSyncUrl, markSyncAttempted, syncAlreadyAttempted, clearSyncAttempt,
@@ -20,10 +21,14 @@ import {
 import type { TopicMessage } from './mqtt-browser/topic-tree';
 // The browser's homes come from GraphQL rather than homes.list, so it feeds
 // the serving store itself and reads the fact back like every other surface.
-import { ingestHomesList, isHomeUnserved } from '@/server/home-serving';
+import { beginHomesList, ingestHomesList, invalidateHomeServing, isHomesListCurrent, type HomeServing } from '@/server/home-serving';
+import { useHomeServingVersion, useHomeServing } from '@/hooks/useHomeServing';
+import { getHomeServing } from '@/server/home-serving';
+import { homeRelayStatus } from './mqtt-browser/home-relay-status';
+import { useStatusLog } from '@/hooks/useStatusLog';
 
 interface CookieUser { id: string; email: string; name: string; accountType?: string }
-interface CookieHome { id: string; name: string; role?: string; mqttEnabled?: boolean; relayConnected?: boolean; ownerEmail?: string | null }
+interface CookieHome { id: string; hcId?: string | null; serving?: HomeServing; name: string; role?: string; mqttEnabled?: boolean; ownerEmail?: string | null }
 
 export default function MQTTBrowser() {
   // On mqtt.* the only auth signal is the cross-subdomain cookie. If it's
@@ -61,7 +66,7 @@ export default function MQTTBrowser() {
   const [msgRate, setMsgRate] = useState(0);
   const msgTimestamps = useRef<number[]>([]);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
-  const [infoHomeName, setInfoHomeName] = useState<string | null>(null);
+  const [infoHomeId, setInfoHomeId] = useState<string | null>(null);
   const clientRef = useRef<any>(null);
   const mqttLibRef = useRef<any>(null);
   const userDisconnected = useRef(false);
@@ -174,46 +179,88 @@ export default function MQTTBrowser() {
   const onMqttDomain = isMqttDomain();
   const api = getApiBase();
 
-  // On main domain: use Apollo. On mqtt.* domain: fetch via cookie.
-  const { data: meData } = useQuery(GET_ME, { fetchPolicy: 'cache-first', skip: onMqttDomain });
-  const { data: homesData } = useQuery(GET_CACHED_HOMES, { fetchPolicy: 'cache-first', skip: onMqttDomain });
+  const apollo = useApolloClient();
   const [cookieUser, setCookieUser] = useState<CookieUser | null>(null);
   const [cookieHomes, setCookieHomes] = useState<CookieHome[]>([]);
+  useHomeServingVersion();
 
-  // Fetch user + homes via cookie on mqtt.* domains. Poll every 15s so the
-  // relay-connected banner updates when the user brings their Mac online/offline.
+  // Both entry points poll the same full serving fact. Capture its revision
+  // before the request so a newer WebSocket push always wins over the reply.
   useEffect(() => {
-    if (!onMqttDomain) return;
-    const fetchOnce = () => {
-      // Read the cookie per call, not once for the life of the effect: a
-      // refresh during connect() rewrites it, and a poll pinned to the old
-      // header would keep failing silently and leave the home chips empty.
-      const headers = getAuthHeaders();
-      if (!headers) return;
-      fetch(api + '/', { method: 'POST', headers, body: JSON.stringify({ query: '{ me { id email name accountType } cachedHomes { id name role mqttEnabled relayConnected ownerEmail } }' }) })
-        .then(r => r.json())
-        .then(d => {
-          if (d?.data?.me) setCookieUser(d.data.me);
-          if (d?.data?.cachedHomes) { ingestHomesList(d.data.cachedHomes); setCookieHomes(d.data.cachedHomes); }
-        })
-        .catch(() => {});
+    if (mockMode) return;
+    let disposed = false;
+    let fetching = false;
+    let pending: AbortController | null = null;
+    if (onMqttDomain) invalidateHomeServing();
+    const fetchOnce = async () => {
+      if (fetching || disposed) return;
+      fetching = true;
+      const startedAt = beginHomesList();
+      const token = getJWT();
+      const abort = new AbortController();
+      pending = abort;
+      const timeout = setTimeout(() => abort.abort(), 10000);
+      try {
+        let data: { me?: CookieUser; cachedHomes?: CookieHome[] };
+        if (onMqttDomain) {
+          const headers = getAuthHeaders();
+          if (!headers) {
+            setCookieHomes([]); setCookieUser(null);
+            throw new Error('Not signed in');
+          }
+          const response = await fetch(api + '/', {
+            method: 'POST', headers, signal: abort.signal,
+            body: JSON.stringify({ query: print(GET_MQTT_HOMES) }),
+          });
+          const result = await response.json();
+          if (!response.ok || result.errors?.length) throw new Error('Home status unavailable');
+          data = result.data;
+        } else {
+          const result = await apollo.query<{ me?: CookieUser; cachedHomes?: CookieHome[] }>({
+            query: GET_MQTT_HOMES, fetchPolicy: 'network-only',
+            context: { fetchOptions: { signal: abort.signal } },
+          });
+          data = result.data;
+        }
+        if (disposed || token !== getJWT() || !isHomesListCurrent(startedAt)) return;
+        if (!Array.isArray(data?.cachedHomes)) throw new Error('Home status unavailable');
+        const homes = data.cachedHomes.map(home => ({ ...home, id: home.hcId ?? home.id }));
+        ingestHomesList(homes, { startedAt });
+        setCookieHomes(homes);
+        if (data.me) setCookieUser(data.me);
+      } catch {
+        // The standalone MQTT origin has no WebSocket provider to expire facts.
+        if (!disposed && onMqttDomain) invalidateHomeServing();
+      } finally {
+        clearTimeout(timeout);
+        pending = null;
+        fetching = false;
+      }
     };
-    fetchOnce();
-    const interval = setInterval(fetchOnce, 15000);
-    return () => clearInterval(interval);
-  }, [onMqttDomain, api]);
+    void fetchOnce();
+    const interval = setInterval(() => void fetchOnce(), 15000);
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (onMqttDomain) invalidateHomeServing();
+      void fetchOnce();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { disposed = true; pending?.abort(); clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+  }, [onMqttDomain, api, apollo, mockMode]);
 
-  const user = meData?.me ?? cookieUser;
-
+  const user = cookieUser;
   const homes = useMemo(() => {
-    const raw: CookieHome[] = (homesData?.cachedHomes ?? cookieHomes) || [];
-    const byName = new Map<string, CookieHome>();
-    for (const h of raw) {
-      const existing = byName.get(h.name);
-      if (!existing || h.role === 'owner') byName.set(h.name, h);
+    const byId = new Map<string, CookieHome>();
+    for (const home of cookieHomes) {
+      const key = home.id.toUpperCase();
+      if (!byId.has(key) || home.role === 'owner') byId.set(key, home);
     }
-    return Array.from(byName.values());
-  }, [homesData, cookieHomes]);
+    return [...byId.values()];
+  }, [cookieHomes]);
+  const managed = user?.accountType === 'cloud' || user?.accountType === 'managed';
+  const selectedHome = homes.find(home => home.id === infoHomeId);
+  const selectedServing = useHomeServing(selectedHome?.id, 'cloud');
+  useStatusLog('mqtt_browser_home', { homeId: selectedHome?.id ?? null, serving: selectedServing });
 
   // Derive topic counts + rooms per home from messages
   const { topicCountByHome, roomsByHome } = useMemo(() => {
@@ -271,8 +318,8 @@ export default function MQTTBrowser() {
     const mk = (payload: object, ageSec = 0): TopicMessage => ({ payload: JSON.stringify(payload), timestamp: now - ageSec * 1000, updates: 1 });
     setCookieUser({ id: 'mock-user', email: 'mock@homecast.cloud', name: 'Mock User' });
     const mockHomes: CookieHome[] = [
-      { id: '11111111-1111-1111-1111-111111111111', name: 'Beach House', role: 'owner', mqttEnabled: true, relayConnected: true, ownerEmail: 'mock@homecast.cloud' },
-      { id: '22222222-2222-2222-2222-222222222222', name: 'County Hall', role: 'owner', mqttEnabled: true, relayConnected: false, ownerEmail: 'mock@homecast.cloud' },
+      { id: '11111111-1111-1111-1111-111111111111', name: 'Beach House', role: 'owner', mqttEnabled: true, serving: { state: 'served', by: 'mock-relay', kind: 'self_hosted', since: null, graceEndsAt: null }, ownerEmail: 'mock@homecast.cloud' },
+      { id: '22222222-2222-2222-2222-222222222222', name: 'County Hall', role: 'owner', mqttEnabled: true, serving: { state: 'offline', by: null, kind: null, since: null, graceEndsAt: null }, ownerEmail: 'mock@homecast.cloud' },
     ];
     ingestHomesList(mockHomes);
     setCookieHomes(mockHomes);
@@ -555,7 +602,8 @@ export default function MQTTBrowser() {
       message={selectedMessage}
       effectivePayload={selectedEp}
       rowType={rowTypeForTopic(selectedTopic, groupMembers)}
-      homeOffline={(() => { const h = homeForSlug(selectedTopic.split('/')[1] || ''); return !!h && isHomeUnserved(h.id); })()}
+      home={homeForSlug(selectedTopic.split('/')[1] || '')}
+      managed={managed}
       rawMode={rawMode}
       onRawModeChange={(v) => { setRawMode(v); updateUrlParams({ view: v ? 'json' : null }); }}
       publishValue={publishValues[selectedTopic] ?? selectedEp}
@@ -653,24 +701,26 @@ export default function MQTTBrowser() {
               {homes.map(home => {
                 const slug = homeSlugForName(home.name);
                 const count = slug ? topicCountByHome[slug] ?? 0 : 0;
-                const relayOffline = isHomeUnserved(home.id);
+                const relay = homeRelayStatus(home.name, getHomeServing(home.id), managed);
+                const tone = relay.tone;
                 const chipClass = !home.mqttEnabled
                   ? 'border-border bg-muted/30 hover:bg-muted/50 text-muted-foreground'
-                  : relayOffline
-                    ? 'border-red-500/50 bg-red-500/10 hover:bg-red-500/20 text-red-700 dark:text-red-400'
-                    : 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10 text-foreground';
+                  : tone === 'bad' ? 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
+                  : tone === 'warn' ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                  : tone === 'ok' ? 'border-green-500/30 bg-green-500/5 hover:bg-green-500/10 text-foreground'
+                  : 'border-border bg-muted/30 text-muted-foreground';
                 return (
                   <button
                     key={home.id}
-                    onClick={() => setInfoHomeName(prev => prev === home.name ? null : home.name)}
+                    onClick={() => setInfoHomeId(prev => prev === home.id ? null : home.id)}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors border shrink-0 ${chipClass}`}
-                    title={relayOffline ? `${home.name} relay is offline` : 'Relay online'}
+                    title={relay.label}
                   >
                     <Home className="h-3 w-3" />
                     <span className="font-medium">{home.name}</span>
                     {home.mqttEnabled ? (
-                      <span className={`text-[9px] ${relayOffline ? 'text-red-700 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                        {relayOffline ? 'offline' : count > 0 ? count : 'on'}
+                      <span className="text-[9px]">
+                        {relay.label === 'Online' && count > 0 ? count : relay.label}
                       </span>
                     ) : (
                       <span className="text-[9px]">mqtt off</span>
@@ -786,12 +836,13 @@ export default function MQTTBrowser() {
         homes={homes}
       />
       <HomeInfoDialog
-        open={!!infoHomeName}
-        onOpenChange={(o) => { if (!o) setInfoHomeName(null); }}
-        home={homes.find(h => h.name === infoHomeName) ?? null}
-        slug={infoHomeName ? homeSlugForName(infoHomeName) : null}
-        topicCount={(infoHomeName ? topicCountByHome[homeSlugForName(infoHomeName) ?? ''] : 0) ?? 0}
-        roomCount={(infoHomeName ? roomsByHome[homeSlugForName(infoHomeName) ?? ''] : [])?.length ?? 0}
+        open={!!infoHomeId}
+        onOpenChange={(o) => { if (!o) setInfoHomeId(null); }}
+        home={selectedHome ?? null}
+        managed={managed}
+        slug={infoHomeId ? homeSlugForName(selectedHome?.name ?? '') : null}
+        topicCount={(infoHomeId ? topicCountByHome[homeSlugForName(selectedHome?.name ?? '') ?? ''] : 0) ?? 0}
+        roomCount={(infoHomeId ? roomsByHome[homeSlugForName(selectedHome?.name ?? '') ?? ''] : [])?.length ?? 0}
       />
       </>
     </div>

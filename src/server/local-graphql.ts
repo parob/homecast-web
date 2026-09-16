@@ -1072,6 +1072,15 @@ async function resolveOperation(
       }
     }
 
+    case 'GetMqttHomes': {
+      const [user, homes] = await Promise.all([
+        resolveOperation('GetMe', variables), resolveOperation('GetCachedHomes', variables),
+      ]) as [{ me: unknown }, { cachedHomes: Array<{ id: string; name: string }> }];
+      return { ...user, cachedHomes: homes.cachedHomes.map(home => ({
+        ...home, hcId: home.id, role: 'owner', ownerEmail: null, mqttEnabled: null, serving: null,
+      })) };
+    }
+
     case 'GetCachedHomes': {
       try {
         const homesResult = await executeHomeKitAction('homes.list', {}) as any;
