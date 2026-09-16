@@ -66,6 +66,7 @@ afterEach(() => {
   resetHomeServing();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function request(action: string, homeId?: string) {
@@ -164,4 +165,23 @@ it('does not mistake outgoing requests for proof that the cloud is still answeri
   expect(FakeSocket.last).not.toBe(original);
   ws.disconnect();
   await Promise.all(pending);
+});
+
+it('does not carry background-reconnect timing into foreground connection health', () => {
+  ws.disconnect();
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  ws.connect();
+  wire = FakeSocket.last;
+  wire.onopen?.({});
+  wire.receive({ type: 'connected' });
+  vi.advanceTimersByTime(29_000);
+  wire.receive({ type: 'pong' });
+  expect(ws.getLastRttMs()).toBeNull();
+  visibility.mockReturnValue('visible');
+  document.dispatchEvent(new Event('visibilitychange'));
+  vi.advanceTimersByTime(40);
+  wire.receive({ type: 'pong' });
+  vi.advanceTimersByTime(4_000);
+  expect(ws.getLastRttMs()).toBe(40);
+  expect(ws.getConnectionQuality()).toBe('good');
 });
