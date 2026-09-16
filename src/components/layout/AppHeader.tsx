@@ -195,6 +195,7 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
 
   return (
     <header
+      data-expanded-overlay-dismiss
       ref={headerRef}
       className={cn(
         "fixed top-0 left-0 right-0 z-[10001]",

@@ -8,6 +8,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Header navigation remains reachable over an expanded widget, but below
+   dialogs (10050). Activating it dismisses the widget without eating the menu
+   click. Only the marked header/title is raised, never the background tiles. */
+body:has([data-expanded-overlay="open"]) [data-expanded-overlay-dismiss] {
+  z-index: 10040;
+}
+body:has([data-expanded-overlay="open"]) button[data-expanded-overlay-dismiss] {
+  position: relative;
+}
+
 
 @keyframes wiggle {
   0% { transform: rotate(calc(-0.25deg - var(--wiggle-offset, 0deg))); }
