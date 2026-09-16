@@ -9258,8 +9258,16 @@ const Dashboard = () => {
                     its pills each gain a control, and it reveals sections that
                     are hidden the rest of the time. On a narrow phone that is a
                     second line — a 32px step, landing while a tile is being
-                    dragged. Measured, not guessed: see AutoHeight. */}
-                <AutoHeight>
+                    dragged. Measured, not guessed: see AutoHeight.
+
+                    Keyed on the view, so a change of page is not animated: a
+                    room's row and the home's are different things, and sliding
+                    from one's height to the other's clipped the pills out of
+                    sight for the length of the slide — visible as the Scenes,
+                    Automations and Status pills vanishing for a beat after
+                    coming back to the home, with the tiles jumping up and down
+                    around the gap. A fresh row measures once and stands still. */}
+                <AutoHeight key={`${selectedHomeId ?? ''}/${selectedRoomId ?? ''}/${selectedRoomGroupId ?? ''}/${selectedCollectionId ?? ''}`}>
                 {/* One line that scrolls, rather than wrapping to two.
                     Wrapping was what made this row change height at all — the
                     edit variant is wider, so on a narrow phone it took a second
