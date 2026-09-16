@@ -3604,6 +3604,7 @@ const Dashboard = () => {
   // Hoisted above the useEffects below so they can appear in deps arrays without
   // hitting a let/const TDZ at render time.
   const homes = tutorialDemoActive ? DEMO_HOMES : (homesData?.homes || []);
+  const hasHomeList = tutorialDemoActive || relayHomesData !== null;
   const hasSharedHomes = homes.some(h => h.role && h.role !== 'owner');
   const anyRelayConnected = homes.some(h => isHomeServed(h.id));
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
@@ -5280,8 +5281,9 @@ const Dashboard = () => {
   // But NOT if a collection is selected
   // Uses visibleHomes so free-plan users don't land on a home with 0 included accessories
   useEffect(() => {
-    // Don't auto-select home if viewing a collection or enrollment
-    if (selectedCollectionId || selectedEnrollmentId) {
+    // A skipped first fetch is not loading, but it has not established that
+    // the selected home is gone. Keep URL/saved intent until a list arrives.
+    if (!hasHomeList || selectedCollectionId || selectedEnrollmentId) {
       return;
     }
     if (visibleHomes.length > 0) {
@@ -5307,7 +5309,7 @@ const Dashboard = () => {
     // Note: intentionally not including selectedHomeId to prevent oscillation during transitions
     // pendingHomeId is the source of truth for user intent
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleHomes, pendingHomeId, homesLoading, selectedCollectionId, selectedEnrollmentId, setSelectedHomeId]);
+  }, [visibleHomes, pendingHomeId, homesLoading, hasHomeList, selectedCollectionId, selectedEnrollmentId, setSelectedHomeId]);
 
   // Validate saved room belongs to current home's rooms
   // Skip during home transitions — rooms are stale (from the old home) until

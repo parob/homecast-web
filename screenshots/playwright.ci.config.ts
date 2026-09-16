@@ -9,6 +9,7 @@ export default defineConfig({
   ...base,
   testMatch: [
     'automation-editor.spec.ts',
+    'initial-home-selection.spec.ts',
     'action-failure-sheet-overflow.spec.ts',
     'status-popover-overflow.spec.ts',
     'edit-layout-header.spec.ts',
