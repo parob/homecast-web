@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { CameraWidget } from '../CameraWidget';
 import { DoorbellWidget } from '../DoorbellWidget';
+import { AccessoryWidget } from '../AccessoryWidget';
+import { useState } from 'react';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 
 // jsdom has no matchMedia; the mobile hook asks for it at render.
@@ -69,6 +71,50 @@ beforeEach(() => {
 });
 
 describe('CameraWidget hero', () => {
+  it.each([CameraWidget, DoorbellWidget])('opens snapshots when the full-size layout supplies no expansion wrapper', async (Component) => {
+    request.mockResolvedValue({ jpeg: 'QUJD', mimeType: 'image/jpeg', capturedAt: new Date().toISOString(), width: 720, height: 1280 });
+    const entryCamera = camera({ name: 'Entry Camera' });
+    entryCamera.services = entryCamera.services.map(service => ({ ...service, name: entryCamera.name }));
+    render(<Component {...baseProps} accessory={entryCamera} compact={false} />);
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Entry Camera'));
+    expect(await screen.findByAltText('Entry Camera snapshot')).toBeTruthy();
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText('Entry Camera'));
+    expect(screen.queryByAltText('Entry Camera snapshot')).toBeNull();
+  });
+
+  it.each([
+    ['Front Door', ['microphone', 'motion_sensor', 'doorbell', 'battery']],
+    ['Doorbell Camera', ['doorbell', 'camera_operating_mode', 'speaker', 'motion_sensor']],
+    ['Apartment Front Door', ['motion_sensor', 'camera_operating_mode', 'speaker', 'doorbell']],
+  ] as const)('opens the camera from the actual %s doorbell tile', async (name, services) => {
+    request.mockResolvedValue({ jpeg: 'QUJD', mimeType: 'image/jpeg', capturedAt: new Date().toISOString(), width: 720, height: 1280 });
+    const accessory = camera({ name, category: '', services: services.map((serviceType, i) => ({
+      id: `service-${i}`, name: serviceType === 'motion_sensor' ? 'Motion' : name, serviceType, characteristics: [],
+    })) });
+    // The dashboard owns compact expansion. Exercise the selector and card
+    // click, not just an already-expanded DoorbellWidget in isolation.
+    function Tile() {
+      const [expanded, setExpanded] = useState(false);
+      return <div onClick={() => setExpanded(true)}>
+        <AccessoryWidget {...baseProps} accessory={accessory} compact={!expanded} expanded={expanded} />
+      </div>;
+    }
+    render(<Tile />);
+    expect(screen.getByText('Doorbell camera')).toBeTruthy();
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText(name));
+    expect(await screen.findByAltText(`${name} snapshot`)).toBeTruthy();
+    expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ accessoryId: 'CAM-1', homeId: 'HOME-1' }));
+  });
+
+  it('still labels an audio-only doorbell as Doorbell', () => {
+    render(<DoorbellWidget {...baseProps} accessory={camera({ camera: undefined })} />);
+    expect(screen.getByText('Doorbell')).toBeTruthy();
+    expect(screen.queryByText('Doorbell camera')).toBeNull();
+  });
+
   it('shows snapshots on an expanded video doorbell too', async () => {
     request.mockResolvedValue({ jpeg: 'QUJD', mimeType: 'image/jpeg', capturedAt: new Date().toISOString(), width: 720, height: 1280 });
     render(<DoorbellWidget {...baseProps} accessory={camera({ name: 'Front Door', category: '' })} expanded />);
@@ -84,6 +130,28 @@ describe('CameraWidget hero', () => {
   it('does not poll doorbells without home opt-in', () => {
     camerasEnabled = false;
     render(<DoorbellWidget {...baseProps} accessory={camera()} expanded />);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it.each([CameraWidget, DoorbellWidget])('keeps inline previews closed when camera images are disabled', (Component) => {
+    camerasEnabled = false;
+    render(<Component {...baseProps} accessory={camera()} compact={false} />);
+    fireEvent.click(screen.getByText('Camera'));
+    expect(request).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Refresh snapshot')).toBeNull();
+  });
+
+  it.each([CameraWidget, DoorbellWidget])('does not open inline previews while arranging tiles', (Component) => {
+    render(<Component {...baseProps} accessory={camera()} compact={false} editMode />);
+    fireEvent.click(screen.getByText('Camera'));
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('leaves externally controlled expansion to its owner', () => {
+    const onExpandToggle = vi.fn();
+    render(<DoorbellWidget {...baseProps} accessory={camera()} compact={false} expanded={false} onExpandToggle={onExpandToggle} />);
+    fireEvent.click(screen.getByText('Camera'));
+    expect(onExpandToggle).toHaveBeenCalledOnce();
     expect(request).not.toHaveBeenCalled();
   });
 
