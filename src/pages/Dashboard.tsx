@@ -270,6 +270,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
 import { StatusBadge } from '@/components/layout/StatusBadge';
 import { useHomeServing, useHomeServingVersion } from '@/hooks/useHomeServing';
+import { unavailableHomePresentation } from '@/lib/status-badge';
 import { isHomeServed, isHomeUnserved } from '@/server/home-serving';
 import type { HomeSettingsSectionId } from '@/lib/home-settings-sections';
 import { BackgroundImage } from '@/components/BackgroundImage';
@@ -8843,17 +8844,8 @@ const Dashboard = () => {
                   </div>
                 </DialogContent>
               </Dialog>
-              {/* Transient relay drop on an already-loaded home: keep the
-                  dashboard visible, just flag that it's reconnecting. Deliberately
-                  quiet — amber read as an error for something that usually resolves
-                  itself, so this borrows the toast's glass pill instead. The home
-                  name is dropped: it is already the title directly above. */}
-              {relayReconnecting && (
-                <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-xl animate-in fade-in duration-300">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Connecting…
-                </div>
-              )}
+              {/* The header badge already explains the current home route.
+                  Keep cached content visible without a second status headline. */}
               {/* Enrollment Setup View */}
               {selectedEnrollmentId && (() => {
                 const enrollment = pendingEnrollments.find(e => e.id === selectedEnrollmentId)
@@ -8955,7 +8947,7 @@ const Dashboard = () => {
                   progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
-                  label={`Connecting to ${homes.find(h => h.id === selectedHomeId)?.name || 'your home'}\u2026`}
+                  label={unavailableHomePresentation(selectedHomeServing)?.label ?? `Connecting to ${homes.find(h => h.id === selectedHomeId)?.name || 'your home'}\u2026`}
                 />
               ) : (!tutorialDemoActive && showRelayOfflineSetup) ? (
                 <SetupState

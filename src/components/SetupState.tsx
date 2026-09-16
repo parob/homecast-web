@@ -12,20 +12,9 @@ import type { MyCloudManagedEnrollmentsResponse, CustomerEnrollmentInfo, HomeKit
 import type { SetupPath } from '@/components/OnboardingOverlay';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { serverConnection } from '@/server/connection';
-import { formatLastOnline } from '@/lib/relay-last-seen';
-import { buildDiagnosticsBundle, buildRelayOfflineSnapshot, logRelayOfflineBanner } from '@/lib/relay-diagnostics';
+import { buildDiagnosticsBundle, buildRelayOfflineSnapshot } from '@/lib/relay-diagnostics';
 import { CLOUD_SIGNUPS_PAUSED, CLOUD_RELAY_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
-import { isHomeUnserved } from '@/server/home-serving';
-import { useHomeServingVersion } from '@/hooks/useHomeServing';
-
-// The relay-offline sentences render from two places each (the GetStarted inset
-// and the RelayOfflineState card), and drifted apart before. One copy only.
-const RELAY_OFFLINE_OWNER =
-  "It looks like you had a relay connected before but it's offline now. Start the Homecast app on your Mac to reconnect.";
-const RELAY_OFFLINE_CLOUD =
-  "Our cloud relay for this home is having trouble. We've been notified and are looking into it. Accessories will appear when it's back online.";
-const RELAY_OFFLINE_SHARED =
-  "The home owner's relay isn't connected right now. Accessories will appear when it comes back online.";
+import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
 
 function openExternalUrl(url: string) {
   const w = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; url?: string }) => void } } } };
@@ -39,16 +28,6 @@ function openExternalUrl(url: string) {
 function enableRelayHere() {
   writeRelayDisabled(false);
   serverConnection.reconnect();
-}
-
-function mostRecentLastSeen(homes: HomeKitHome[]): string | null {
-  let best: number | null = null;
-  for (const h of homes) {
-    if (!h.relayLastSeenAt) continue;
-    const t = Date.parse(h.relayLastSeenAt);
-    if (Number.isFinite(t) && (best == null || t > best)) best = t;
-  }
-  return best == null ? null : new Date(best).toISOString();
 }
 
 function EnableRelayHereBanner({ isDarkBackground }: { isDarkBackground: boolean }) {
@@ -423,12 +402,10 @@ function WaitingForInvite({ isDarkBackground, userEmail, onSetupCloud, onSetupMa
   );
 }
 
-function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline = false, relayLastSeenAt = null, cloudSignupsAvailable = true, accountType }: {
+function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, cloudSignupsAvailable = true, accountType }: {
   isDarkBackground: boolean;
   onSetupCloud?: () => void;
   onSetupMac?: () => void;
-  relayOffline?: boolean;
-  relayLastSeenAt?: string | null;
   cloudSignupsAvailable?: boolean;
   isInMobileApp?: boolean;
   accountType?: string;
@@ -440,9 +417,9 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
   return (
     <div className="space-y-5 max-w-lg mx-auto">
       <div className="text-center space-y-3">
-        {!relayOffline && <img src="/icon-192.png" alt="Homecast" className="h-14 w-14 mx-auto rounded-2xl" />}
+        <img src="/icon-192.png" alt="Homecast" className="h-14 w-14 mx-auto rounded-2xl" />
         <h3 className={`text-xl font-bold ${isDarkBackground ? 'text-white' : ''}`}>
-          {relayOffline ? 'Connect your devices' : 'Welcome to Homecast'}
+          Welcome to Homecast
         </h3>
         <p className={`text-sm ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
           Choose how you'd like to connect your HomeKit devices.
@@ -477,15 +454,6 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, relayOffline =
                 <p className={`text-xs mt-1.5 ml-11 font-medium ${isDarkBackground ? 'text-green-400' : 'text-green-600'}`}>
                   Free · up to 10 accessories
                 </p>
-              )}
-              {relayOffline && (
-                <div className={`mt-3 ml-11 flex items-start gap-2 rounded-md border px-2.5 py-2 ${isDarkBackground ? 'border-amber-500/30 bg-amber-500/10' : 'border-amber-200 bg-amber-50'}`}>
-                  <Monitor className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${isDarkBackground ? 'text-amber-400' : 'text-amber-600'}`} />
-                  <p className={`text-xs ${isDarkBackground ? 'text-amber-300' : 'text-amber-800'}`}>
-                    {RELAY_OFFLINE_OWNER}{' '}
-                    <span className="opacity-75">{formatLastOnline(relayLastSeenAt)}.</span>
-                  </p>
-                </div>
               )}
             </div>
             <ArrowRight className={`h-4 w-4 shrink-0 ml-3 ${isDarkBackground ? 'text-white/30' : 'text-muted-foreground/50'}`} />
@@ -547,7 +515,6 @@ export function SetupState({
   pendingEnrollmentId,
   cloudSignupsAvailable = true,
 }: SetupStateProps) {
-  useHomeServingVersion();
   // Cloud customers: show enrollment tracker only if there's an in-progress enrollment
   // Once enrollment is active, HomeMember is created → homes.length > 0 → normal view takes over
   if (accountType === 'cloud' && !homes.length) {
@@ -559,11 +526,11 @@ export function SetupState({
     );
   }
 
-  // A home whose relay is not serving it: the user can't change the relay
-  // type, so show the offline state. Read from the serving fact, composed —
-  // a home this device serves itself is not offline.
-  if (homes.length > 0 && homes.some(h => isHomeUnserved(h.id))) {
-    return <RelayOfflineState homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} accountType={accountType} cloudSignupsAvailable={cloudSignupsAvailable} />;
+  // Existing homes need an availability answer, including unknown and waiting.
+  // The first-run chooser is for accounts with no homes. It cannot explain an
+  // existing home's route, and another home's outage must not supply its copy.
+  if (homes.length > 0) {
+    return <HomeConnectionState homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} />;
   }
 
   // Show context-aware empty state based on setup path
@@ -589,7 +556,7 @@ export function SetupState({
       return (
         <>
           <EnableRelayHereBanner isDarkBackground={isDarkBackground} />
-          <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} relayOffline={homes.length > 0} relayLastSeenAt={mostRecentLastSeen(homes)} cloudSignupsAvailable={cloudSignupsAvailable} isInMobileApp={isInMobileApp} accountType={accountType} />
+          <GetStarted isDarkBackground={isDarkBackground} onSetupCloud={onSetupCloud} onSetupMac={onSetupMac} cloudSignupsAvailable={cloudSignupsAvailable} isInMobileApp={isInMobileApp} accountType={accountType} />
         </>
       );
   }
@@ -631,120 +598,27 @@ function CopyDiagnosticsLink({ homes, selectedHomeId, isDarkBackground }: {
   );
 }
 
-function RelayOfflineState({ homes, selectedHomeId, isDarkBackground, onSetupCloud, accountType, cloudSignupsAvailable = true }: {
+function HomeConnectionState({ homes, selectedHomeId, isDarkBackground }: {
   homes: HomeKitHome[];
   selectedHomeId?: string | null;
   isDarkBackground: boolean;
-  onSetupCloud?: () => void;
-  accountType?: string;
-  cloudSignupsAvailable?: boolean;
 }) {
-  useHomeServingVersion();
-  const pricing = usePricing();
-
-  // Diagnostics: this card appearing means the user was told their relay is
-  // offline — ship a snapshot so false positives are traceable. Deduped
-  // against the Dashboard-side rising-edge log.
-  useEffect(() => {
-    logRelayOfflineBanner(buildRelayOfflineSnapshot({
-      trigger: 'setup-state-render',
-      homes,
-      homeId: selectedHomeId,
-    }));
-    // Log once per mount — the offline set at first render is what matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const offlineHomes = homes.filter(h => isHomeUnserved(h.id));
-  const offlineSharedHomes = offlineHomes.filter(h => h.role && h.role !== 'owner');
-  const offlineOwnerHomes = offlineHomes.filter(h => !h.role || h.role === 'owner');
-  const sharedHomes = homes.filter(h => h.role && h.role !== 'owner');
-
-  // Prefer the selected home when deciding the copy — the user is looking at
-  // that specific home. Fall back to aggregate-offline logic when no home is
-  // selected (e.g. first load before a selection is restored).
-  const selectedHome = selectedHomeId ? homes.find(h => h.id === selectedHomeId) : null;
-  const isSelectedShared = !!(selectedHome && selectedHome.role && selectedHome.role !== 'owner');
-  const isSelectedCloudManaged = !!selectedHome?.isCloudManaged;
-
-  const isSharedHome = selectedHome
-    ? isSelectedShared
-    : (offlineOwnerHomes.length === 0 && offlineSharedHomes.length > 0);
-  // Cloud-managed homes are handled by our infrastructure, not the user's Mac —
-  // we show a different message regardless of whether the user is owner or shared.
-  const isCloudRelayOffline = selectedHome
-    ? isSelectedCloudManaged
-    : (offlineHomes.length > 0 && offlineHomes.every(h => h.isCloudManaged));
-
-  if (isSharedHome) {
-    return (
-      <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
-        <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? 'text-white' : ''}`}>
-          {isCloudRelayOffline ? (
-            <Cloud className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
-          ) : (
-            <AlertCircle className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
-          )}
-          <h3 className="mb-2 text-lg font-semibold">
-            {isCloudRelayOffline ? 'Cloud relay offline' : 'Home relay is offline'}
-          </h3>
-          <p className={`text-center text-sm ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
-            {isCloudRelayOffline ? RELAY_OFFLINE_CLOUD : RELAY_OFFLINE_SHARED}
-          </p>
-          <p className={`mt-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
-            {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(sharedHomes))}.
-          </p>
-          <CopyDiagnosticsLink homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} />
-        </CardContent>
-      </Card>
-    );
-  }
-
+  const selected = selectedHomeId
+    ? homes.find(home => home.id.toUpperCase() === selectedHomeId.toUpperCase())
+    : null;
+  const shown = selected ? [selected] : homes;
   return (
-    <>
-      {!isCloudRelayOffline && <EnableRelayHereBanner isDarkBackground={isDarkBackground} />}
-      <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
-      <CardContent className={`flex flex-col items-center py-12 ${isDarkBackground ? 'text-white' : ''}`}>
-        {isCloudRelayOffline ? (
-          <Cloud className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
-        ) : (
-          <Monitor className={`mb-4 h-12 w-12 ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`} />
-        )}
-        <h3 className="mb-2 text-lg font-semibold">
-          {isCloudRelayOffline ? 'Cloud relay offline' : 'Your relay is offline'}
-        </h3>
-        <p className={`text-center text-sm mb-4 ${isDarkBackground ? 'text-white/70' : 'text-muted-foreground'}`}>
-          {isCloudRelayOffline ? RELAY_OFFLINE_CLOUD : RELAY_OFFLINE_OWNER}
-        </p>
-        <p className={`mb-2 text-center text-xs ${isDarkBackground ? 'text-white/50' : 'text-muted-foreground/70'}`}>
-          {formatLastOnline(selectedHome?.relayLastSeenAt ?? mostRecentLastSeen(offlineHomes.length > 0 ? offlineHomes : homes.filter(h => !h.role || h.role === 'owner')))}.
-        </p>
+    <Card className={isDarkBackground ? 'bg-black/30 border-white/20' : ''}>
+      <CardContent className={`flex flex-col items-center py-10 ${isDarkBackground ? 'text-white' : ''}`}>
+        <h3 className="mb-4 text-lg font-semibold">Home connection</h3>
+        <div className={`w-full max-w-md space-y-4 ${isDarkBackground ? 'dark' : ''}`}>
+          {shown.map(home => <div key={home.id}>
+            {shown.length > 1 && <p className="mb-1 text-sm font-medium">{home.name}</p>}
+            <HomeConnectionSummary home={home} surface="home_unavailable_card" />
+          </div>)}
+        </div>
         <CopyDiagnosticsLink homes={homes} selectedHomeId={selectedHomeId} isDarkBackground={isDarkBackground} />
-        {onSetupCloud && (
-          <div className={`border-t pt-4 mt-2 ${isDarkBackground ? 'border-white/20' : ''}`}>
-            <p className={`text-xs text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
-              {accountType === 'cloud' ? (
-                <>
-                  You have a cloud relay included in your plan.{' '}
-                  <button onClick={onSetupCloud} className="text-primary hover:underline">
-                    Set it up
-                  </button>
-                </>
-              ) : cloudSignupsAvailable ? (
-                <>
-                  Tired of keeping your Mac on?{' '}
-                  <button onClick={onSetupCloud} className="text-primary hover:underline">
-                    Switch to a cloud relay
-                  </button>
-                  {pricing && <span className="ml-1">· Always on · {pricing.cloud.formatted}/mo</span>}
-                </>
-              ) : (
-                CLOUD_RELAY_SIGNUPS_PAUSED
-              )}
-            </p>
-          </div>
-        )}
       </CardContent>
-      </Card>
-    </>
+    </Card>
   );
 }

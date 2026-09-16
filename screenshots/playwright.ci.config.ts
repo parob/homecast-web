@@ -14,6 +14,7 @@ export default defineConfig({
     'tutorial.spec.ts',
     'action-failure-sheet-overflow.spec.ts',
     'status-popover-overflow.spec.ts',
+    'home-availability.spec.ts',
     'edit-layout-header.spec.ts',
     'edit-layout-scroll-anchor.spec.ts',
     'toast-alignment.spec.ts',
