@@ -76,6 +76,12 @@ test('camera refits on window resize and keeps clear of device safe areas', asyn
   await expectFitted(page, 390, 34);
   const top = await page.locator('[data-expanded-overlay="open"]').evaluate(el => el.getBoundingClientRect().top);
   expect(top).toBeGreaterThanOrEqual(24);
+  const smallImageHeight = await page.locator('[data-camera-frame]').evaluate(el => el.getBoundingClientRect().height);
+  // A height-only expansion changes the cap without changing the card's
+  // current size, so a ResizeObserver on that card alone cannot see it.
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect.poll(() => page.locator('[data-camera-frame]').evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(smallImageHeight + 100);
+  await expectFitted(page, 800, 34);
 });
 
 test('queued camera uses a short status and an obvious close control', async ({ page }) => {
