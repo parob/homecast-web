@@ -174,6 +174,14 @@ export const HOME_RECONNECTING_PRESENTATION: ConnectionPresentation = {
   headline: "This home's relay dropped off and should be back shortly",
 };
 
+/** The server's unavailable route, shared by the badge and loading screen. */
+export function unavailableHomePresentation(serving: HomeServing | null): ConnectionPresentation | null {
+  if (!serving || serving.state === 'served') return null;
+  if (serving.state === 'waiting') return HOME_WAITING_PRESENTATION;
+  if (serving.state === 'reconnecting') return HOME_RECONNECTING_PRESENTATION;
+  return HOME_UNREACHABLE_PRESENTATION;
+}
+
 /**
  * The one thing worth saying.
  *
@@ -204,11 +212,8 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
   //    recovery confirmation because "it's back" is
   //    a claim about the link that would read, wrongly, as "and your home
   //    works again".
-  if (s && s.state !== 'served') {
-    if (s.state === 'waiting') return HOME_WAITING_PRESENTATION;
-    if (s.state === 'reconnecting') return HOME_RECONNECTING_PRESENTATION;
-    return HOME_UNREACHABLE_PRESENTATION;
-  }
+  const unavailable = unavailableHomePresentation(s);
+  if (unavailable) return unavailable;
 
 
   // A backup route matters on every client, including phones and browsers.
