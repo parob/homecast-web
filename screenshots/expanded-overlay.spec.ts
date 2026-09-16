@@ -1,9 +1,19 @@
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks, waitForDashboard, overrideSettings } from './mocks';
+import { setupMocks, waitForDashboard, overrideSettings, overrideEntityLayouts } from './mocks';
 import { HOME_ID } from './fixtures';
 
 const panels = (page: Page) => page.locator('[data-expandable-widget]');
 const pageScroll = (page: Page) => page.evaluate(() => ({ document: window.scrollY, inner: document.querySelector('[data-page-scroller]')!.scrollTop }));
+async function openDashboard(page: Page) {
+  // Layout overrides live in the worker, not the browser context. The earlier
+  // edit-layout tests hide this fan; explicitly seed our own visible layout.
+  overrideEntityLayouts({});
+  overrideSettings({ display: { compactMode: true }, developerMode: true });
+  await setupMocks(page);
+  await page.goto(`/portal?home=${HOME_ID}`);
+  await waitForDashboard(page);
+}
+
 async function open(page: Page, inner = false, initialScroll = 0) {
   await page.goto(`/screenshots/fixtures/expanded-overlay.html${inner ? '?inner' : ''}`);
   await expect(page.getByRole('button', { name: 'Open widget', exact: true })).toBeVisible();
@@ -103,10 +113,7 @@ test('touch scrolling cannot move the page behind a widget', async ({ page }, te
 });
 
 test('real dashboard header menu dismisses an ordinary expanded widget', async ({ page }) => {
-  overrideSettings({ display: { compactMode: true }, developerMode: true });
-  await setupMocks(page);
-  await page.goto(`/portal?home=${HOME_ID}`);
-  await waitForDashboard(page);
+  await openDashboard(page);
   await page.locator('main').getByText('Ceiling Fan', { exact: true }).first().click();
   const panel = page.locator('[data-expanded-overlay="open"]');
   await expect(panel).toHaveCount(1);
@@ -117,10 +124,7 @@ test('real dashboard header menu dismisses an ordinary expanded widget', async (
 
 test('real dashboard home title dismisses an ordinary expanded widget', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'iphone-screenshots', 'Phone home-title menu');
-  overrideSettings({ display: { compactMode: true }, developerMode: true });
-  await setupMocks(page);
-  await page.goto(`/portal?home=${HOME_ID}`);
-  await waitForDashboard(page);
+  await openDashboard(page);
   await page.locator('main').getByText('Ceiling Fan', { exact: true }).first().click();
   const panel = page.locator('[data-expanded-overlay="open"]');
   await expect(panel).toHaveCount(1);
