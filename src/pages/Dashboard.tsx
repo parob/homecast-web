@@ -44,7 +44,7 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { useDebugDockHeight } from '@/lib/debug-dock';
-import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
+import { activateHeaderControl, isNativeHomeSwipeEnabled, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
@@ -3632,9 +3632,10 @@ const Dashboard = () => {
     // On a room, group or collection under the native header the swipe is
     // UIKit's own interactive pop (the bar has a real back button there),
     // so the page's listener stands down rather than racing it. On the
-    // whole home there is nothing to pop and the page's swipe still
-    // cycles homes.
+    // whole home newer shells animate home cycling too; older ones still
+    // need this listener.
     enabled: isMobile && hasContentAccess && !sidebarOpen
+      && !isNativeHomeSwipeEnabled()
       && !(nativeHeaderActive && !!(selectedRoomId || selectedRoomGroupId || selectedCollectionId)),
     onOpen: () => edgeSwipeBackRef.current(),
   });

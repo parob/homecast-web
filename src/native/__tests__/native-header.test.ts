@@ -23,6 +23,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   isNativeHeaderAvailable,
   isNativeHeaderEnabled,
+  isNativeHomeSwipeEnabled,
   setNativeHeaderPreview,
   publishHeaderState,
   installNativeHeaderBridge,
@@ -44,6 +45,7 @@ import {
 interface TestWindow {
   homecastNativeHeaderAvailable?: boolean;
   homecastNativeHeaderEnabled?: boolean;
+  homecastNativeHomeSwipeAvailable?: boolean;
   __homecastNativeHeader?: {
     tap: (c: string) => void;
     setEnabled: (e: boolean, bar?: number, status?: number, base?: number, eyebrow?: number) => void;
@@ -67,6 +69,7 @@ function installNativeBuild(): unknown[] {
 beforeEach(() => {
   delete w().homecastNativeHeaderAvailable;
   delete w().homecastNativeHeaderEnabled;
+  delete w().homecastNativeHomeSwipeAvailable;
   delete w().__homecastNativeHeader;
   delete w().homecastNativeHeaderInsets;
   delete w().webkit;
@@ -107,6 +110,18 @@ describe('an older build, which is the common case', () => {
 });
 
 describe('which header is on screen', () => {
+  it('only hands home swipes to an enabled shell that supports them', () => {
+    installNativeBuild();
+    w().homecastNativeHeaderEnabled = true;
+    expect(isNativeHomeSwipeEnabled()).toBe(false);
+    w().homecastNativeHomeSwipeAvailable = true;
+    expect(isNativeHomeSwipeEnabled()).toBe(true);
+    w().homecastNativeHeaderEnabled = false;
+    expect(isNativeHomeSwipeEnabled()).toBe(false);
+    w().homecastNativeHeaderEnabled = true;
+    delete w().homecastNativeHeaderAvailable;
+    expect(isNativeHomeSwipeEnabled()).toBe(false);
+  });
   it('needs BOTH available and enabled — a stale enabled flag alone is not enough', () => {
     w().homecastNativeHeaderEnabled = true;
     // `available` never set: an older build. The web row must still draw, or
