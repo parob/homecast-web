@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { Bell, Video, Battery, BatteryLow, BatteryWarning } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
 import { WidgetProps, getCharacteristic, hasServiceType } from './types';
-import { CameraSnapshotHero } from './CameraWidget';
+import { CameraCloseButton, CameraSnapshotHero } from './CameraWidget';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { CameraTileFrame } from './CameraTileFrame';
@@ -78,6 +78,7 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
       collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
       compact={compact}
       expanded={preview.expanded}
+      headerAction={showHero && preview.expanded ? <CameraCloseButton /> : undefined}
       heroShape="block"
       heroStack
       hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={preview.expanded} /> : undefined}

@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Video, RefreshCw, Loader2, Play, X } from 'lucide-react';
-import { WidgetCard } from './WidgetCard';
+import { WidgetCard, useWidgetColors } from './WidgetCard';
 import { WidgetProps, getCharacteristic } from './types';
 import { useCameraSnapshot } from '@/hooks/useCameraSnapshot';
 import { useCameraLive } from '@/hooks/useCameraLive';
@@ -15,6 +15,19 @@ import { describeCameraFailure, describeCaptureAge } from '@/lib/camera-snapshot
 import { isCommunity } from '@/lib/config';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 
+/** Header-only dismissal; camera controls stay with the preview below. */
+export function CameraCloseButton() {
+  const close = useExpandedOverlayClose();
+  const { onDark } = useWidgetColors();
+  if (!close) return null;
+
+  return <button type="button" aria-label="Close camera" title="Close" data-camera-close
+    onClick={(e) => { e.stopPropagation(); close(); }}
+    className={`flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${onDark ? 'text-white/90 hover:bg-white/10 focus-visible:outline-white' : 'text-slate-900/80 hover:bg-black/5 focus-visible:outline-current'}`}>
+    <X className="h-5 w-5" aria-hidden="true" />
+  </button>;
+}
+
 /**
  * The expanded camera: cached image first, shared live view when supported,
  * otherwise refreshed stills. Neither mode exposes device settings.
@@ -26,7 +39,6 @@ import type { HomeKitAccessory } from '@/lib/graphql/types';
 export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: boolean }> = ({ accessory, expanded }) => {
   const live = useCameraLive(accessory, expanded);
   const { status, refresh, refreshing } = useCameraSnapshot(accessory, expanded && !live.usesLive);
-  const close = useExpandedOverlayClose();
   const { frameRef, maxHeight } = useCameraFrameHeight(expanded);
   const snapshot = status.kind === 'ready' || status.kind === 'error' ? status : undefined;
   const latest = live.image && (!snapshot?.capturedAt || Date.parse(live.image.capturedAt) >= Date.parse(snapshot.capturedAt)) ? live.image : snapshot;
@@ -76,11 +88,6 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
               aria-busy={refreshing}
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>}
-            {close && <button type="button" aria-label="Close camera"
-              onClick={(e) => { e.stopPropagation(); close(); }}
-              className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-white px-3 font-medium text-slate-950 shadow-sm hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-              <X className="h-5 w-5" aria-hidden="true" />Close
             </button>}
           </div>
         </div>
@@ -154,6 +161,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
       compact={compact}
       expanded={preview.expanded}
+      headerAction={showHero && preview.expanded ? <CameraCloseButton /> : undefined}
       onExpandToggle={preview.onExpandToggle}
       onDebug={onDebug}
       heroShape="block"
