@@ -8,6 +8,7 @@ import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { useExpandedOverlayClose, useExpandedOverlayWidth } from '@/components/shared/ExpandedOverlay';
 import { CameraTileFrame } from './CameraTileFrame';
+import { CameraTilePreview } from './CameraTilePreview';
 import { describeCameraFailure, describeCaptureAge } from '@/lib/camera-snapshot';
 import { isCommunity } from '@/lib/config';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
@@ -138,7 +139,8 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   // capture them. Three gates: cloud mode, the relay reports the capability
   // (absent on relays that predate it), and the owner switched cameras on.
   const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
-  const showHero = !compact && !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
+  const cameraAvailable = !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
+  const showHero = !compact && cameraAvailable;
   const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
 
   // Simple status text
@@ -159,6 +161,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       isOn={isActive || motionDetected}
       isReachable={accessory.isReachable}
       accessory={accessory}
+      collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
       compact={compact}
       expanded={preview.expanded}
       onExpandToggle={preview.onExpandToggle}

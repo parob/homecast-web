@@ -10,7 +10,7 @@ vi.mock('@/server/connection', () => ({ serverConnection: { request } }));
 
 let id = 0;
 const camera = (): HomeKitAccessory => ({
-  id: `freshness-${++id}`, homeId: 'home', name: 'Camera', isReachable: true,
+  id: `freshness-${++id}`, homeId: `home-${id}`, name: 'Camera', isReachable: true,
   services: [], camera: { snapshot: true, stream: true },
 });
 const snapshot = (jpeg = 'QUJD') => ({
@@ -28,6 +28,33 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('camera freshness', () => {
+  it('uses a smaller still and a one-minute cadence for visible tile previews', async () => {
+    const accessory = camera();
+    const { rerender } = renderHook(({ visible }) => useCameraSnapshot(accessory, visible, true), { initialProps: { visible: true } });
+    await flush();
+    expect(request).toHaveBeenLastCalledWith('camera.snapshot', expect.objectContaining({ maxWidth: 480, maxAgeSec: 55 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(request).toHaveBeenCalledTimes(2);
+    rerender({ visible: false });
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start a queued preview after it leaves the viewport', async () => {
+    const accessory = camera();
+    let release!: (value: ReturnType<typeof snapshot>) => void;
+    request.mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
+    renderHook(() => useCameraSnapshot(accessory, true, true));
+    const queued = renderHook(({ visible }) => useCameraSnapshot({ ...accessory, id: 'queued' }, visible, true), { initialProps: { visible: true } });
+    expect(request).toHaveBeenCalledTimes(1);
+    queued.rerender({ visible: false });
+    await act(async () => release(snapshot()));
+    await flush();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it('requests a fresh image on opening, manual refresh, and each polling tick', async () => {
     const { result } = renderHook(() => useCameraSnapshot(cameraA, true));
     await flush();

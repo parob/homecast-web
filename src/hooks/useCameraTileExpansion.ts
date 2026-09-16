@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react';
 
 /** Compact grids own their floating overlay. Full-size grids render the
  * widget directly, so camera tiles must be able to open their own preview.
- * Keep that preview opt-in: merely showing a tile must not poll a camera.
+ * This controls the full viewer; visible tiles fetch their background still
+ * separately on a slower cadence.
  */
 export function useCameraTileExpansion({
   previewAvailable, compact, expanded, onExpandToggle,

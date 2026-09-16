@@ -98,6 +98,8 @@ interface WidgetCardProps {
    * thing you reach for. `children` become the secondary controls beside it.
    */
   hero?: React.ReactNode;
+  /** Camera still behind the collapsed tile; never behind expanded controls. */
+  collapsedPreview?: React.ReactNode;
   /**
    * 'bar' is a tall drag control that wants a narrow column; 'block' is a
    * square-ish control (a dial) that needs width in both orientations.
@@ -198,6 +200,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   childrenVisible,
   overlayContent,
   hero,
+  collapsedPreview,
   heroShape = 'bar',
   heroStack,
   className = '',
@@ -252,6 +255,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // cache. Widgets just read it as-is.
   // When not responding, default to off state visually
   const effectiveCompact = compact;
+  const showTilePreview = !!collapsedPreview && !expanded;
   const effectiveIsOn = isReachable ? isOn : false;
   const effectiveOnExpandToggle = onExpandToggle;
 
@@ -334,10 +338,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // 'standard' and 'colourful' both use service-type colors for icons
   // 'basic' uses primary/muted colors
   const iconColor = colorOverride ?? (useServiceColors ? getIconColor(serviceType) : null);
-  const iconBgClass = iconColor
+  const iconBgClass = showTilePreview ? 'bg-white/15 backdrop-blur-md' : iconColor
     ? (effectiveIsOn ? iconColor.bg : iconColor.bgOff)
     : (effectiveIsOn ? 'bg-primary' : 'bg-muted hover:bg-muted/80');
-  const iconTextClass = iconColor
+  const iconTextClass = showTilePreview ? 'text-white' : iconColor
     ? (effectiveIsOn ? iconColor.text : iconColor.textOff)
     : (effectiveIsOn ? 'text-primary-foreground' : '');
   const iconShadowClass = effectiveIsOn ? (iconColor ? 'shadow-sm' : 'shadow-sm shadow-primary/25') : '';
@@ -387,7 +391,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Compact mode header content - vertical layout matching preview style
   const compactHeaderContent = (
-    <div className="space-y-2">
+    <div className={showTilePreview ? 'flex h-full flex-col justify-between gap-6' : 'space-y-2'}>
       <div className="flex items-start justify-between">
         {iconElement}
         {effectiveHeaderAction && (
@@ -410,10 +414,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             and iOS shells' global `user-select: none`, and on a tile it did
             exactly that \u2014 a drag or a long-press highlighted the name. The
             wrapper's select-none can't outrank it, so the opt-in has to go. */}
-        <CardTitle className="text-xs font-medium truncate">
+        <CardTitle className={`${showTilePreview && !effectiveCompact ? 'text-sm' : 'text-xs'} font-medium truncate`}>
           {displayTitle}
         </CardTitle>
-        <CardDescription className="text-[10px] mt-0.5">
+        <CardDescription className={`${showTilePreview && !effectiveCompact ? 'text-xs' : 'text-[10px]'} mt-0.5`}>
           {effectiveSubtitle || '\u00A0'}
         </CardDescription>
       </div>
@@ -648,11 +652,12 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const cardInner = (
     <>
-      <CardHeader className={effectiveCompact ? "p-3" : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`}>
-        {effectiveCompact ? (
+      {showTilePreview && collapsedPreview}
+      <CardHeader className={showTilePreview ? `relative p-3 pb-7 ${effectiveCompact ? 'h-[140px]' : 'h-[172px]'} [&_h3]:!text-white [&_p]:!text-white/80 [&_.text-muted-foreground]:!text-white/80` : effectiveCompact ? "p-3" : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`}>
+        {effectiveCompact || showTilePreview ? (
           // Compact mode - vertical layout with switch inside
           <div
-            className={`${noResponseClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-pointer'}`}
+            className={`${showTilePreview ? 'h-full' : ''} ${noResponseClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-pointer'}`}
             {...(dragHandle?.attributes || {})}
             {...(dragHandle?.listeners || {})}
           >
