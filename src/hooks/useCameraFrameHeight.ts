@@ -21,7 +21,11 @@ export function useCameraFrameHeight(expanded: boolean) {
     observer.observe(scroller);
     if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
     observer.observe(frame.parentElement!);
-    return () => observer.disconnect();
+    // Raising max-height leaves the current card the same size, so no resize
+    // fires. Watch the constraint too, so the image can grow as well as shrink.
+    const constraints = new MutationObserver(measure);
+    constraints.observe(scroller, { attributes: true, attributeFilter: ['style'] });
+    return () => { observer.disconnect(); constraints.disconnect(); };
   }, [expanded]);
   return { frameRef, maxHeight };
 }
