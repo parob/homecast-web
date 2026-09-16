@@ -102,8 +102,11 @@ describe('CameraWidget hero', () => {
     expect(await screen.findByAltText('Entry Camera snapshot')).toBeTruthy();
     expect(request).toHaveBeenCalledTimes(1);
     // The full-size tile now opens the same floating viewer as a compact one.
-    // A visible close control works without reaching the original tile.
-    fireEvent.click(screen.getByRole('button', { name: 'Close camera' }));
+    // The header's icon-only close control works without reaching the tile.
+    const close = screen.getByRole('button', { name: 'Close camera' });
+    expect(close.textContent).toBe('');
+    expect(close.closest('[data-camera-preview]')).toBeNull();
+    fireEvent.click(close);
     await waitFor(() => expect(screen.queryByAltText('Entry Camera snapshot')).toBeNull());
   });
 

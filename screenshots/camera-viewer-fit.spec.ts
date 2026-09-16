@@ -28,14 +28,20 @@ test('camera image and controls fit a short window, including a reserved bottom 
   await expect(page.getByAltText('Front Door snapshot')).toBeVisible();
   await expectFitted(page, 400, 60);
   const close = page.getByRole('button', { name: 'Close camera' });
-  await expect(close).toHaveText('Close');
+  await expect(close).toHaveText('');
+  // Use the visible card edge, excluding the overlay's invisible 10px hit ring.
+  await expect.poll(() => close.evaluate(button =>
+    button.closest('[data-expanded-overlay-scroll]')!.getBoundingClientRect().right - button.getBoundingClientRect().right
+  )).toBeLessThanOrEqual(26);
   const controls = await close.evaluate(button => ({
     height: button.getBoundingClientRect().height,
     bottom: button.getBoundingClientRect().bottom,
-    frameTop: document.querySelector('[data-camera-frame]')!.getBoundingClientRect().top,
+    topGap: button.getBoundingClientRect().top - button.closest('[data-expanded-overlay-scroll]')!.getBoundingClientRect().top,
+    toolbarTop: document.querySelector('[data-camera-toolbar]')!.getBoundingClientRect().top,
   }));
   expect(controls.height).toBeGreaterThanOrEqual(44);
-  expect(controls.bottom).toBeLessThanOrEqual(controls.frameTop);
+  expect(controls.topGap).toBeLessThanOrEqual(30);
+  expect(controls.bottom).toBeLessThanOrEqual(controls.toolbarTop);
   await expect(page.getByText('Paused', { exact: true })).toBeVisible();
   await expect(page.getByText(/Last image:|Resume when|Up to two/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Close camera' }).click();
@@ -90,6 +96,6 @@ test('queued camera uses a short status and an obvious close control', async ({ 
   await page.getByRole('button', { name: 'Open camera' }).click();
   await expect(page.getByText('Queued · 2', { exact: true })).toBeVisible();
   await expect(page.getByText(/Up to two|camera slot|Last image:/)).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Close camera' })).toHaveText('Close');
+  await expect(page.getByRole('button', { name: 'Close camera' })).toHaveText('');
   await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(2);
 });

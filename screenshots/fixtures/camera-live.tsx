@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CameraSnapshotHero } from '../../src/components/widgets/CameraWidget';
+import { CameraCloseButton, CameraSnapshotHero } from '../../src/components/widgets/CameraWidget';
 import { WidgetCard } from '../../src/components/widgets/WidgetCard';
 import { ExpandedOverlay } from '../../src/components/shared/ExpandedOverlay';
 import { Video } from 'lucide-react';
@@ -76,6 +76,7 @@ function OverlayFixture() {
     <button onClick={() => setOpened(true)}>Open camera</button>
     <ExpandedOverlay isExpanded={opened} onClose={() => setOpened(false)} bottomInset={Number(params.get('inset') ?? 0)}>
       <WidgetCard title={accessory.name} subtitle="Doorbell camera · 96%" icon={<Video />} expanded isReachable
+        headerAction={<CameraCloseButton />}
         heroShape="block" heroStack onShare={() => {}}
         hero={<CameraSnapshotHero accessory={accessory} expanded={opened} />} />
     </ExpandedOverlay>
