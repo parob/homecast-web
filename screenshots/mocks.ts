@@ -87,6 +87,20 @@ function resolveGraphQL(
   variables?: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   switch (opName) {
+    // The dashboard uses WebSocket reads; the editor's pickers use GraphQL.
+    // Both must see the same fixtures or a picker can pass while always empty.
+    case 'GetHomes':
+      return { homes: HOMES };
+
+    case 'GetAccessories':
+      return handleWsRequest('accessories.list', variables ?? {});
+
+    case 'GetScenes':
+      return handleWsRequest('scenes.list', variables ?? {});
+
+    case 'GetServiceGroups':
+      return handleWsRequest('serviceGroups.list', variables ?? {});
+
     case 'GetMe':
       return { me: MOCK_USER };
 
