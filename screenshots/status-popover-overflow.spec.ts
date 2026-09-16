@@ -23,7 +23,7 @@
  * rendered geometry, which jsdom does not have.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks } from './mocks';
+import { setupMocks, waitForDashboard } from './mocks';
 import { HOME_ID } from './fixtures';
 
 // iPhone SE in landscape — the shortest screen the app supports.
@@ -31,19 +31,7 @@ const LANDSCAPE = { width: 667, height: 375 };
 
 const badge = (page: Page) => page.getByRole('button', { name: 'Connection is not responding' });
 
-/**
- * Wait for the dashboard to be up.
- *
- * Deliberately NOT `[data-tour="sidebar-menu"]`, which the rest of this suite
- * gates on: on `main` the mocked dashboard comes up in Edit Layout, which
- * replaces the header's control cluster, so that element never appears and the
- * wait times out. Reproduced identically on unmodified `origin/main`, so it is
- * not this branch's doing — parob/homecast-web#133. The status badge is
- * present either way, and it is what this test actually needs.
- */
-const ready = (page: Page) =>
-  page.getByRole('button', { name: /Connection is|Disconnected|Local Mode|Relay/ }).first()
-    .waitFor({ timeout: 20000 });
+const ready = waitForDashboard;
 const panel = (page: Page) => page.locator('[data-radix-popper-content-wrapper] [class*="w-[280px]"]');
 
 /**
