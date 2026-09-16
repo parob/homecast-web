@@ -671,25 +671,25 @@ function useCachedData<T>(
 /**
  * Hook for fetching homes
  */
-export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataResult<HomeKitHome[]> {
-  const fetcher = useCallback(async () => {
-    const startedAt = beginHomesList();
-    const result = await serverConnection.request<{ homes: HomeKitHome[] }>('homes.list');
-    // The cache may have joined an in-flight request across a resume. Reject
-    // that old read so the existing bounded retry asks on the current connection.
-    if (!isHomesListCurrent(startedAt)) throw new Error('Connection changed while checking homes');
-    const homes = result?.homes ?? [];
-    // Every homes.list answer is one of the two things that may write the
-    // serving store. Community mode has no cloud and no relay but this Mac,
-    // so the fact is seeded here as a constant — `by` this device, whose id
-    // is registered with the store as a side effect of reading it.
-    const community = isCommunity && isRelayCapable();
-    if (community) getDeviceId();
-    ingestHomesList(homes, { community, startedAt });
-    return homes;
-  }, []);
+async function fetchHomes(): Promise<HomeKitHome[]> {
+  const startedAt = beginHomesList();
+  const result = await serverConnection.request<{ homes: HomeKitHome[] }>('homes.list');
+  // The cache may have joined an in-flight request across a resume. Reject
+  // that old read so the existing bounded retry asks on the current connection.
+  if (!isHomesListCurrent(startedAt)) throw new Error('Connection changed while checking homes');
+  const homes = result?.homes ?? [];
+  // Every homes.list answer is one of the two things that may write the
+  // serving store. Community mode has no cloud and no relay but this Mac,
+  // so the fact is seeded here as a constant — `by` this device, whose id
+  // is registered with the store as a side effect of reading it.
+  const community = isCommunity && isRelayCapable();
+  if (community) getDeviceId();
+  ingestHomesList(homes, { community, startedAt });
+  return homes;
+}
 
-  return useCachedData<HomeKitHome[]>('homes', fetcher, options.skip ?? false);
+export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataResult<HomeKitHome[]> {
+  return useCachedData<HomeKitHome[]>('homes', fetchHomes, options.skip ?? false);
 }
 
 /**
@@ -1161,8 +1161,12 @@ export function invalidateAccessoriesForHome(homeId: string): void {
  * server message and the id the cache was keyed under.
  */
 // A NO_DEVICE for a home the serving store believes is served means the store
-// is stale. It asks for exactly this, once — see home-serving.ts noteRefused.
-setRefetch((homeId) => invalidateHomeCaches(homeId));
+// is stale. Start a real read even if no useHomes hook is currently mounted;
+// mounted hooks join the same request through the existing cache.
+setRefetch((homeId) => {
+  invalidateHomeCaches(homeId);
+  return cache.getOrFetch('homes', fetchHomes);
+});
 
 export function invalidateHomeCaches(homeId: string): void {
   cache.invalidateByPrefix('homes');

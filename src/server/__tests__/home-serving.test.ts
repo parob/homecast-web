@@ -156,7 +156,7 @@ describe('effectiveServing', () => {
   });
 });
 
-describe('a refusal refetches, once, and changes nothing — invariant 5', () => {
+describe('a refusal revalidates a stale fact without inventing a replacement', () => {
   it('asks for a refetch when the store believed served', () => {
     const refetch = vi.fn();
     setRefetch(refetch);
@@ -164,7 +164,7 @@ describe('a refusal refetches, once, and changes nothing — invariant 5', () =>
     noteRefused('d08cb174');
     expect(refetch).toHaveBeenCalledTimes(1);
     expect(refetch).toHaveBeenCalledWith('D08CB174');
-    expect(getHomeServing('D08CB174')?.state).toBe('served');    // unchanged: a trigger, not a belief
+    expect(getHomeServing('D08CB174')).toBeNull(); // checking until the server supplies a replacement
   });
   it('asks only once until an answer lands', () => {
     const refetch = vi.fn();
@@ -190,6 +190,34 @@ describe('a refusal refetches, once, and changes nothing — invariant 5', () =>
     setRefetch(refetch);
     noteRefused('D08CB174');
     expect(refetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a list started before a routing refusal without dropping other homes', async () => {
+    const { beginHomesList } = await import('../home-serving');
+    ingestHomesList([{ id: 'A', serving: served() }, { id: 'B', serving: served() }]);
+    const startedAt = beginHomesList();
+    noteRefused('A');
+    ingestHomesList([{ id: 'A', serving: served() }, { id: 'B', serving: waiting() }], { startedAt });
+    expect(getHomeServing('A')).toBeNull();
+    expect(getHomeServing('B')?.state).toBe('waiting');
+  });
+
+  it('does not let an older refetch completion unlock a newer pending refetch', async () => {
+    let finishOld: () => void = () => {};
+    let finishNew: () => void = () => {};
+    const refetch = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>(resolve => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise<void>(resolve => { finishNew = resolve; }));
+    setRefetch(refetch);
+    ingestHomeServingPush({ homeId: 'A', serving: served() });
+    noteRefused('A');
+    ingestHomeServingPush({ homeId: 'A', serving: served() });
+    noteRefused('A');
+    finishOld();
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    noteRefused('A');
+    expect(refetch).toHaveBeenCalledTimes(2);
+    finishNew();
   });
 });
 
