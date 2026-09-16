@@ -421,23 +421,48 @@ export function publishRefreshDone(): boolean {
  * Tell the shell the page has PAINTED the view whose heading it just
  * published. The heading goes out before the browser has drawn the new
  * page; the shell slides a picture of the new page in, and a picture taken
- * before the paint slid in blank. Two animation frames after the heading:
- * the first runs before the next paint, the second after it. Returns a
- * cancel, for a heading that changes again first.
+ * before the paint slid in blank.
+ *
+ * "Painted" means settled, not merely the next frame: a room renders in
+ * more than one commit (its shell, then its tiles), and a picture taken two
+ * frames after the first slid in with the title and no tiles. So this
+ * watches the document for mutations and speaks after two consecutive
+ * frames without any — or after `PAINT_SETTLE_LIMIT_MS`, whichever comes
+ * first, so a page that never stops moving (a spinner) does not hold the
+ * slide forever. Returns a cancel, for a heading that changes again first.
  */
+export const PAINT_SETTLE_LIMIT_MS = 600;
+
 export function publishPaintedAfterNextFrame(): () => void {
   if (typeof requestAnimationFrame === 'undefined') return () => {};
-  let first = requestAnimationFrame(() => {
-    first = 0;
-    second = requestAnimationFrame(() => {
-      second = 0;
-      post({ action: 'header.painted' });
-    });
-  });
-  let second = 0;
+  let done = false;
+  let quietFrames = 0;
+  let frame = 0;
+  const started = Date.now();
+  const observer = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => { quietFrames = 0; });
+  observer?.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+  const finish = () => {
+    if (done) return;
+    done = true;
+    observer?.disconnect();
+    if (frame) cancelAnimationFrame(frame);
+    post({ action: 'header.painted' });
+  };
+  const tick = () => {
+    frame = 0;
+    if (done) return;
+    quietFrames += 1;
+    if (quietFrames >= 2 || Date.now() - started >= PAINT_SETTLE_LIMIT_MS) {
+      finish();
+      return;
+    }
+    frame = requestAnimationFrame(tick);
+  };
+  frame = requestAnimationFrame(tick);
   return () => {
-    if (first) cancelAnimationFrame(first);
-    if (second) cancelAnimationFrame(second);
+    done = true;
+    observer?.disconnect();
+    if (frame) cancelAnimationFrame(frame);
   };
 }
 
