@@ -96,3 +96,14 @@ it('bounds a hung status refresh and retries without leaving a stale green chip'
     expect(chip.getAttribute('title')).toBe('Online');
   } finally { vi.useRealTimers(); }
 });
+
+it('rechecks a resumed standalone page before claiming its previous route still works', async () => {
+  show();
+  const chip = await screen.findByRole('button', { name: /George Street/ });
+  let finish!: (value: unknown) => void;
+  vi.mocked(fetch).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }) as Promise<Response>);
+  act(() => document.dispatchEvent(new Event('visibilitychange')));
+  expect(chip.title).toBe('Checking relay…');
+  await act(async () => { finish({ ok: true, json: async () => ({ data: { cachedHomes: [{ ...home, serving: fact }] } }) }); });
+  expect(chip.title).toBe('Online');
+});

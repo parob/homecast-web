@@ -8,7 +8,6 @@ type Home = {
   name: string;
   role?: string;
   mqttEnabled?: boolean;
-  relayConnected?: boolean;
   ownerEmail?: string | null;
 };
 

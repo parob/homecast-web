@@ -239,7 +239,11 @@ export default function MQTTBrowser() {
     };
     void fetchOnce();
     const interval = setInterval(() => void fetchOnce(), 15000);
-    const onVisible = () => { if (document.visibilityState === 'visible') void fetchOnce(); };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (onMqttDomain) invalidateHomeServing();
+      void fetchOnce();
+    };
     document.addEventListener('visibilitychange', onVisible);
     return () => { disposed = true; pending?.abort(); clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [onMqttDomain, api, apollo, mockMode]);
