@@ -21,6 +21,7 @@ vi.mock('@/lib/config', () => ({
   isRelaySetupComplete: () => false,
   config: { isCommunity: false, apiBase: 'https://api.test', graphqlUrl: 'https://api.test/', wsUrl: 'wss://api.test/ws' },
 }));
+vi.mock('@/contexts/WebSocketContext', () => ({ useWebSocket: () => ({ quality: 'good' }) }));
 
 import { HomeOverviewSection } from '../HomeOverviewSection';
 import type { HomeKitHome } from '@/lib/graphql/types';
