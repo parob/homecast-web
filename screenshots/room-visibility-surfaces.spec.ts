@@ -1,102 +1,58 @@
-/**
- * The home view and the left menu hide rooms independently.
- *
- * The unit tests in src/lib/__tests__/room-visibility.test.ts prove the two
- * lists behave; they cannot prove the Dashboard reads the right one in each
- * place, which is the whole risk in a change that touches four readers. Only
- * driving the real screen shows that, so this asserts what is actually on it.
- */
+/** Room visibility is independent between the home grid and navigation menu. */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks, overrideEntityLayouts } from './mocks';
+import { setupMocks, waitForDashboard, overrideEntityLayouts, overrideSettings } from './mocks';
 import { HOME_ID } from './fixtures';
 
 const KITCHEN = 'room-kitchen';
 const GARDEN = 'room-garden';
 
-/** Seed the home's stored layout before the app loads it. */
-function seedLayout(visibility: Record<string, unknown>) {
-  overrideEntityLayouts({ [`home:${HOME_ID}`]: { visibility } });
+const cases = [
+  { name: 'hidden from the home only', visibility: { hiddenRoomsHome: [KITCHEN], hiddenRoomsMenu: [] }, home: ['Garden'], menu: ['Kitchen', 'Garden'] },
+  { name: 'hidden from the menu only', visibility: { hiddenRoomsHome: [], hiddenRoomsMenu: [KITCHEN] }, home: ['Kitchen', 'Garden'], menu: ['Garden'] },
+  { name: 'different rooms hidden on each surface', visibility: { hiddenRoomsHome: [KITCHEN], hiddenRoomsMenu: [GARDEN] }, home: ['Garden'], menu: ['Kitchen'] },
+  { name: 'legacy layout still hides on both surfaces', visibility: { hiddenRooms: [KITCHEN] }, home: ['Garden'], menu: ['Garden'] },
+];
+
+async function checkHome(page: Page, expected: string[]) {
+  for (const name of ['Kitchen', 'Garden']) {
+    const heading = page.locator('main').getByRole('button', { name, exact: true });
+    if (expected.includes(name)) await expect(heading).toBeVisible();
+    else await expect(heading).toHaveCount(0);
+  }
+  // Absences must describe hidden rooms, not an empty home.
+  await expect(page.locator('main').getByRole('button', { name: 'Bedroom', exact: true })).toBeVisible();
 }
 
-/**
- * The `?home=` parameter selects the home on its own.
- *
- * Deliberately does NOT click the home's own sidebar button the way
- * capture.spec's helper does: clicking an already-selected home *collapses* its
- * room list, emptying the `aside` of every room. Every assertion here about a
- * room being absent from the menu would then pass no matter what the code did.
- */
-async function gotoMyHome(page: Page) {
-  await page.goto(`/portal?home=${HOME_ID}`);
-  await page.waitForTimeout(3500);
-  // Fail loudly if the home never rendered, rather than reading an empty menu
-  // as "the room was hidden".
-  await expect(page.locator('aside').getByRole('button', { name: 'My Home', exact: true }).first())
-    .toBeVisible();
+async function checkMenu(page: Page, expected: string[]) {
+  const narrow = (page.viewportSize()?.width ?? 1280) < 768;
+  if (narrow) {
+    await page.locator('main').getByRole('heading', { name: /^My Home/ })
+      .getByRole('button', { name: 'My Home', exact: true }).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+  }
+  const surface = narrow ? page.getByRole('menu') : page.locator('aside');
+  const row = (name: string) => surface.getByRole(narrow ? 'menuitem' : 'button', { name, exact: true });
+  for (const name of ['Kitchen', 'Garden']) {
+    if (expected.includes(name)) await expect(row(name)).toBeVisible();
+    else await expect(row(name)).toHaveCount(0);
+  }
+  await expect(row('Bedroom')).toBeVisible();
+  if (narrow) {
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  }
 }
 
-/**
- * The two surfaces, addressed the way the DOM distinguishes them: the left menu
- * is the `aside` landmark, the home view is `main`. Both render a button
- * carrying the room's name, so an unscoped query matches whichever it reaches
- * first and every assertion below would pass for the wrong reason.
- */
-const menuRow = (page: Page, name: string) =>
-  page.locator('aside').getByRole('button', { name, exact: true });
-
-const homeSection = (page: Page, name: string) =>
-  page.locator('main').getByRole('button', { name, exact: true });
-
-test.describe('hiding a room from one surface leaves the other alone', () => {
-  test('hidden from the home view only: gone from the home view, still in the menu', async ({ page }) => {
-    seedLayout({ hiddenRoomsHome: [KITCHEN], hiddenRoomsMenu: [] });
+for (const scenario of cases) {
+  test(scenario.name, async ({ page }) => {
+    overrideSettings({});
+    overrideEntityLayouts({ [`home:${HOME_ID}`]: { visibility: scenario.visibility } });
     await setupMocks(page);
-    await gotoMyHome(page);
-
-    await expect(homeSection(page, 'Kitchen')).toHaveCount(0);
-    await expect(menuRow(page, 'Kitchen').first()).toBeVisible();
-
-    // A room nobody hid is untouched on both.
-    await expect(homeSection(page, 'Garden').first()).toBeVisible();
-    await expect(menuRow(page, 'Garden').first()).toBeVisible();
+    await page.goto(`/portal?home=${HOME_ID}`);
+    await waitForDashboard(page);
+    await expect(page.locator('main').getByRole('heading', { name: /^My Home/ })).toBeVisible();
+    await checkHome(page, scenario.home);
+    await checkMenu(page, scenario.menu);
+    await checkHome(page, scenario.home);
   });
-
-  test('hidden from the menu only: gone from the menu, still in the home view', async ({ page }) => {
-    seedLayout({ hiddenRoomsHome: [], hiddenRoomsMenu: [KITCHEN] });
-    await setupMocks(page);
-    await gotoMyHome(page);
-
-    await expect(menuRow(page, 'Kitchen')).toHaveCount(0);
-    await expect(homeSection(page, 'Kitchen').first()).toBeVisible();
-
-    // Guards the assertion above: an empty menu would satisfy it too.
-    await expect(menuRow(page, 'Garden').first()).toBeVisible();
-  });
-
-  test('the two surfaces hide different rooms at the same time', async ({ page }) => {
-    seedLayout({ hiddenRoomsHome: [KITCHEN], hiddenRoomsMenu: [GARDEN] });
-    await setupMocks(page);
-    await gotoMyHome(page);
-
-    await expect(homeSection(page, 'Kitchen')).toHaveCount(0);
-    await expect(menuRow(page, 'Kitchen').first()).toBeVisible();
-
-    await expect(menuRow(page, 'Garden')).toHaveCount(0);
-    await expect(homeSection(page, 'Garden').first()).toBeVisible();
-  });
-});
-
-test('a layout written before the split still hides on both surfaces', async ({ page }) => {
-  // The migration is a read-time fallback, so this is the case that would
-  // silently un-hide every already-hidden room if the fallback were wrong.
-  seedLayout({ hiddenRooms: [KITCHEN] });
-  await setupMocks(page);
-  await gotoMyHome(page);
-
-  await expect(homeSection(page, 'Kitchen')).toHaveCount(0);
-  await expect(menuRow(page, 'Kitchen')).toHaveCount(0);
-
-  // Both absences have to be about Kitchen, not about an empty screen.
-  await expect(homeSection(page, 'Garden').first()).toBeVisible();
-  await expect(menuRow(page, 'Garden').first()).toBeVisible();
-});
+}

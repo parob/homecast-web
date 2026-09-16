@@ -95,10 +95,14 @@ test.describe('Community mode - first launch', () => {
 test.describe('Community mode - relay not ready', () => {
   test('offers retry, another address, and Cloud Mode when the relay is unavailable', async ({ page }) => {
     await setupCommunityClient(page, 'localhost:9999');
-    // Don't mock the relay — let the fetch fail
+    // A deterministic transport refusal; no dependence on the runner's ports.
+    await page.route('http://localhost:9999/**', route => route.abort('connectionrefused'));
     await page.goto('/login');
 
-    await expect(page.getByText('Relay not ready')).toBeVisible({ timeout: 10000 });
+    // The page deliberately waits for three failures, five seconds apart.
+    // A 10s assertion races the third attempt and occasionally fails one frame
+    // before the correct screen appears (as the CI trace demonstrated).
+    await expect(page.getByText('Relay not ready')).toBeVisible({ timeout: 15000 });
     // Should show the relay address it tried
     await expect(page.getByText('localhost:9999')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();

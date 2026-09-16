@@ -7550,7 +7550,7 @@ const Dashboard = () => {
               trigger in the trigger's own shape, and a square box around
               the words left a hard-edged rectangle of undimmed page. The
               negative margins keep the text where it was. */}
-          <button type="button" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
+          <button type="button" data-tour="home-selector" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
             <span className="truncate">{name}</span>
             {asHeading ? discChevron : (
               <ChevronDown className="h-4 w-4 shrink-0" />
@@ -7559,7 +7559,7 @@ const Dashboard = () => {
         </DropdownMenuTrigger>
         {/* The pill's negative margin pulls the trigger's box past the text;
             the menu lines up with the words, not the box. */}
-        <DropdownMenuContent scrim align="start" alignOffset={asHeading ? 15 : 10} className="min-w-[220px]">
+        <DropdownMenuContent data-tour="home-navigation-menu" scrim align="start" alignOffset={asHeading ? 15 : 10} className="min-w-[220px]">
           {renderSwitcherItems()}
         </DropdownMenuContent>
       </DropdownMenu>{isHeading && headingStatusDot}</>
