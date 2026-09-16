@@ -22,4 +22,9 @@ describe('camera diagnostic privacy', () => {
     expect(cameraLogMetadata('camera.snapshot', { width: { jpeg: 'PRIVATE_CAMERA_PIXELS' } })).toEqual({});
     expect(cameraLogMetadata('camera.snapshot', null)).toBeNull();
   });
+
+  it('cannot break a response when a diagnostic property throws', () => {
+    const payload = { jpeg: 'PRIVATE_CAMERA_PIXELS', get width() { throw new Error('bad getter'); } };
+    expect(cameraLogMetadata('camera.snapshot', payload)).toBe('[camera payload omitted]');
+  });
 });
