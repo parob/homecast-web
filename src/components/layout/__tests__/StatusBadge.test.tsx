@@ -425,6 +425,26 @@ describe('the connection message, which replaced the toasts', () => {
 });
 
 describe('one home’s route across the badge, popover and native header', () => {
+  it('keeps the takeover explanation visible while client latency changes', async () => {
+    const native = await import('@/native/native-header');
+    const publish = vi.spyOn(native, 'publishHeaderState');
+    heard(fact({ state: 'waiting', by: null, kind: null, graceEndsAt: new Date(Date.now() + 120_000).toISOString() }));
+    const props = { homeId: HOME, homeName: 'County Hall', accountType: 'cloud' };
+    const { rerender } = render(<StatusBadge {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /Waiting for backup/i }));
+    for (const quality of ['slow', 'stalled', 'good'] as const) {
+      mockQuality = quality;
+      rerender(<StatusBadge {...props} />);
+      expect(screen.getByRole('button', { name: /Waiting for backup/i })).toBeTruthy();
+      expect(screen.getByText("County Hall can't be reached right now")).toBeTruthy();
+      expect(screen.getByText(/Your own relay takes over/)).toBeTruthy();
+      expect(publish.mock.calls.at(-1)?.[0]).toMatchObject({ subtitle: 'Waiting for backup' });
+      if (quality !== 'good') expect(screen.getByText(/connection to Homecast is also/)).toBeTruthy();
+      else expect(screen.queryByText(/connection to Homecast is also/)).toBeNull();
+    }
+    publish.mockRestore();
+  });
+
   it('follows normal → waiting → backup → normal without inventing a socket failure', async () => {
     const native = await import('@/native/native-header');
     const publish = vi.spyOn(native, 'publishHeaderState').mockReturnValue(true);

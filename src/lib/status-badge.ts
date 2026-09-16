@@ -53,7 +53,7 @@
 import type { ConnectionQuality } from '@/server/connection-quality';
 import type { LocalModeReason } from '@/server/local-mode';
 import { isBackupServing, type HomeServing } from '@/server/home-serving';
-import { localModeStandingIn } from './answer-card';
+import { localModeStandingIn, shouldLeadWithConnection } from './answer-card';
 import {
   connectionPresentation,
   RECONNECTED_PRESENTATION,
@@ -194,15 +194,14 @@ export function statusPresentation(i: StatusInputs): ConnectionPresentation {
     return localModePresentation(localModeStandingIn(i), i.unmapped);
   }
 
-  // 2. Anything the connection itself wants to report. `good` and `unknown`
-  //    carry no label, so they fall through rather than pre-empting the rest.
-  if (i.quality !== 'good' && i.quality !== 'unknown') {
+  // 2. A lost link leads. Slower requests cannot explain away the server's
+  //    confirmed refusal to serve this home; keep that reason visible.
+  if (shouldLeadWithConnection(i.quality, s)) {
     return connectionPresentation(i.quality);
   }
 
-  // 3. The home itself is not served. Ranked below the connection because a
-  //    broken link *explains* an unreachable home and is the more actionable
-  //    of the two, and above the recovery confirmation because "it's back" is
+  // 3. The home itself is not served. Ranked above client latency and the
+  //    recovery confirmation because "it's back" is
   //    a claim about the link that would read, wrongly, as "and your home
   //    works again".
   if (s && s.state !== 'served') {

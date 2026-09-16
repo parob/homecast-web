@@ -42,6 +42,7 @@
  */
 
 import type { LocalModeReason } from '@/server/local-mode';
+import type { ConnectionQuality } from '@/server/connection-quality';
 import { isBackupServing, servedByThisDevice, type HomeServing } from '@/server/home-serving';
 import {
   buildChain,
@@ -64,7 +65,7 @@ export interface AnswerCard {
   because: string | null;
   /** The route and the number, shown in place of the drawing when nothing is broken. */
   via: string | null;
-  /** An amber aside under the drawing — Local Mode running under Apple Home's names. */
+  /** A secondary qualification, such as local names or a degraded client link. */
   caveat: string | null;
   /** The quiet "nothing to do" note, for a fault that is Homecast's to fix. */
   note: string | null;
@@ -118,6 +119,12 @@ export function localModeStandingIn(i: {
   // standby: the cloud relay is gone and this Mac took the home over.
   if (i.managed && servedByThisDevice(relay, i.thisDevice)) return true;
   return i.localReason === 'relay-offline' || i.localReason === 'socket-down';
+}
+
+/** A lost client link leads; latency must not hide a confirmed home outage. */
+export function shouldLeadWithConnection(quality: ConnectionQuality, serving: HomeServing | null): boolean {
+  if (quality === 'good' || quality === 'unknown') return false;
+  return quality === 'offline' || quality === 'connecting' || !serving || serving.state === 'served';
 }
 
 export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
@@ -192,10 +199,9 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
 
   // ── This device's own link ───────────────────────────────────────────────
   //
-  // Ranked above the home's fact because a broken link explains an unreachable
-  // home, and is the one fault the person holding the device can do something
-  // about.
-  if (!linkFine(quality)) {
+  // A disconnected client cannot use a cloud route. If it is still connected,
+  // a known home outage is more specific than slow requests and stays primary.
+  if (shouldLeadWithConnection(quality, serving)) {
     switch (quality) {
       case 'offline':
         return card({
@@ -236,12 +242,15 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
     }
   }
 
-  // ── The cloud is answering, and its answer is "nothing may serve this home" ─
+  // ── The server's last answer is "nothing may serve this home" ─────────────
   //
   // The server names the affected home and its unavailable route.
-  // Nothing here offers Reconnect: the link is
-  // fine, and a fresh socket would reach the same answer.
+  // Reconnecting the client cannot change this routing decision. Any client
+  // latency is a separate caveat, visible alongside the takeover explanation.
   if (serving && serving.state !== 'served') {
+    const linkCaveat = quality === 'slow'
+      ? 'The connection to Homecast is also slow.'
+      : quality === 'stalled' ? 'The connection to Homecast is also waiting for a response.' : null;
     switch (serving.state) {
       case 'reconnecting':
         return card({
@@ -249,6 +258,7 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
           pulse: true,
           verdict: `${H} can't be reached right now`,
           because: `${relayCap} dropped off a moment ago and should be back shortly.`,
+          caveat: linkCaveat,
           showChain: true,
         });
       case 'waiting':
@@ -262,6 +272,7 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
           because: managed
             ? `The cloud relay isn't answering. Your own relay takes over ${takeoverIn(serving.graceEndsAt, now)}.`
             : `Your relay isn't answering. Another of your relays takes over ${takeoverIn(serving.graceEndsAt, now)}.`,
+          caveat: linkCaveat,
           showChain: true,
         });
       default:
@@ -272,8 +283,9 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
           tone: 'bad',
           verdict: `${H} can't be reached`,
           because: managed
-            ? `The cloud relay isn't answering. Your ${dev} and your internet are both fine.`
-            : `Homecast can't get an answer from your relay. Your ${dev} and your internet are both fine — check that the relay is on and online.`,
+            ? 'Homecast reports that no relay is serving this home.'
+            : 'Homecast reports that no relay is serving this home. Check that your relay is on and online.',
+          caveat: linkCaveat,
           note: managed ? AUTO_RECONNECT : null,
           showChain: true,
         });
