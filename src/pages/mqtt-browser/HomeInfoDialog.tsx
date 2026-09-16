@@ -1,5 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { effectiveServing } from '@/server/home-serving';
+import { useHomeServing } from '@/hooks/useHomeServing';
+import { homeRelayStatus } from './home-relay-status';
+import { cn } from '@/lib/utils';
 
 type Home = {
   id: string;
@@ -10,17 +12,18 @@ type Home = {
   ownerEmail?: string | null;
 };
 
-export function HomeInfoDialog({ open, onOpenChange, home, slug, topicCount, roomCount }: {
+export function HomeInfoDialog({ open, onOpenChange, home, slug, topicCount, roomCount, managed = false }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   home: Home | null;
   slug: string | null;
   topicCount: number;
   roomCount: number;
+  managed?: boolean;
 }) {
+  const serving = useHomeServing(home?.id, 'cloud');
   if (!home) return null;
-  const serving = effectiveServing(home.id);
-  const relay = serving === null ? 'unknown' : serving.state === 'served' ? 'online' : 'offline';
+  const relay = homeRelayStatus(home.name, serving, managed);
   const mqtt = home.mqttEnabled ? 'enabled' : 'off';
   const role = home.role || 'owner';
   return (
@@ -39,7 +42,8 @@ export function HomeInfoDialog({ open, onOpenChange, home, slug, topicCount, roo
           </dd>
           <dt className="text-muted-foreground">Relay</dt>
           <dd>
-            <span className={relay === 'online' ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}>{relay}</span>
+            <span className="inline-flex items-center gap-1.5"><span className={cn('h-1.5 w-1.5 rounded-full', relay.dotClass, relay.pulse && 'animate-pulse')} />{relay.label}</span>
+            {relay.explanation && <p className="text-muted-foreground mt-1">{relay.explanation}</p>}
           </dd>
           <dt className="text-muted-foreground">Topics</dt>
           <dd className="tabular-nums">{topicCount}</dd>
