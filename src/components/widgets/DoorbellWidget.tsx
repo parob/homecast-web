@@ -59,10 +59,10 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
     <WidgetCard
       title={accessory.name}
       subtitle={
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="text-muted-foreground">{hasCamera ? 'Doorbell camera' : 'Doorbell'}</span>
+        <span className={`flex items-center gap-x-2 gap-y-0.5 ${cameraAvailable && !preview.expanded ? 'min-w-0 overflow-hidden' : 'flex-wrap'}`}>
+          <span className={`text-muted-foreground ${cameraAvailable && !preview.expanded ? 'min-w-0 truncate' : ''}`}>{hasCamera ? 'Doorbell camera' : 'Doorbell'}</span>
           {hasBattery && (
-            <span className={`flex items-center gap-0.5 ${isLowBattery ? 'text-amber-500' : 'text-muted-foreground'}`}>
+            <span className={`flex shrink-0 items-center gap-0.5 ${isLowBattery ? 'text-amber-500' : 'text-muted-foreground'}`}>
               <BatteryIcon className="h-3 w-3" />
               {batteryLevel !== null && <span>{Math.round(batteryLevel)}%</span>}
             </span>

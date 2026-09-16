@@ -6,6 +6,7 @@ import { DoorbellWidget } from '../DoorbellWidget';
 import { AccessoryWidget } from '../AccessoryWidget';
 import { useState } from 'react';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
+import { clearCameraSnapshots, setCameraSnapshotAccount } from '@/lib/camera-snapshot-cache';
 
 // jsdom has no matchMedia; the mobile hook asks for it at render.
 window.matchMedia = window.matchMedia || (((query: string) => ({
@@ -76,6 +77,8 @@ const baseProps = {
 } as const;
 
 beforeEach(() => {
+  clearCameraSnapshots();
+  setCameraSnapshotAccount('test-account');
   observers.clear();
   request.mockReset();
   baseProps.onToggle.mockClear();
@@ -220,7 +223,7 @@ describe('CameraWidget hero', () => {
     const image = container.querySelector('[data-camera-tile-preview] img') as HTMLImageElement;
     expect(image.className).toContain('object-cover');
     expect(image.style.objectPosition).toBe('center 23%');
-    expect(screen.getByText(/Snapshot · just now/)).toBeTruthy();
+    expect(screen.getByLabelText('Snapshot captured just now')).toBeTruthy();
     expect(screen.queryByLabelText('Refresh snapshot')).toBeNull();
   });
 

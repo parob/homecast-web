@@ -12,6 +12,7 @@ import type { HomeKitHome } from '@/lib/graphql/types';
 import { useHomeServing } from '@/hooks/useHomeServing';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
+import { setCameraHomeEnabled } from '@/lib/camera-snapshot-cache';
 
 interface HomeCamerasEnabledResponse { homeCamerasEnabled: boolean | null }
 
@@ -38,6 +39,7 @@ export function HomeCamerasSection({ home, isAdmin }: Props) {
   const enabled = enabledData?.homeCamerasEnabled === true;
   const setEnabled = async (next: boolean) => {
     await setEnabledMut({ variables: { homeId: home.id, enabled: next } });
+    setCameraHomeEnabled(home.id, next);
     await refetchEnabled();
   };
 
@@ -84,6 +86,10 @@ export function HomeCamerasSection({ home, isAdmin }: Props) {
           </p>
           <p className="text-sm text-muted-foreground">
             Homecast captures its own camera window. Screen Recording permission is not required for camera images.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            This device saves the last image and its original timestamp for each camera, so it remains visible while refreshing or if the relay is offline.
+            Signing out or turning camera images off clears the saved images. No image history is kept.
           </p>
         </div>
       </div>

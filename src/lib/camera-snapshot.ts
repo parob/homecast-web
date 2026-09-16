@@ -32,6 +32,9 @@ export interface CameraSnapshotResult {
   width: number;
   height: number;
   cached: boolean;
+  /** Opt-in relay fallback: the image is old and this fresh attempt failed. */
+  stale?: boolean;
+  refreshError?: CameraFailure;
 }
 
 export interface CameraFailure {
