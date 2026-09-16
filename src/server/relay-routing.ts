@@ -28,6 +28,9 @@ const SERVER_ONLY_ACTIONS = new Set([
   'camera.snapshot',
   'camera.capabilities',
   'camera.requestScreenRecording',
+  'camera.live.start',
+  'camera.live.keepalive',
+  'camera.live.stop',
 ]);
 
 export interface RelayRoutingState {

@@ -36,7 +36,7 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
 }) => {
   const hasCamera = accessory.camera?.snapshot === true || accessory.camera?.stream === true;
   const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
-  const cameraAvailable = !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
+  const cameraAvailable = !isCommunity && camerasEnabled && hasCamera;
   const showHero = !compact && cameraAvailable;
   const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
   // Battery info

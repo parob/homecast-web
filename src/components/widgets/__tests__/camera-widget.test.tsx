@@ -33,6 +33,10 @@ const revealTiles = () => act(() => observers.forEach(callback => callback([{ is
 
 const request = vi.fn();
 vi.mock('@/server/connection', () => ({ serverConnection: { request: (...a: unknown[]) => request(...a) } }));
+// Snapshot/layout tests exercise an older relay. Live lifecycle has its own
+// hook tests; live presentation cases below override this state explicitly.
+let liveState = { phase: 'unavailable', usesLive: false };
+vi.mock('@/hooks/useCameraLive', () => ({ useCameraLive: () => ({ ...liveState, resume: vi.fn() }) }));
 
 let community = false;
 let camerasEnabled = true;
@@ -84,6 +88,7 @@ beforeEach(() => {
   baseProps.onToggle.mockClear();
   community = false;
   camerasEnabled = true;
+  liveState = { phase: 'idle', usesLive: false };
 });
 
 describe('CameraWidget hero', () => {

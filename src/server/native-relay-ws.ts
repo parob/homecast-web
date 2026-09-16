@@ -21,6 +21,7 @@ type RelayWsClose = { action: 'close'; socketId: string; code: number; reason?: 
 type RelayWsAction = RelayWsConnect | RelayWsSend | RelayWsClose;
 
 type RelayWsEvent =
+  | { socketId: string; type: 'sent'; bytes: number }
   | { socketId: string; type: 'open' }
   | { socketId: string; type: 'message'; data: string }
   | { socketId: string; type: 'error'; message?: string }
@@ -32,6 +33,7 @@ interface RelayWsMessageHandler {
 
 interface RelayWsWindow {
   homecastNativeRelayWs?: boolean;
+  homecastNativeRelayWsBackpressure?: boolean;
   __relay_ws_sockets?: Record<string, NativeRelayWebSocket>;
   __relay_ws_event?: (payload: RelayWsEvent) => void;
   webkit?: { messageHandlers?: { relayWs?: RelayWsMessageHandler } };
@@ -66,6 +68,7 @@ export class NativeRelayWebSocket {
   readonly CLOSED = 3;
 
   readyState: number = NativeRelayWebSocket.CONNECTING;
+  bufferedAmount = 0;
   readonly url: string;
   readonly protocol: string = '';
 
@@ -100,7 +103,14 @@ export class NativeRelayWebSocket {
         'NotSupportedError',
       );
     }
+    if (relayWin().homecastNativeRelayWsBackpressure) this.bufferedAmount += new TextEncoder().encode(data).byteLength;
     post({ action: 'send', socketId: this.socketId, data });
+  }
+
+  /** Native send completion, available on lease-aware camera relays. Older
+   * shells keep bufferedAmount at zero because they do not acknowledge sends. */
+  _onSent(bytes: number): void {
+    if (Number.isFinite(bytes) && bytes >= 0) this.bufferedAmount = Math.max(0, this.bufferedAmount - bytes);
   }
 
   close(code?: number, reason?: string): void {
@@ -148,6 +158,7 @@ export class NativeRelayWebSocket {
   _onClose(code: number, reason: string | undefined, wasClean: boolean): void {
     if (this.readyState === this.CLOSED) return;
     this.readyState = this.CLOSED;
+    this.bufferedAmount = 0;
     try {
       this.onclose?.(new CloseEvent('close', {
         code,

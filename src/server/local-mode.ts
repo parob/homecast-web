@@ -279,6 +279,12 @@ const NEVER_LOCAL = new Set([
   'subscriptions.list',
   'relay.probe',
   'app.reload',
+  'camera.snapshot',
+  'camera.capabilities',
+  'camera.requestScreenRecording',
+  'camera.live.start',
+  'camera.live.keepalive',
+  'camera.live.stop',
 ]);
 
 /** Answered locally only when the cloud cannot answer at all. See above. */

@@ -940,7 +940,9 @@ async function executeHomeKitActionInner(
     // it goes through the relay-write fan-out. Errors carry the Swift codes
     // (CAMERA_BUSY, SCREEN_RECORDING_DENIED, …) straight through.
     case 'camera.capabilities':
-      return await HomeKit.cameraCapabilities();
+      // Native support alone is insufficient: an older web relay adapter
+      // discards viewer ids. The cloud requires BOTH halves before acquiring.
+      return { ...await HomeKit.cameraCapabilities(), liveViewerRouting: true };
 
     case 'camera.requestScreenRecording':
       return await HomeKit.cameraRequestScreenRecording();
@@ -953,20 +955,20 @@ async function executeHomeKitActionInner(
     }
 
     case 'camera.live.start': {
-      const { accessoryId, fps, maxWidth, quality } = payload as { accessoryId: string; fps?: number; maxWidth?: number; quality?: number };
+      const { accessoryId, fps, maxWidth, quality, viewerId, viewerInstance } = payload as { accessoryId: string; fps?: number; maxWidth?: number; quality?: number; viewerId?: string; viewerInstance?: string };
       if (!accessoryId) throw Object.assign(new Error('accessoryId required'), { code: ErrorCode.INVALID_REQUEST });
       if (!isAccessoryAllowed(accessoryId)) throw Object.assign(new Error('Accessory not in plan'), { code: ErrorCode.PERMISSION_DENIED });
-      return await HomeKit.cameraLiveStart(accessoryId, { fps, maxWidth, quality });
+      return await HomeKit.cameraLiveStart(accessoryId, { fps, maxWidth, quality, viewerId, viewerInstance });
     }
 
     case 'camera.live.keepalive': {
-      const { accessoryId } = payload as { accessoryId: string };
-      return await HomeKit.cameraLiveKeepalive(accessoryId);
+      const { accessoryId, viewerId } = payload as { accessoryId: string; viewerId?: string };
+      return await HomeKit.cameraLiveKeepalive(accessoryId, viewerId);
     }
 
     case 'camera.live.stop': {
-      const { accessoryId } = payload as { accessoryId?: string };
-      return await HomeKit.cameraLiveStop(accessoryId);
+      const { accessoryId, viewerId } = payload as { accessoryId?: string; viewerId?: string };
+      return await HomeKit.cameraLiveStop(accessoryId, viewerId);
     }
 
     default:
