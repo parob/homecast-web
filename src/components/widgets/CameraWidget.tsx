@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Video, RefreshCw, Loader2, X } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { ColoredSwitch } from './shared';
+import { CameraModeControls } from './CameraModeControls';
 import { WidgetProps, getCharacteristic } from './types';
 import { useCameraSnapshot } from '@/hooks/useCameraSnapshot';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
@@ -118,22 +118,9 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   onShare,
   locationSubtitle,
 }) => {
-  // Only HomeKit Camera Active controls camera availability. Generic `active`
-  // belongs to recording management, and 0x225 controls periodic snapshots.
-  // Neither is a camera power switch. HomeKit may omit the active value too:
-  // unknown must never be presented as Off or used to offer a blind toggle.
-  const activeChar = getCharacteristic(accessory, 'homekit_camera_active')
-    || getCharacteristic(accessory, '0000021D-0000-1000-8000-0026BB765291');
-  const charType = activeChar?.type || 'homekit_camera_active';
-  const rawActive = activeChar ? getEffectiveValue(accessory.id, charType, activeChar.value) : undefined;
-  const isActive = rawActive === true || rawActive === 'true' || rawActive === 1 || rawActive === '1';
-  const isInactive = rawActive === false || rawActive === 'false' || rawActive === 0 || rawActive === '0';
-
   // Motion sensor
   const motionChar = getCharacteristic(accessory, 'motion_detected');
   const motionDetected = motionChar?.value === true || motionChar?.value === 'true';
-
-  const hasControls = activeChar?.isWritable && (isActive || isInactive);
 
   // Stills come from the cloud relay's engine window; nothing else can
   // capture them. Three gates: cloud mode, the relay reports the capability
@@ -143,22 +130,15 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   const showHero = !compact && cameraAvailable;
   const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
 
-  // Simple status text
-  const getStatusText = () => {
-    if (motionDetected) return 'Motion detected';
-    if (isActive) return 'On';
-    return isInactive ? 'Off' : 'Camera';
-  };
-
   return (
     <CameraTileFrame preview={preview}>
     <WidgetCard
       title={accessory.name}
-      subtitle={getStatusText()}
+      subtitle={motionDetected ? 'Motion detected' : 'Camera'}
       icon={<Video className="h-4 w-4" />}
       serviceType="camera"
       iconStyle={iconStyle}
-      isOn={isActive || motionDetected}
+      isOn={motionDetected}
       isReachable={accessory.isReachable}
       accessory={accessory}
       collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
@@ -186,16 +166,9 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       onToggleShowHidden={onToggleShowHidden}
       onShare={onShare}
       locationSubtitle={locationSubtitle}
-      headerAction={
-        hasControls ? (
-          <ColoredSwitch
-            checked={isActive}
-            onCheckedChange={() => onToggle(accessory.id, charType, isActive)}
-            disabled={!accessory.isReachable}
-          />
-        ) : undefined
-      }
-    />
+    >
+      {preview.expanded && <CameraModeControls accessory={accessory} onToggle={onToggle} getEffectiveValue={getEffectiveValue} />}
+    </WidgetCard>
     </CameraTileFrame>
   );
 });

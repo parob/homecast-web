@@ -14,13 +14,13 @@ setCameraSnapshot(cameraSnapshotCacheKey(camera.homeId, camera.id), {
   capturedAt: '2026-09-16T08:00:00Z', source: 'stream',
 }, cameraSnapshotCacheGeneration());
 const compact = new URLSearchParams(location.search).get('compact') !== '0';
-const toggle = <button aria-label="Camera enabled" style={{ width: 36, height: 20, borderRadius: 20, background: '#64748b' }} />;
 createRoot(document.getElementById('root')!).render(<main style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: 16 }}>
   <div data-layout-tile="light" style={{ width: 'var(--tile-width, 180px)' }}>
-    <WidgetCard title="Lights" subtitle="Off" icon={<Lightbulb />} compact={compact} isReachable />
+    <WidgetCard title="Lights" subtitle="Off" icon={<Lightbulb />} compact={compact} isReachable
+      headerAction={<button aria-label="Lights enabled" style={{ width: 36, height: 20, borderRadius: 20, background: '#64748b' }} />} />
   </div>
   <div data-layout-tile="camera" style={{ width: 'var(--tile-width, 180px)' }}>
-    <WidgetCard title="Camera" subtitle="On" icon={<Video />} headerAction={toggle} compact={compact} isReachable
+    <WidgetCard title="Camera" subtitle="Camera" icon={<Video />} compact={compact} isReachable
       collapsedPreview={<CameraTilePreview accessory={camera} paused />} />
   </div>
   <div data-layout-tile="doorbell" style={{ width: 'var(--tile-width, 180px)' }}>
