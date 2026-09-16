@@ -49,6 +49,22 @@ const DEFAULT_Z = 10017;
 // context, so a per-accessory overlay opened from inside an already-open group
 // overlay stacks above it instead of dropping back to the dashboard default.
 const OverlayZContext = createContext<number | null>(null);
+const OverlayWidthContext = createContext<React.Dispatch<React.SetStateAction<number | undefined>> | null>(null);
+const OverlayCloseContext = createContext<(() => void) | undefined>(undefined);
+
+/** Media viewers expose a visible close button as well as backdrop dismissal. */
+export function useExpandedOverlayClose() {
+  return useContext(OverlayCloseContext);
+}
+
+/** A wide media surface can request room without every caller knowing its type. */
+export function useExpandedOverlayWidth(width: number | undefined) {
+  const setWidth = useContext(OverlayWidthContext);
+  useLayoutEffect(() => {
+    setWidth?.(width);
+    return () => setWidth?.(undefined);
+  }, [setWidth, width]);
+}
 
 // Portrait panels are narrower so the hero control reads as a tall bar; on
 // desktop the hero stands beside its secondary controls and needs the width.
@@ -164,6 +180,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
+  const [contentWidth, setContentWidth] = useState<number>();
   // When the panel last changed size. A leave triggered within this window was
   // caused by the boundary moving, not by the user going anywhere.
   const lastResizeRef = useRef(0);
@@ -181,7 +198,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
 
   // Clamp before the position math so narrow viewports get correct alignment,
   // not just a squeezed panel.
-  const requestedWidth = width ?? (isMobile !== false ? PORTRAIT_WIDTH : LANDSCAPE_WIDTH);
+  const requestedWidth = width ?? contentWidth ?? (isMobile !== false ? PORTRAIT_WIDTH : LANDSCAPE_WIDTH);
   const effectiveWidth = typeof window !== 'undefined'
     ? Math.min(requestedWidth, window.innerWidth - 32)
     : requestedWidth;
@@ -707,7 +724,11 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                       +2 leaves the nested scrim a rung of its own at baseZ + 2,
                       directly over this panel at baseZ + 1. */}
                   <OverlayZContext.Provider value={baseZ + 2}>
-                    {children}
+                    <OverlayWidthContext.Provider value={setContentWidth}>
+                      <OverlayCloseContext.Provider value={onClose}>
+                        {children}
+                      </OverlayCloseContext.Provider>
+                    </OverlayWidthContext.Provider>
                   </OverlayZContext.Provider>
                 </div>
               </div>

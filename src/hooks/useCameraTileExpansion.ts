@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 /** Compact grids own their floating overlay. Full-size grids render the
  * widget directly, so camera tiles must be able to open their own preview.
@@ -14,7 +14,10 @@ export function useCameraTileExpansion({
 }) {
   const [inlineExpanded, setInlineExpanded] = useState(false);
   const ownsExpansion = previewAvailable && !compact && expanded === undefined && !onExpandToggle;
+  const close = useCallback(() => setInlineExpanded(false), []);
   return {
+    ownsExpansion,
+    close,
     expanded: expanded ?? (ownsExpansion && inlineExpanded),
     onExpandToggle: onExpandToggle ?? (ownsExpansion ? () => setInlineExpanded(value => !value) : undefined),
   };
