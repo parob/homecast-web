@@ -8,20 +8,15 @@ import {
   type CameraFailure,
   type CameraSnapshotResult,
   type SnapshotStatus,
-  type SnapshotImage,
 } from '@/lib/camera-snapshot';
+import {
+  cameraSnapshotCacheGeneration,
+  cameraSnapshotCacheKey,
+  deleteCameraSnapshot,
+  getCameraSnapshot,
+  setCameraSnapshot,
+} from '@/lib/camera-snapshot-cache';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
-
-/**
- * The last still each camera produced, kept across mounts so a tile that
- * collapses and reopens — or a second tile for the same camera — shows the
- * previous image immediately instead of a blank.
- */
-const lastSnapshots = new Map<string, SnapshotImage>();
-
-export function lastCameraSnapshot(accessoryId: string) {
-  return lastSnapshots.get(accessoryId);
-}
 
 function toFailure(err: unknown): CameraFailure {
   const e = err as { code?: string; message?: string } | undefined;
@@ -38,8 +33,8 @@ function toFailure(err: unknown): CameraFailure {
  */
 export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean) {
   const supported = accessory.camera?.snapshot === true;
-  const cached = lastSnapshots.get(accessory.id);
-  const key = `${accessory.homeId}:${accessory.id}`;
+  const key = cameraSnapshotCacheKey(accessory.homeId, accessory.id);
+  const cached = getCameraSnapshot(key);
   const [state, setState] = useState<{ key: string; status: SnapshotStatus }>({
     key, status: cached ? { kind: 'ready', ...cached } : { kind: 'idle' },
   });
@@ -63,9 +58,11 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
     if (!shouldPollSnapshots({ supported, expanded, pageVisible })) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const generation = cameraSnapshotCacheGeneration();
+    const stale = () => cancelled || generation !== cameraSnapshotCacheGeneration();
 
     const tick = async () => {
-      if (cancelled) return;
+      if (stale()) return;
       setRefreshingKey(key);
       setState((s) => ({ key, status: s.key === key &&
         (s.status.kind === 'ready' || (s.status.kind === 'error' && s.status.dataUrl))
@@ -78,7 +75,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
           // image. The relay still coalesces requests and paces camera wakes.
           maxAgeSec: 0,
         });
-        if (cancelled) return;
+        if (stale()) return;
         const next = {
           dataUrl: snapshotDataUrl(result),
           capturedAt: result.capturedAt,
@@ -86,21 +83,21 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
           height: result.height,
           source: result.source,
         };
-        lastSnapshots.set(accessory.id, next);
+        setCameraSnapshot(key, next, generation);
         failures.current = 0;
         setState({ key, status: { kind: 'ready', ...next } });
       } catch (err) {
-        if (cancelled) return;
+        if (stale()) return;
         const failure = toFailure(err);
         failures.current += 1;
         if (['PERMISSION_DENIED', 'UNAUTHORIZED', 'CAMERAS_DISABLED'].includes(failure.code)) {
-          lastSnapshots.delete(accessory.id);
+          deleteCameraSnapshot(key);
         }
-        const previous = lastSnapshots.get(accessory.id);
+        const previous = getCameraSnapshot(key);
         setState({ key, status: { kind: 'error', failure, ...previous } });
         if (isPermanentCameraFailure(failure.code)) return;
       } finally {
-        if (!cancelled) setRefreshingKey(null);
+        if (!stale()) setRefreshingKey(null);
       }
       timer = setTimeout(tick, nextSnapshotDelayMs(failures.current));
     };

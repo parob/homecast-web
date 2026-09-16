@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCameraSnapshot } from '../useCameraSnapshot';
+import { clearCameraSnapshots } from '@/lib/camera-snapshot-cache';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 
 const request = vi.hoisted(() => vi.fn());
@@ -19,6 +20,7 @@ const snapshot = (jpeg = 'QUJD') => ({
 const flush = () => act(async () => { await Promise.resolve(); });
 
 beforeEach(() => {
+  clearCameraSnapshots();
   vi.useFakeTimers();
   request.mockReset().mockResolvedValue(snapshot());
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
@@ -74,6 +76,42 @@ describe('camera freshness', () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
   const cameraC = camera();
+
+  it('does not show a cached image under another home with the same accessory id', async () => {
+    const accessory = camera();
+    const first = renderHook(() => useCameraSnapshot(accessory, true));
+    await flush();
+    expect(first.result.current.status.kind).toBe('ready');
+    first.unmount();
+    const next = renderHook(() => useCameraSnapshot({ ...accessory, homeId: 'another-home' }, false));
+    expect(next.result.current.status.kind).toBe('idle');
+  });
+
+  it('forgets camera images when the auth session is cleared', async () => {
+    const accessory = camera();
+    const first = renderHook(() => useCameraSnapshot(accessory, true));
+    await flush();
+    expect(first.result.current.status.kind).toBe('ready');
+    act(() => clearCameraSnapshots());
+    first.unmount();
+    const next = renderHook(() => useCameraSnapshot(accessory, false));
+    expect(next.result.current.status.kind).toBe('idle');
+  });
+
+  it('does not restore an old session image when an in-flight response arrives after sign-out', async () => {
+    const accessory = camera();
+    let resolve!: (value: ReturnType<typeof snapshot>) => void;
+    request.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+    const first = renderHook(() => useCameraSnapshot(accessory, true));
+    act(() => clearCameraSnapshots());
+    await act(async () => resolve(snapshot()));
+    expect(first.result.current.status.kind).not.toBe('ready');
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(request).toHaveBeenCalledTimes(1);
+    first.unmount();
+    const next = renderHook(() => useCameraSnapshot(accessory, false));
+    expect(next.result.current.status.kind).toBe('idle');
+  });
 
   it('pauses hidden-page polling and requests fresh data on return', async () => {
     const accessory = camera();
