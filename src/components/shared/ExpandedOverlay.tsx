@@ -10,6 +10,7 @@ import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { overlayScrim } from '@/lib/overlay-scrim';
 import { registerPanelElevation } from '@/lib/overlay-elevation';
+import { useOverlayViewport } from '@/hooks/useOverlayViewport';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -201,13 +202,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const isPointerOutsideRef = useRef<(x: number, y: number) => boolean>(() => true);
   const { isDarkBackground } = useBackgroundContext();
   const isMobile = useIsMobile();
+  const viewport = useOverlayViewport(isExpanded);
 
   // Clamp before the position math so narrow viewports get correct alignment,
   // not just a squeezed panel.
   const requestedWidth = width ?? contentWidth ?? (isMobile !== false ? PORTRAIT_WIDTH : LANDSCAPE_WIDTH);
-  const effectiveWidth = typeof window !== 'undefined'
-    ? Math.min(requestedWidth, window.innerWidth - 32)
-    : requestedWidth;
+  const effectiveWidth = Math.min(requestedWidth, viewport.width - 32);
 
   // Handle open/close state transitions
   useEffect(() => {
@@ -623,11 +623,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   // Anchor below the trigger's top edge, then pull back up if that would push
   // the panel past the bottom of the viewport.
   const anchoredTop = coords.y - PADDING + TOP_OFFSET;
-  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 0;
+  const viewportH = viewport.height;
+  const minTop = viewport.top + viewport.safeTop + MIN_TOP;
   const lowestTop = viewportH && panelHeight
-    ? viewportH - panelHeight - PADDING * 2 - MIN_TOP - bottomInset
+    ? viewport.top + viewportH - panelHeight - PADDING * 2 - MIN_TOP - bottomInset - viewport.safeBottom
     : anchoredTop;
-  const top = Math.max(MIN_TOP, Math.min(anchoredTop, Math.max(MIN_TOP, lowestTop)));
+  const top = Math.max(minTop, Math.min(anchoredTop, Math.max(minTop, lowestTop)));
 
   /**
    * How tall the panel may be before it has to scroll.
@@ -656,7 +657,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
    * the viewport, the panel grows into it, and `top` glides up to meet it.
    */
   const maxPanelHeight = viewportH
-    ? Math.max(160, viewportH - MIN_TOP - PADDING * 2 - MIN_TOP - bottomInset)
+    ? Math.max(0, viewportH - MIN_TOP - PADDING * 2 - MIN_TOP - bottomInset - viewport.safeTop - viewport.safeBottom)
     : undefined;
 
   const transformOrigin = position === 'left'
@@ -785,6 +786,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                 }`} />
                 {/* Content layer - no opacity animation to preserve backdrop-blur */}
                 <div
+                  data-expanded-overlay-scroll
                   // Scrolls rather than overflowing: whatever it holds, the
                   // panel stops where `bottomInset` says it must.
                   className={`relative overflow-y-auto overscroll-contain scrollbar-hidden transition-opacity duration-fast ease-standard ${

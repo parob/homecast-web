@@ -28,15 +28,15 @@ export type CameraLivePhase = 'idle' | 'connecting' | 'queued' | 'live' | 'stopp
 
 export function describeLiveView(phase: CameraLivePhase, position?: number, reason?: string): string | undefined {
   if (phase === 'live') return 'Live · No audio';
-  if (phase === 'connecting') return 'Connecting to camera…';
-  if (phase === 'queued') return `Waiting for a camera slot${position ? ` · Queue ${position}` : ''}. Up to two cameras can stream per home.`;
-  if (phase === 'unavailable') return 'Live view needs an updated Homecast relay. Showing snapshots.';
-  if (phase === 'stopped') return 'Live view paused. Resume when you’re ready.';
+  if (phase === 'connecting') return 'Connecting…';
+  if (phase === 'queued') return `Queued${position ? ` · ${position}` : ''}`;
+  if (phase === 'unavailable') return 'Snapshots only';
+  if (phase === 'stopped') return 'Paused';
   if (phase === 'error') {
-    if (reason === 'CAMERAS_DISABLED' || reason === 'PERMISSION_DENIED') return 'Camera access is no longer available.';
-    if (reason === 'CAMERA_RELAY_CHANGED') return 'The relay changed. Resume to reconnect.';
-    if (reason === 'CAMERA_VIEWER_LIMIT') return 'Close another camera viewer, then resume.';
-    return 'Live view interrupted. Showing the last image.';
+    if (reason === 'CAMERAS_DISABLED' || reason === 'PERMISSION_DENIED') return 'Camera access unavailable';
+    if (reason === 'CAMERA_RELAY_CHANGED') return 'Relay changed';
+    if (reason === 'CAMERA_VIEWER_LIMIT') return 'Close another viewer';
+    return 'Connection lost';
   }
   return undefined;
 }

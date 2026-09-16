@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CameraSnapshotHero } from '../../src/components/widgets/CameraWidget';
+import { WidgetCard } from '../../src/components/widgets/WidgetCard';
+import { ExpandedOverlay } from '../../src/components/shared/ExpandedOverlay';
+import { Video } from 'lucide-react';
 import { serverConnection } from '../../src/server/connection';
 import { setCameraSnapshotAccount } from '../../src/lib/camera-snapshot-cache';
 import type { CameraLiveEvent } from '../../src/lib/camera-live';
@@ -10,7 +13,9 @@ import '../../src/index.css';
 // unchanged; no account, physical camera, or private photograph is involved.
 setCameraSnapshotAccount('camera-live-browser-test');
 const canvas = document.createElement('canvas');
-canvas.width = 540; canvas.height = 960;
+const params = new URLSearchParams(location.search);
+canvas.width = params.has('landscape') ? 960 : 540;
+canvas.height = params.has('landscape') ? 540 : 960;
 const ctx = canvas.getContext('2d')!;
 ctx.fillStyle = '#497d88'; ctx.fillRect(0, 0, 540, 960);
 ctx.fillStyle = '#e8ad5c'; ctx.fillRect(20, 20, 500, 40); ctx.fillRect(20, 900, 500, 40);
@@ -23,7 +28,7 @@ const status = (id: string) => ({ watchId: id, streamId: viewers.get(id)?.access
 const frame = (watchId: string) => {
   const viewer = viewers.get(watchId);
   if (viewer?.state === 'streaming') emit({ type: 'camera_frame', watchId, streamId: viewer.accessory, accessoryId: viewer.accessory,
-    homeId: 'home', seq: ++seq, jpeg, width: 540, height: 960, capturedAt: new Date().toISOString() });
+    homeId: 'home', seq: ++seq, jpeg, width: canvas.width, height: canvas.height, capturedAt: new Date().toISOString() });
 };
 serverConnection.getState = () => ({ connectionState: 'connected' }) as ReturnType<typeof serverConnection.getState>;
 serverConnection.subscribe = () => () => {};
@@ -31,6 +36,8 @@ serverConnection.subscribeToBroadcasts = listener => { listeners.add(listener); 
 serverConnection.request = (async (action: string, payload: Record<string, unknown>) => {
   const id = payload.watchId as string;
   if (action === 'camera.live.start') {
+    if (params.get('phase') === 'paused') return { watchId: id, state: 'stopped' };
+    if (params.get('phase') === 'queued') return { watchId: id, state: 'queued', queuePosition: 2 };
     const distinct = new Set([...viewers.values()].filter(v => v.state === 'streaming').map(v => v.accessory));
     const accessory = payload.accessoryId as string;
     viewers.set(id, { accessory, state: distinct.has(accessory) || distinct.size < 2 ? 'streaming' : 'queued' });
@@ -46,7 +53,7 @@ serverConnection.request = (async (action: string, payload: Record<string, unkno
       }
     }
   } else if (action === 'camera.snapshot') {
-    return { jpeg, capturedAt: new Date().toISOString(), width: 540, height: 960, source: 'stream', mimeType: 'image/jpeg' };
+    return { jpeg, capturedAt: new Date().toISOString(), width: canvas.width, height: canvas.height, source: 'stream', mimeType: 'image/jpeg' };
   }
   return status(id);
 }) as typeof serverConnection.request;
@@ -62,4 +69,16 @@ function Fixture() {
     </section>)}
   </main>;
 }
-createRoot(document.getElementById('root')!).render(<Fixture />);
+function OverlayFixture() {
+  const [opened, setOpened] = useState(false);
+  const accessory = { id: 'camera-0', homeId: 'home', name: 'Front Door', services: [], isReachable: true, camera: { snapshot: true, stream: true } };
+  return <main style={{ padding: '55vh 24px 24px' }}>
+    <button onClick={() => setOpened(true)}>Open camera</button>
+    <ExpandedOverlay isExpanded={opened} onClose={() => setOpened(false)} bottomInset={Number(params.get('inset') ?? 0)}>
+      <WidgetCard title={accessory.name} subtitle="Doorbell camera · 96%" icon={<Video />} expanded isReachable
+        heroShape="block" heroStack onShare={() => {}}
+        hero={<CameraSnapshotHero accessory={accessory} expanded={opened} />} />
+    </ExpandedOverlay>
+  </main>;
+}
+createRoot(document.getElementById('root')!).render(params.has('overlay') ? <OverlayFixture /> : <Fixture />);

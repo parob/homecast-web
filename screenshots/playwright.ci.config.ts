@@ -10,6 +10,7 @@ export default defineConfig({
   testMatch: [
     'expanded-overlay.spec.ts',
     'camera-live.spec.ts',
+    'camera-viewer-fit.spec.ts',
     'camera-cache-reload.spec.ts',
     'camera-tile-layout.spec.ts',
     'automation-editor.spec.ts',

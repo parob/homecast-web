@@ -5,7 +5,7 @@ test('opened camera shows full-frame live video, queues the third and releases o
   const first = page.locator('[data-camera="0"]');
   const third = page.locator('[data-camera="2"]');
   await expect(first.getByText('Live · No audio')).toBeVisible();
-  await expect(third.getByText(/Waiting for a camera slot/)).toBeVisible();
+  await expect(third.getByText('Queued · 1')).toBeVisible();
   await expect(page.getByRole('switch')).toHaveCount(0);
   const image = first.getByAltText('Camera 1 live view');
   await expect(image).toBeVisible();
