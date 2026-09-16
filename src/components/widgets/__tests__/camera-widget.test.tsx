@@ -295,27 +295,19 @@ describe('camera controls', () => {
   });
 
   it.each([
-    ['homekit_camera_active', 'HomeKit camera access'],
-    ['0000021D-0000-1000-8000-0026BB765291', 'HomeKit camera access'],
-    ['camera_operating_mode_indicator', 'Status light'],
-    ['0000021B-0000-1000-8000-0026BB765291', 'Status light'],
-  ])('labels %s explicitly in the opened controls only', (type, label) => {
+    'homekit_camera_active', '0000021D-0000-1000-8000-0026BB765291',
+    'camera_operating_mode_indicator', '0000021B-0000-1000-8000-0026BB765291',
+  ])('leaves writable %s settings to Apple Home even in the opened viewer', (type) => {
     camerasEnabled = false;
-    render(<CameraWidget {...baseProps} accessory={withControl(type, true)} expanded />);
-    fireEvent.click(screen.getByRole('switch', { name: label }));
-    expect(baseProps.onToggle).toHaveBeenCalledWith('CAM-1', type, true);
-    expect(screen.queryByText(/^(On|Off)$/)).toBeNull();
-  });
-
-  it('keeps doorbell status light and HomeKit access controls distinct', () => {
-    camerasEnabled = false;
-    const accessory = withControl('camera_operating_mode_indicator', false);
-    accessory.services[0].characteristics.push({ id: 'access', characteristicType: 'homekit_camera_active', value: true, isReadable: true, isWritable: true });
-    render(<DoorbellWidget {...baseProps} accessory={accessory} expanded />);
-    fireEvent.click(screen.getByRole('switch', { name: 'Status light' }));
-    expect(baseProps.onToggle).toHaveBeenLastCalledWith('CAM-1', 'camera_operating_mode_indicator', false);
-    fireEvent.click(screen.getByRole('switch', { name: 'HomeKit camera access' }));
-    expect(baseProps.onToggle).toHaveBeenLastCalledWith('CAM-1', 'homekit_camera_active', true);
+    for (const Component of [CameraWidget, DoorbellWidget]) {
+      for (const value of [true, false]) {
+        const { unmount } = render(<Component {...baseProps} accessory={withControl(type, value)} expanded />);
+        expect(screen.queryByRole('switch')).toBeNull();
+        expect(screen.queryByText(/^(On|Off|Status light|HomeKit camera access)$/)).toBeNull();
+        expect(baseProps.onToggle).not.toHaveBeenCalled();
+        unmount();
+      }
+    }
   });
 
   it.each([undefined, null, ''])('does not guess an unknown status-light setting (%s)', (value) => {
@@ -330,6 +322,6 @@ describe('camera controls', () => {
     expect(screen.queryByRole('switch')).toBeNull();
     unmount();
     render(<CameraWidget {...baseProps} accessory={{ ...withControl('camera_operating_mode_indicator', false), isReachable: false }} expanded />);
-    expect(screen.getByRole('switch', { name: 'Status light' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByRole('switch')).toBeNull();
   });
 });
