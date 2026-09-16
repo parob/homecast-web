@@ -72,6 +72,14 @@ describe('localIdentity — remembering a match across restarts', () => {
     expect(identityFrom(localIdentity.counts())).toMatchObject({ identityState: 'partial' });
   });
 
+  it('emits stable IDs in the same case as the cloud, including old persisted maps', () => {
+    seed('case-test', 1, 1);
+    localIdentity.load('case-test');
+    expect(localIdentity.toStable('aaaaaaaa-0000-0000-0000-000000000001')).toBe('HC-1');
+    expect(localIdentity.toLivePayload({ accessoryId: 'hc-1' }))
+      .toEqual({ accessoryId: 'AAAAAAAA-0000-0000-0000-000000000001' });
+  });
+
   it('adopts the last signed-in user before auth has answered', async () => {
     // The launch this exists for is the offline one: `getMe()` never resolves,
     // so `AuthContext` never calls `load()`, so without this Local Mode comes

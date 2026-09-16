@@ -23,6 +23,7 @@ import {
 import { setRelayWritePublisher, getRelayWritePublisher } from '../relay/relay-write';
 import { HomeKitServiceGroupResolver } from '../automation/service-group-resolver';
 import { localIdentity } from './local-identity';
+import { revalidateHomeKitCache } from '../hooks/useHomeKitData';
 
 const OVERRIDE_KEY = 'homecast-local-mode';
 const TICK_MS = 1_000;
@@ -239,7 +240,8 @@ class LocalModeController implements LocalModeRouter {
       void this.syncIdentity();
     }
 
-    if (d.active !== this.state.active) {
+    const sourceChanged = d.active !== this.state.active;
+    if (sourceChanged) {
       if (d.active) this.engage(); else this.disengage();
     } else if (d.active) {
       // Self-healing. `stopRelayDuties` nulls the publisher unconditionally, so
@@ -257,6 +259,9 @@ class LocalModeController implements LocalModeRouter {
       status: this.status,
       blocked: d.active ? null : this.describeBlocker(inputs),
     });
+    // Reconnect happens before the 20s recovery hold expires. Only now do
+    // reads use the new source; refreshing on reconnect alone reads local again.
+    if (sourceChanged) revalidateHomeKitCache();
   }
 
   /**
@@ -426,7 +431,17 @@ class LocalModeController implements LocalModeRouter {
     // returns null while a perfectly good cached map is still loaded, and the
     // status the user sees should describe the map they actually have.
     this.emit({ ...this.state, ...identityFrom(localIdentity.counts()) });
+    if (localIdentity.revision !== this.observedIdentityRevision) {
+      // Warm-up and engage can await the same sync. Publish its map change once.
+      this.observedIdentityRevision = localIdentity.revision;
+      if (this.state.active) {
+        clearCommunityCache();
+        revalidateHomeKitCache();
+      }
+    }
   }
+
+  private observedIdentityRevision = localIdentity.revision;
 
   // ── routing ───────────────────────────────────────────────────────────────
 
