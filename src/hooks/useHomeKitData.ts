@@ -310,13 +310,6 @@ class DataCache {
   }
 
   /**
-   * Check if there's already a pending request for this key
-   */
-  hasPendingRequest(key: string): boolean {
-    return this.pendingRequests.get(key)?.epoch === this.epochFor(key);
-  }
-
-  /**
    * Get or create a pending request. Returns existing promise if one exists,
    * otherwise creates a new one using the fetcher.
    */
@@ -523,11 +516,14 @@ function useCachedData<T>(
   });
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async (force = false, _isRetry = false) => {
     if (skip) return;
+    const generation = readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     // Reset retry state on forced refetch (e.g., cache invalidation, manual refresh)
     // But NOT on retries — let the counter accumulate so retries actually stop at MAX_RETRIES
@@ -554,12 +550,6 @@ function useCachedData<T>(
     // state until you pull to refresh".
     if (hasCachedData && !isStale && !force && !cache.needsRevalidate(cacheKey)) return;
 
-    // If there's already a pending request (from another hook instance), don't start another
-    // unless we're forcing a refetch
-    if (!force && cache.hasPendingRequest(cacheKey)) {
-      return;
-    }
-
     // Only show loading spinner and clear error on first attempt.
     // During retries, keep the error visible so the UI doesn't flash.
     if (retryCountRef.current === 0) {
@@ -571,14 +561,15 @@ function useCachedData<T>(
 
     let willRetry = false;
     try {
-      // Use getOrFetch to deduplicate requests across hook instances
+      // Every consumer awaits the shared promise so each can settle its own
+      // loading/error state. getOrFetch deduplicates the actual request.
       await cache.getOrFetch(cacheKey, fetcher);
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(null); // Clear error on successful retry
         retryCountRef.current = 0; // Reset on success
       }
     } catch (err) {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         // Retry on failure if we haven't exceeded max retries
         if (retryCountRef.current < MAX_RETRIES) {
@@ -586,7 +577,7 @@ function useCachedData<T>(
           willRetry = true;
           console.log(`[DataCache] Fetch failed for ${cacheKey}, scheduling retry ${retryCountRef.current}/${MAX_RETRIES}`);
           retryTimerRef.current = setTimeout(() => {
-            if (mountedRef.current) {
+            if (isCurrent()) {
               fetchData(true, true);
             }
           }, RETRY_DELAY);
@@ -597,7 +588,7 @@ function useCachedData<T>(
       // first-load failure (slow big-home, relay reconnecting) shows the
       // loading spinner instead of flashing "Unable to load…". The error only
       // surfaces once retries are exhausted (or when stale data is shown).
-      if (mountedRef.current && !willRetry) {
+      if (isCurrent() && !willRetry) {
         setLoading(false);
       }
     }
@@ -637,16 +628,20 @@ function useCachedData<T>(
   // Fetch on mount or when dependencies change
   useEffect(() => {
     mountedRef.current = true;
+    readGenerationRef.current++;
     retryCountRef.current = 0; // Reset retries on new fetch cycle
+    setError(null);
+    setLoading(!skip && cache.get<T>(cacheKey) === null);
     fetchData();
     return () => {
       mountedRef.current = false;
+      readGenerationRef.current++;
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
     };
-  }, [fetchData]);
+  }, [fetchData, cacheKey, skip]);
 
   // Get data from cache, falling back to previous data during invalidation/refetch
   const previousDataRef = useRef<{ key: string; data: T | null }>({ key: '', data: null });
@@ -780,6 +775,7 @@ export function useAccessoriesForHomes(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
 
   // Create stable key for home IDs
   const homeIdsKey = homeIds.slice().sort().join(',');
@@ -803,6 +799,8 @@ export function useAccessoriesForHomes(
   // Fetch accessories for each home and store in cache
   useEffect(() => {
     mountedRef.current = true;
+    const generation = ++readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     if (options.skip || homeIds.length === 0) {
       setLoading(false);
@@ -847,11 +845,11 @@ export function useAccessoriesForHomes(
         .catch(() => [] as HomeKitAccessory[])
       )
     ).then(() => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setLoading(false);
       }
     }).catch(err => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       }
@@ -915,6 +913,7 @@ export function useAccessoriesForHomes(
     error,
     refetch: async () => {
       // Force refetch all homes
+      const generation = readGenerationRef.current;
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
@@ -925,7 +924,7 @@ export function useAccessoriesForHomes(
           .catch(() => {})
         )
       );
-      setLoading(false);
+      if (mountedRef.current && generation === readGenerationRef.current) setLoading(false);
     },
   };
 }
@@ -962,6 +961,7 @@ export function useAllServiceGroups(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
 
   const homeIdsKey = homeIds.slice().sort().join(',');
   // Re-runs the fan-out below when a revalidation is requested (socket
@@ -981,6 +981,8 @@ export function useAllServiceGroups(
 
   useEffect(() => {
     mountedRef.current = true;
+    const generation = ++readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     if (options.skip || homeIds.length === 0) {
       setLoading(false);
@@ -1004,9 +1006,9 @@ export function useAllServiceGroups(
         ).catch(() => {})
       )
     ).then(() => {
-      if (mountedRef.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }).catch(err => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       }
@@ -1053,6 +1055,7 @@ export function useAllServiceGroups(
     loading,
     error,
     refetch: async () => {
+      const generation = readGenerationRef.current;
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
@@ -1062,7 +1065,7 @@ export function useAllServiceGroups(
             .catch(() => {})
         )
       );
-      setLoading(false);
+      if (mountedRef.current && generation === readGenerationRef.current) setLoading(false);
     },
   };
 }
