@@ -13,13 +13,14 @@ import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { getHomeServing, getThisDevice } from '@/server/home-serving';
 
 /** The dashboard's status model, rendered as a readable row on other screens. */
-export function HomeConnectionSummary({ home, surface = 'home_summary' }: {
+export function HomeConnectionSummary({ home, surface = 'home_summary', scope = 'device' }: {
   home: { id: string; name: string; isCloudManaged?: boolean };
   surface?: string;
+  scope?: 'device' | 'cloud';
 }) {
   const { user } = useAuth();
   const { quality } = useWebSocket();
-  const serving = useHomeServing(home.id);
+  const serving = useHomeServing(home.id, scope);
   const local = useLocalMode(home.id);
   const [, tick] = useState(0);
   const deadline = serving?.state === 'waiting' ? serving.graceEndsAt : null;
@@ -28,19 +29,19 @@ export function HomeConnectionSummary({ home, surface = 'home_summary' }: {
     const timer = setInterval(() => tick(n => n + 1), 1000);
     return () => clearInterval(timer);
   }, [deadline]);
-  const community = isCommunity && isRelayCapable();
+  const community = scope === 'device' && isCommunity && isRelayCapable();
   const input = {
     quality: community ? 'good' as const : quality, serving,
     relayServing: getHomeServing(home.id), thisDevice: getThisDevice(),
-    localReason: local.reason, unmapped: local.identityState === 'unmapped',
+    localReason: scope === 'device' ? local.reason : null, unmapped: scope === 'device' && local.identityState === 'unmapped',
     // The plan survives locally answered home lists, whose flags may be absent.
     managed: user?.accountType === 'cloud' || user?.accountType === 'managed' || home.isCloudManaged === true,
     community, relayEnabled: isRelayEnabled(), homeSelected: true, reconnected: false,
   };
   const presentation = statusPresentation(input);
   const answer = buildAnswerCard({ ...input, homeName: home.name, deviceNoun: thisDeviceNoun(), rtt: null });
-  useStatusLog(surface, { homeId: home.id, quality: input.quality, serving,
-    relayServing: input.relayServing, localReason: local.reason,
+  useStatusLog(surface, { homeId: home.id, scope, quality: input.quality, serving,
+    relayServing: input.relayServing, localReason: input.localReason,
     label: presentation.label, verdict: answer.verdict, because: answer.because, colour: presentation.dotClass });
   return <div className="flex items-start gap-2 text-xs text-muted-foreground">
     <span className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', presentation.dotClass, presentation.pulse && 'animate-pulse')} />
