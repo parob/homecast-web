@@ -28,7 +28,7 @@ async function open(page: Page, inner = false, initialScroll = 0) {
 }
 
 for (const inner of [false, true]) {
-  test(`locks the ${inner ? 'shell' : 'document'} behind a scrollable widget and restores it on close`, async ({ page }) => {
+  test(`a scrollable widget scrolls itself and stops at its edge; a wheel over the ${inner ? 'shell' : 'document'} scrolls it and dismisses the widget`, async ({ page }) => {
     await open(page, inner, 100);
     const initial = await pageScroll(page);
     expect(initial).toEqual(inner ? { document: 0, inner: 100 } : { document: 100, inner: 0 });
@@ -37,22 +37,23 @@ for (const inner of [false, true]) {
     await content.hover({ position: { x: 50, y: 150 } });
     await page.mouse.wheel(0, 350);
     await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    // At the panel's end a wheel does not chain into the page.
     await scroller.evaluate(el => { el.scrollTop = el.scrollHeight; });
     await page.mouse.wheel(0, 800);
     await page.waitForTimeout(300);
     expect(await pageScroll(page)).toEqual(initial);
-    await page.mouse.move(5, 180);
-    await page.mouse.wheel(0, 500);
-    await page.waitForTimeout(300);
-    expect(await pageScroll(page)).toEqual(initial);
     await expect(panels(page)).toHaveCount(1);
-    await scroller.evaluate(el => { el.scrollTop = 0; });
-    await page.getByRole('button', { name: 'Close widget', exact: true }).click();
-    await expect(panels(page)).toHaveCount(0);
-    expect(await pageScroll(page)).toEqual(initial);
+    // A wheel over the page is the page's, and the panel goes. The scrim is
+    // portalled to the body, so in a browser the document scrolls under it;
+    // an inner shell scroller is not the scrim's ancestor and stays put.
     await page.mouse.move(5, 180);
     await page.mouse.wheel(0, 500);
-    await expect.poll(async () => { const p = await pageScroll(page); return p.document + p.inner; }).toBeGreaterThan(initial.document + initial.inner);
+    await expect(panels(page)).toHaveCount(0);
+    if (inner) {
+      expect(await pageScroll(page)).toEqual(initial);
+    } else {
+      await expect.poll(async () => { const p = await pageScroll(page); return p.document; }).toBeGreaterThan(initial.document);
+    }
   });
 }
 
@@ -96,18 +97,21 @@ test('keyboard scroll stays off the background and keyboard menu activation clos
   await expect(panels(page)).toHaveCount(0);
 });
 
-test('touch scrolling cannot move the page behind a widget', async ({ page }, testInfo) => {
+test('a touch drag outside the widget scrolls the document and dismisses it; a tap dismisses it', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch viewport only');
-  await open(page, true);
+  await open(page, false);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 5, y: 650 }] });
   for (let y = 620; y >= 350; y -= 30) {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 5, y }] });
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  expect(await pageScroll(page)).toEqual({ document: 0, inner: 0 });
-  await expect(panels(page)).toHaveCount(1);
+  await expect(panels(page)).toHaveCount(0);
+  await expect.poll(async () => (await pageScroll(page)).document).toBeGreaterThan(0);
   await cdp.detach();
+  await page.getByRole('button', { name: 'Open widget', exact: true }).scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Open widget', exact: true }).click();
+  await expect(panels(page)).toHaveCount(1);
   await page.touchscreen.tap(5, 180);
   await expect(panels(page)).toHaveCount(0);
 });
