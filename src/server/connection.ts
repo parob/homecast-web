@@ -505,6 +505,10 @@ const SUBSCRIPTION_TTL = 300; // 5 minutes
 const SUBSCRIPTION_RENEWAL_CHECK_INTERVAL = 60000; // Check every minute
 const SUBSCRIPTION_RENEWAL_THRESHOLD = 150000; // Renew when <150s remaining
 
+function subscriptionKey(scope: SubscriptionScope): string {
+  return `${scope.type}:${scope.id.toLowerCase()}`;
+}
+
 class ServerConnection {
   private referenceRecoveryAt = new Map<string, number>();
   private referenceRecoveryPending = new Set<string>();
@@ -549,7 +553,11 @@ class ServerConnection {
   // Subscription management
   private activeSubscriptions: Map<string, { scope: SubscriptionScope; expiresAt: number }> = new Map();
   private subscriptionRenewalTimer: ReturnType<typeof setInterval> | null = null;
-  private pendingResubscription: SubscriptionScope[] = [];
+  // Desired scopes survive a failed subscribe. Active scopes are only the
+  // leases the current connection has actually confirmed.
+  private desiredSubscriptions = new Map<string, SubscriptionScope>();
+  private subscriptionRequests = new Map<string, symbol>();
+  private subscriptionGeneration = 0;
 
   /**
    * Check if connection should be activated.
@@ -798,6 +806,8 @@ class ServerConnection {
               updates.relayStatus = null;
               updates.relayRoles = null;
               this.activeSubscriptions.clear();
+              this.subscriptionRequests.clear();
+              this.subscriptionGeneration++;
               this.stopSubscriptionRenewal();
             }
             if (connectionState === 'connected') {
@@ -849,21 +859,16 @@ class ServerConnection {
             // Handle subscription_invalidated specially
             if (message.type === 'subscription_invalidated') {
               const invalidated = message as SubscriptionInvalidated;
-              const key = `${invalidated.scope.type}:${invalidated.scope.id}`;
-              this.activeSubscriptions.delete(key);
-              // Also remove from pending resubscription
-              this.pendingResubscription = this.pendingResubscription.filter(
-                s => !(s.type === invalidated.scope.type && s.id === invalidated.scope.id)
-              );
+              const key = subscriptionKey(invalidated.scope);
+              this.forgetSubscriptions([invalidated.scope]);
               if (import.meta.env.DEV) console.log(`[ServerConnection] Subscription invalidated: ${key}, reason: ${invalidated.reason}`);
             }
             this.notifyBroadcastListeners(message);
           },
           onConnected: () => {
             // Re-subscribe to previous scopes on reconnect
-            if (this.pendingResubscription.length > 0) {
-              if (import.meta.env.DEV) console.log(`[ServerConnection] Reconnected - re-subscribing to ${this.pendingResubscription.length} scope(s)`);
-              this.subscribeToScopes([...this.pendingResubscription]);
+            if (this.desiredSubscriptions.size > 0) {
+              void this.subscribeToScopes([...this.desiredSubscriptions.values()]);
             }
           },
           onRelayStatusChange: (isActive) => {
@@ -900,7 +905,9 @@ class ServerConnection {
     // Stop subscription renewal and clear subscriptions
     this.stopSubscriptionRenewal();
     this.activeSubscriptions.clear();
-    this.pendingResubscription = [];
+    this.desiredSubscriptions.clear();
+    this.subscriptionRequests.clear();
+    this.subscriptionGeneration++;
 
     if (this.websocket) {
       this.websocket.disconnect();
@@ -1012,108 +1019,73 @@ class ServerConnection {
    * Only used in browser mode - relay mode is the source of events.
    */
   async subscribeToScopes(scopes: SubscriptionScope[]): Promise<void> {
-    // Only subscribe if actually connected
-    if (!this.websocket || this.state.connectionState !== 'connected') {
-      // Still track for re-subscription on reconnect
-      for (const scope of scopes) {
-        if (!this.pendingResubscription.some(s => s.type === scope.type && s.id === scope.id)) {
-          this.pendingResubscription.push(scope);
-        }
+    // Register intent before attempting I/O. A transient failure on the first
+    // attempt used to leave nothing for either renewal or reconnect to retry.
+    for (const scope of scopes) {
+      const key = subscriptionKey(scope);
+      if (!this.desiredSubscriptions.has(key)) {
+        this.desiredSubscriptions.set(key, { ...scope });
       }
-      if (import.meta.env.DEV) console.log(`[ServerConnection] Not connected - queued ${scopes.length} scope(s) for subscription on reconnect`);
-      return;
     }
+    if (!this.websocket || this.state.connectionState !== 'connected') return;
+    if (this.desiredSubscriptions.size > 0) this.startSubscriptionRenewal();
 
-    // Filter out scopes that are already actively subscribed (not expired)
     const now = Date.now();
-    const newScopes = scopes.filter(scope => {
-      const key = `${scope.type}:${scope.id}`;
+    const requested = new Map<string, SubscriptionScope>();
+    for (const scope of scopes) {
+      const key = subscriptionKey(scope);
       const existing = this.activeSubscriptions.get(key);
-      // Only subscribe if not already subscribed or subscription is expiring soon
-      return !existing || existing.expiresAt - now < SUBSCRIPTION_RENEWAL_THRESHOLD;
-    });
-
-    if (newScopes.length === 0) {
-      // All scopes already subscribed - just ensure they're tracked for reconnect
-      for (const scope of scopes) {
-        if (!this.pendingResubscription.some(s => s.type === scope.type && s.id === scope.id)) {
-          this.pendingResubscription.push(scope);
-        }
+      if (!this.subscriptionRequests.has(key) &&
+          (!existing || existing.expiresAt - now < SUBSCRIPTION_RENEWAL_THRESHOLD)) {
+        requested.set(key, this.desiredSubscriptions.get(key)!);
       }
-      return;
     }
+    if (requested.size === 0) return;
 
+    const websocket = this.websocket;
+    const generation = this.subscriptionGeneration;
+    const request = Symbol('subscribe');
+    for (const key of requested.keys()) this.subscriptionRequests.set(key, request);
     try {
-      const result = await this.websocket.subscribe(newScopes, SUBSCRIPTION_TTL);
-
-      // Track subscriptions using new response format
+      const result = await websocket.subscribe([...requested.values()], SUBSCRIPTION_TTL);
+      if (this.websocket !== websocket || generation !== this.subscriptionGeneration) return;
       for (const sub of result.subscriptions) {
-        const key = `${sub.type}:${sub.id}`;
+        const key = subscriptionKey(sub);
+        const scope = requested.get(key);
+        // An unsubscribe, a new visit, or a new connection supersedes the old
+        // request. Its late acknowledgement cannot resurrect the old lease.
+        if (!scope || this.desiredSubscriptions.get(key) !== scope ||
+            this.subscriptionRequests.get(key) !== request) continue;
         this.activeSubscriptions.set(key, {
-          scope: { type: sub.type, id: sub.id },
+          scope,
           expiresAt: sub.expiresAt ?? Date.now() + SUBSCRIPTION_TTL * 1000,
         });
       }
-
-      // Also track for re-subscription on reconnect
-      for (const scope of scopes) {
-        const key = `${scope.type}:${scope.id}`;
-        if (!this.pendingResubscription.some(s => s.type === scope.type && s.id === scope.id)) {
-          this.pendingResubscription.push(scope);
-        }
-      }
-
-      // Start renewal timer if not already running
-      this.startSubscriptionRenewal();
-
-      const firstExpiry = result.subscriptions[0]?.expiresAt;
-      if (firstExpiry) {
-        if (import.meta.env.DEV) console.log(`[ServerConnection] Subscribed to ${newScopes.length} scope(s), expires at ${new Date(firstExpiry).toISOString()}`);
-      } else {
-        if (import.meta.env.DEV) console.log(`[ServerConnection] Subscribed to ${newScopes.length} scope(s)`);
-      }
     } catch (error) {
       console.error('[ServerConnection] Subscribe to scopes failed:', error);
+    } finally {
+      for (const key of requested.keys()) {
+        if (this.subscriptionRequests.get(key) === request) this.subscriptionRequests.delete(key);
+      }
     }
   }
 
-  /**
-   * Unsubscribe from updates for specific scopes.
-   */
-  async unsubscribeFromScopes(scopes: SubscriptionScope[]): Promise<void> {
-    // Only try to unsubscribe if we're actually connected
-    // When disconnected/reconnecting, server has already cleared subscriptions
-    if (!this.websocket || this.state.connectionState !== 'connected') {
-      // Still clean up local tracking
-      for (const scope of scopes) {
-        const key = `${scope.type}:${scope.id}`;
-        this.activeSubscriptions.delete(key);
-        this.pendingResubscription = this.pendingResubscription.filter(
-          s => !(s.type === scope.type && s.id === scope.id)
-        );
-      }
-      return;
+  private forgetSubscriptions(scopes: SubscriptionScope[]): void {
+    for (const scope of scopes) {
+      const key = subscriptionKey(scope);
+      this.desiredSubscriptions.delete(key);
+      this.activeSubscriptions.delete(key);
+      this.subscriptionRequests.delete(key);
     }
+    if (this.desiredSubscriptions.size === 0) this.stopSubscriptionRenewal();
+  }
 
+  /** Stop wanting these scopes immediately, even if the server cannot answer. */
+  async unsubscribeFromScopes(scopes: SubscriptionScope[]): Promise<void> {
+    this.forgetSubscriptions(scopes);
+    if (!this.websocket || this.state.connectionState !== 'connected') return;
     try {
       await this.websocket.unsubscribe(scopes);
-
-      // Remove from tracking
-      for (const scope of scopes) {
-        const key = `${scope.type}:${scope.id}`;
-        this.activeSubscriptions.delete(key);
-        // Also remove from pending resubscription
-        this.pendingResubscription = this.pendingResubscription.filter(
-          s => !(s.type === scope.type && s.id === scope.id)
-        );
-      }
-
-      // Stop renewal timer if no active subscriptions
-      if (this.activeSubscriptions.size === 0) {
-        this.stopSubscriptionRenewal();
-      }
-
-      if (import.meta.env.DEV) console.log(`[ServerConnection] Unsubscribed from ${scopes.length} scope(s)`);
     } catch (error) {
       console.error('[ServerConnection] Unsubscribe from scopes failed:', error);
     }
@@ -1171,34 +1143,9 @@ class ServerConnection {
   }
 
   private async renewExpiringSubscriptions(): Promise<void> {
-    const now = Date.now();
-    const toRenew: SubscriptionScope[] = [];
-
-    for (const [, sub] of this.activeSubscriptions) {
-      const remaining = sub.expiresAt - now;
-      if (remaining < SUBSCRIPTION_RENEWAL_THRESHOLD) {
-        toRenew.push(sub.scope);
-      }
-    }
-
-    if (toRenew.length > 0 && this.websocket) {
-      try {
-        const result = await this.websocket.subscribe(toRenew, SUBSCRIPTION_TTL);
-
-        // Update expiration times using new response format
-        for (const sub of result.subscriptions) {
-          const key = `${sub.type}:${sub.id}`;
-          const existing = this.activeSubscriptions.get(key);
-          if (existing && sub.expiresAt) {
-            existing.expiresAt = sub.expiresAt;
-          }
-        }
-
-        if (import.meta.env.DEV) console.log(`[ServerConnection] Renewed ${toRenew.length} subscription(s)`);
-      } catch (error) {
-        console.error('[ServerConnection] Subscription renewal failed:', error);
-      }
-    }
+    // Reconcile desired scopes with confirmed leases. This retries missing
+    // subscriptions as well as renewing the ones whose expiry is approaching.
+    await this.subscribeToScopes([...this.desiredSubscriptions.values()]);
   }
 
   private updateState(updates: Partial<ServerConnectionState>): void {
