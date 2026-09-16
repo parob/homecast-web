@@ -30,6 +30,13 @@ import { useStatusLog } from '@/hooks/useStatusLog';
 interface CookieUser { id: string; email: string; name: string; accountType?: string }
 interface CookieHome { id: string; hcId?: string | null; serving?: HomeServing; name: string; role?: string; mqttEnabled?: boolean; ownerEmail?: string | null }
 
+// The server's topic suffix uses the stable ID, so equal names stay distinct.
+function homeSlug(home: Pick<CookieHome, 'id' | 'name'>): string {
+  const base = home.name.toLowerCase().replace(/\s+/g, '-').replace(/'/g, '').replace(/"/g, '').replace(/[^a-z0-9-]/g, '');
+  const suffix = home.id.replace(/-/g, '').slice(0, 4).toLowerCase();
+  return `${base}-${suffix}`;
+}
+
 export default function MQTTBrowser() {
   // On mqtt.* the only auth signal is the cross-subdomain cookie. If it's
   // not there we can't read localStorage either (different origin), so we
@@ -259,6 +266,7 @@ export default function MQTTBrowser() {
   }, [cookieHomes]);
   const managed = user?.accountType === 'cloud' || user?.accountType === 'managed';
   const selectedHome = homes.find(home => home.id === infoHomeId);
+  const selectedHomeSlug = selectedHome ? homeSlug(selectedHome) : null;
   const selectedServing = useHomeServing(selectedHome?.id, 'cloud');
   useStatusLog('mqtt_browser_home', { homeId: selectedHome?.id ?? null, serving: selectedServing });
 
@@ -278,18 +286,6 @@ export default function MQTTBrowser() {
     }
     return { topicCountByHome: counts, roomsByHome: Object.fromEntries(Object.entries(rooms).map(([k, v]) => [k, Array.from(v).sort()])) };
   }, [messages]);
-
-  // Build the MQTT slug for a home from its id + name — must match the
-  // server's _make_slug (name slugified + '-' + first 4 hex of UUID).
-  // Deriving from the home record (not from received topics) means the
-  // filter still works for homes that haven't published a message yet.
-  const homeSlugForName = useCallback((name: string) => {
-    const home = homes.find(h => h.name === name);
-    if (!home) return null;
-    const base = name.toLowerCase().replace(/\s+/g, '-').replace(/'/g, '').replace(/"/g, '').replace(/[^a-z0-9-]/g, '');
-    const suffix = home.id.replace(/-/g, '').slice(0, 4).toLowerCase();
-    return `${base}-${suffix}`;
-  }, [homes]);
 
   // Redirect off the mqtt.* domain for the cookie handshake before we
   // start loading mqtt.js or touching the broker.
@@ -482,8 +478,8 @@ export default function MQTTBrowser() {
   // Map a topic's home-slug (parts[1]) back to the CookieHome record by
   // comparing against each home's derived slug — same format the server uses.
   const homeForSlug = useCallback((slug: string): CookieHome | undefined => {
-    return homes.find(h => homeSlugForName(h.name) === slug);
-  }, [homes, homeSlugForName]);
+    return homes.find(home => homeSlug(home) === slug);
+  }, [homes]);
 
   // In mock mode, "publishes" just mutate local state so the UI reacts the
   // same way it would when a retained message comes back over MQTT. We mirror
@@ -699,7 +695,7 @@ export default function MQTTBrowser() {
             <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto min-w-0 max-w-full">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium mr-0.5 shrink-0">Homes</span>
               {homes.map(home => {
-                const slug = homeSlugForName(home.name);
+                const slug = homeSlug(home);
                 const count = slug ? topicCountByHome[slug] ?? 0 : 0;
                 const relay = homeRelayStatus(home.name, getHomeServing(home.id), managed);
                 const tone = relay.tone;
@@ -840,9 +836,9 @@ export default function MQTTBrowser() {
         onOpenChange={(o) => { if (!o) setInfoHomeId(null); }}
         home={selectedHome ?? null}
         managed={managed}
-        slug={infoHomeId ? homeSlugForName(selectedHome?.name ?? '') : null}
-        topicCount={(infoHomeId ? topicCountByHome[homeSlugForName(selectedHome?.name ?? '') ?? ''] : 0) ?? 0}
-        roomCount={(infoHomeId ? roomsByHome[homeSlugForName(selectedHome?.name ?? '') ?? ''] : [])?.length ?? 0}
+        slug={selectedHomeSlug}
+        topicCount={topicCountByHome[selectedHomeSlug ?? ''] ?? 0}
+        roomCount={roomsByHome[selectedHomeSlug ?? '']?.length ?? 0}
       />
       </>
     </div>
