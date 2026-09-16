@@ -7,23 +7,30 @@
  * header row is 80px and centres its controls at 40px, so the two only line up
  * for a toast exactly 48px tall — and the one-line pill is not. It rides a few
  * pixels high, which is invisible until a toast is drawn beside a button, as it
- * is over Edit Layout's bar (burger on the left, Done on the right).
+ * is over Edit Layout's bar, beside Done.
  *
  * Only a real browser can show this: the offset is a `calc()` resolved against
  * a rendered toast's own height, and jsdom has no layout to resolve it against.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks } from './mocks';
+import { setupMocks, waitForDashboard } from './mocks';
 import { HOME_ID } from './fixtures';
 
-const headerBurger = (page: Page) => page.locator('[data-tour="sidebar-menu"]');
-const editBarBurger = (page: Page) =>
-  page.locator('[data-testid="edit-layout-bar"] button[aria-label="Open menu"]');
+/**
+ * A control on the header row, to measure the row's centre-line against.
+ *
+ * This was the ☰ until `bc633c8` retired it on mobile web — the home name in
+ * the heading carries that menu now — so it no longer renders in any browser
+ * (parob/homecast-web#133). The ⋮ sits in the same cluster on the same row at
+ * the same height, which is all this file ever wanted from it: what is under
+ * test is where the toast lands relative to the row, not which glyph is there.
+ */
+const headerControl = (page: Page) => page.locator('[data-tour="header-menu"]');
 const doneButton = (page: Page) =>
   page.locator('[data-testid="edit-layout-bar"] button', { hasText: 'Done' });
 const toastPill = (page: Page) => page.locator('[data-sonner-toast]');
 
-async function centreY(locator: ReturnType<typeof headerBurger>) {
+async function centreY(locator: ReturnType<typeof headerControl>) {
   const box = await locator.boundingBox();
   if (!box) throw new Error('element has no box');
   return box.y + box.height / 2;
@@ -50,15 +57,15 @@ test.describe('Toast alignment', () => {
 
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
-    await expect(headerBurger(page)).toBeVisible({ timeout: 20000 });
+    await waitForDashboard(page);
 
-    const burger = await centreY(headerBurger(page));
+    const control = await centreY(headerControl(page));
     await raiseToast(page, 'Sent as #36. Thank you.');
     const toast = await centreY(toastPill(page));
 
     expect(
-      Math.abs(toast - burger),
-      `toast centre is ${(burger - toast).toFixed(1)}px above the menu button's`,
+      Math.abs(toast - control),
+      `toast centre is ${(control - toast).toFixed(1)}px above the header control's`,
     ).toBeLessThanOrEqual(1);
   });
 
@@ -67,22 +74,21 @@ test.describe('Toast alignment', () => {
 
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
-    await expect(headerBurger(page)).toBeVisible({ timeout: 20000 });
+    await waitForDashboard(page);
 
     await page.locator('[data-tour="header-menu"]').click();
     await page.getByRole('menuitem', { name: 'Edit Layout' }).click();
-    await expect(editBarBurger(page)).toBeVisible();
+    await expect(doneButton(page)).toBeVisible();
     await page.waitForTimeout(500);
 
-    const burger = await centreY(editBarBurger(page));
+    // Done is the only control left on this bar to measure against: the ☰ it
+    // used to draw on the left went with the header's at `bc633c8`
+    // (parob/homecast-web#133). One end of the row still pins the centre-line,
+    // which is what the offset is being judged on.
     const done = await centreY(doneButton(page));
     await raiseToast(page, 'Sent as #36. Thank you.');
     const toast = await centreY(toastPill(page));
 
-    expect(
-      Math.abs(toast - burger),
-      `toast centre is ${(burger - toast).toFixed(1)}px above the menu button's`,
-    ).toBeLessThanOrEqual(1);
     expect(
       Math.abs(toast - done),
       `toast centre is ${(done - toast).toFixed(1)}px above Done's`,
@@ -125,20 +131,20 @@ test.describe('Toast alignment', () => {
     });
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
-    await expect(headerBurger(page)).toBeVisible({ timeout: 20000 });
+    await waitForDashboard(page);
 
     // Both measured after the toast has landed. The header itself moves once
-    // the app works out it is in a native shell, so a burger read at first
+    // the app works out it is in a native shell, so a control read at first
     // paint is read from a layout that no longer exists.
     await raiseToast(page, 'Sent as #36. Thank you.');
-    const burger = await centreY(headerBurger(page));
+    const control = await centreY(headerControl(page));
     const toast = await centreY(toastPill(page));
     const pill = await toastPill(page).boundingBox();
 
     expect(pill!.y, `pill top is ${pill!.y.toFixed(1)}px — inside the 59px status bar`).toBeGreaterThanOrEqual(59);
     expect(
-      Math.abs(toast - burger),
-      `toast centre is ${(burger - toast).toFixed(1)}px above the menu button's`,
+      Math.abs(toast - control),
+      `toast centre is ${(control - toast).toFixed(1)}px above the header control's`,
     ).toBeLessThanOrEqual(1);
   });
 
@@ -150,26 +156,26 @@ test.describe('Toast alignment', () => {
    * on a phone. Whatever the toaster is anchored to has to satisfy both.
    */
   test('a one-line toast is centred on the Mac app’s shorter row', async ({ page }, testInfo) => {
-    // Runs on the phone project because the burger is `md:hidden` and there is
+    // Runs on the phone project because the header row is the phone's there and
     // nothing to measure against above 768px. What is under test is the row's
     // vertical geometry — the 33px inset above it and the height its content
     // gives it — which does not depend on the window's width.
-    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Needs a viewport narrow enough to draw the burger');
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Phone geometry — the header row is 80px there');
 
     await page.addInitScript(() => {
       (window as Window & { isHomecastMacApp?: boolean }).isHomecastMacApp = true;
     });
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
-    await expect(headerBurger(page)).toBeVisible({ timeout: 20000 });
+    await waitForDashboard(page);
 
-    const burger = await centreY(headerBurger(page));
+    const control = await centreY(headerControl(page));
     await raiseToast(page, 'Sent as #36. Thank you.');
     const toast = await centreY(toastPill(page));
 
     expect(
-      Math.abs(toast - burger),
-      `toast centre is ${(burger - toast).toFixed(1)}px off the menu button's`,
+      Math.abs(toast - control),
+      `toast centre is ${(control - toast).toFixed(1)}px off the header control's`,
     ).toBeLessThanOrEqual(1);
   });
 });

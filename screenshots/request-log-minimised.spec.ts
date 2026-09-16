@@ -16,7 +16,7 @@
  * in the pull request is copied into `evidence/issue-122/`.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks, overrideSettings } from './mocks';
+import { setupMocks, overrideSettings, waitForDashboard } from './mocks';
 import { HOME_ID, MY_HOME_ROOMS } from './fixtures';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,7 +51,7 @@ async function openDashboard(page: Page) {
   // has to be in place before the app boots rather than toggled afterwards.
   await page.addInitScript(() => localStorage.setItem('homecast-debug-request-panel', '1'));
   await page.goto(`/portal?home=${HOME_ID}`);
-  await expect(page.locator('[data-tour="sidebar-menu"]')).toBeVisible({ timeout: 20000 });
+  await waitForDashboard(page);
   await expect(page.getByText('Requests')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('[data-testid="tab-bar"] [data-tab-key]').first()).toBeVisible();
   await page.waitForTimeout(600);
@@ -74,7 +74,10 @@ async function geometry(page: Page) {
     // outer edge is what the new button is being lined up with.
     const pill = document.querySelector<HTMLElement>('[data-tab-row]')?.parentElement as HTMLElement | null;
     // The app's own column inside DebugDock — the thing that gets squashed.
-    const app = document.querySelector<HTMLElement>('[data-tour="sidebar-menu"]')?.closest('div[style*="translateZ"]') as HTMLElement | null;
+    // Anchored on the header's ⋮ because it needs *any* element known to be
+    // inside the app shell, and the ☰ this used to use no longer renders in a
+    // browser at all (parob/homecast-web#133).
+    const app = document.querySelector<HTMLElement>('[data-tour="header-menu"]')?.closest('div[style*="translateZ"]') as HTMLElement | null;
     const control = document.querySelector<HTMLElement>('[aria-label="Expand request log"]');
     const r = (el: HTMLElement | null) => {
       if (!el) return null;
