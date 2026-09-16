@@ -724,6 +724,8 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     }
     activatingRef.current = false;
 
+    // A token switch ends the previous account's cache session just like logout.
+    clearAuthToken();
     setAuthToken(newToken);
     const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; token?: string }) => void } } } };
     if (win.webkit?.messageHandlers?.homecast) {
