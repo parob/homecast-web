@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // @vitest-environment-options { "url": "https://mqtt.homecast.cloud/" }
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { ApolloClient, InMemoryCache, ApolloLink } from '@apollo/client';
@@ -106,4 +106,21 @@ it('rechecks a resumed standalone page before claiming its previous route still 
   expect(chip.title).toBe('Checking relay…');
   await act(async () => { finish({ ok: true, json: async () => ({ data: { cachedHomes: [{ ...home, serving: fact }] } }) }); });
   expect(chip.title).toBe('Online');
+});
+
+it('keeps distinct homes with the same name scoped to their own topic and route', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({ data: {
+    me: { id: 'me', email: 'me@example.test', accountType: 'cloud' },
+    cachedHomes: [
+      { ...home, hcId: 'AAAA-HOME', serving: fact },
+      { ...home, id: 'OTHER-LIVE-UUID', hcId: 'BBBB-HOME', serving: { ...fact, state: 'offline', by: null, kind: null } },
+    ],
+  } }) } as Response);
+  show();
+  const chips = await screen.findAllByRole('button', { name: /George Street/ });
+  expect(chips).toHaveLength(2);
+  expect(chips[0].title).toBe('Online');
+  expect(chips[1].title).toBe('Relay offline');
+  fireEvent.click(chips[1]);
+  expect(screen.getByText('george-street-bbbb')).toBeTruthy();
 });
