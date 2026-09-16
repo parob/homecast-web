@@ -47,6 +47,20 @@ export function useNativeHeader(
 ): boolean {
   const [active, setActive] = useState(() => isNativeHeaderEnabled());
 
+  // The native refresh control lives on WKWebView's document scroller.
+  // The web layout normally suppresses root overscroll, which also disables
+  // WebKit's vertical bounce even when UIKit has `bounces` enabled.
+  useEffect(() => {
+    if (!active) return;
+    const root = document.documentElement;
+    const previous = root.style.getPropertyValue('overscroll-behavior-y');
+    root.style.setProperty('overscroll-behavior-y', 'auto');
+    return () => {
+      if (previous) root.style.setProperty('overscroll-behavior-y', previous);
+      else root.style.removeProperty('overscroll-behavior-y');
+    };
+  }, [active]);
+
   // Read through a ref so the bridge is installed once and still calls the
   // newest handler; `Dashboard` recreates its callbacks as its state changes.
   const handlersRef = useRef(handlers);
