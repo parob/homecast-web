@@ -188,6 +188,7 @@ export interface RelayActivityEntry {
 }
 
 export type BroadcastMessage =
+  | import('@/lib/camera-live').CameraLiveEvent
   | CharacteristicUpdate
   | ReachabilityUpdate
   | ServiceGroupUpdate
@@ -1529,7 +1530,7 @@ export class ServerWebSocket {
       // it is visible anywhere today, and "is the cloud still talking to me?"
       // is the first question about a relay that has gone quiet — its own
       // requests stopping and the cloud never speaking are different faults.
-      if (hasLocalActivityListeners() && message.type !== 'ping' && message.type !== 'pong') {
+      if (hasLocalActivityListeners() && message.type !== 'ping' && message.type !== 'pong' && message.type !== 'camera_frame') {
         emitLocalRelayActivity({
           lane: 'cloud', at: activityNow(),
           action: message.action ? `${message.type}:${message.action}` : message.type,
@@ -1552,6 +1553,8 @@ export class ServerWebSocket {
         // Response to our outgoing request
         this.handleResponse(message as ProtocolMessage);
       } else if (message.type === 'characteristic_update' ||
+                 message.type === 'camera_frame' ||
+                 message.type === 'camera_live_state' ||
                  message.type === 'reachability_update' ||
                  message.type === 'service_group_update' ||
                  message.type === 'relay_status_update' ||
@@ -2174,6 +2177,9 @@ export class ServerWebSocket {
       // out to the viewers that asked for them (nobody else wants 4 JPEGs a
       // second). A frame is ~100 KB base64, well inside the socket's limits.
       if (event.type === 'camera_frame' || event.type === 'camera_live_state') {
+        // Never queue video behind a congested socket. A future frame replaces
+        // this one, while control/state messages keep their ordinary route.
+        if (event.type === 'camera_frame' && (this.ws?.bufferedAmount ?? 0) > 512_000) return;
         this.sendEvent({
           id: `evt_${Date.now()}_cam`,
           type: 'event',

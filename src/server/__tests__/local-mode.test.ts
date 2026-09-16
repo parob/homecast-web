@@ -240,6 +240,13 @@ describe('localModeCanServe', () => {
     }
   });
 
+  it('never bypasses cloud camera authorization, even while offline', () => {
+    for (const action of ['camera.snapshot', 'camera.capabilities', 'camera.live.start', 'camera.live.keepalive', 'camera.live.stop']) {
+      expect(localModeCanServe(action, LIVE, serve())).toBe(false);
+      expect(localModeCanServe(action, undefined, serve({ cloudReachable: false }))).toBe(false);
+    }
+  });
+
   it('leaves homes.list to the cloud while the cloud is reachable', () => {
     // The cloud deduplicates cloud-managed homes across relays; a local answer
     // would quietly omit them.

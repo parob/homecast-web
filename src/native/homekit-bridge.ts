@@ -206,12 +206,17 @@ export interface HomeKitEvent {
   height?: number;
   capturedAt?: string;
   // camera_live_state
-  state?: 'streaming' | 'stopped';
+  state?: 'queued' | 'starting' | 'streaming' | 'stopped';
   reason?: string;
+  streamId?: string;
+  viewerIds?: string[];
+  viewerInstances?: string[];
 }
 
 /** What the relay can do for cameras right now. */
 export interface CameraCapabilities {
+  liveLeases?: boolean;
+  liveViewerRouting?: boolean;
   supported: boolean;
   engineWindow: boolean;
   /** Capture readiness. Absent on build 70, which used the legacy field below. */
@@ -242,7 +247,9 @@ export interface CameraSnapshot {
 
 export interface CameraLiveStatus {
   accessoryId: string;
-  state: 'streaming' | 'stopped';
+  state: 'queued' | 'starting' | 'streaming' | 'stopped';
+  streamId?: string;
+  queuePosition?: number;
   started?: boolean;
   fps?: number;
   width?: number;
@@ -918,23 +925,23 @@ export const HomeKit = {
   },
 
   /** Start (or touch) a live session; frames arrive as `camera_frame` events. */
-  async cameraLiveStart(accessoryId: string, options: { fps?: number; maxWidth?: number; quality?: number } = {}): Promise<CameraLiveStatus> {
+  async cameraLiveStart(accessoryId: string, options: { fps?: number; maxWidth?: number; quality?: number; viewerId?: string; viewerInstance?: string } = {}): Promise<CameraLiveStatus> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
     return bridge.call<CameraLiveStatus>('camera.live.start', { accessoryId, ...options });
   },
 
-  async cameraLiveKeepalive(accessoryId: string): Promise<CameraLiveStatus> {
+  async cameraLiveKeepalive(accessoryId: string, viewerId?: string): Promise<CameraLiveStatus> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
-    return bridge.call<CameraLiveStatus>('camera.live.keepalive', { accessoryId });
+    return bridge.call<CameraLiveStatus>('camera.live.keepalive', { accessoryId, viewerId });
   },
 
   /** Stop one session, or every session when no id is given. */
-  async cameraLiveStop(accessoryId?: string): Promise<{ activeStreams: number }> {
+  async cameraLiveStop(accessoryId?: string, viewerId?: string): Promise<{ activeStreams: number }> {
     const bridge = getNativeBridge();
     if (!bridge) throw new Error('HomeKit bridge not available');
-    return bridge.call('camera.live.stop', accessoryId ? { accessoryId } : {});
+    return bridge.call('camera.live.stop', { ...(accessoryId ? { accessoryId } : {}), ...(viewerId ? { viewerId } : {}) });
   },
 
   // Debug methods
