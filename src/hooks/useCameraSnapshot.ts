@@ -17,6 +17,7 @@ import {
   setCameraSnapshot,
 } from '@/lib/camera-snapshot-cache';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
+import { queueCameraRequest } from '@/lib/camera-request-queue';
 
 function toFailure(err: unknown): CameraFailure {
   const e = err as { code?: string; message?: string } | undefined;
@@ -24,14 +25,14 @@ function toFailure(err: unknown): CameraFailure {
 }
 
 /**
- * Stills for one camera while its tile is expanded.
+ * Stills for an opened camera, or a slower visible-tile preview.
  *
  * Requests go through `serverConnection` and the cloud's camera authorization
  * even on a relay Mac, so the home's selected relay captures the image. Pacing and
  * back-off are the pure policy in `lib/camera-snapshot.ts`; this hook only
  * owns the timer and the page-visibility gate.
  */
-export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean) {
+export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean, preview = false) {
   const supported = accessory.camera?.snapshot === true;
   const key = cameraSnapshotCacheKey(accessory.homeId, accessory.id);
   const cached = getCameraSnapshot(key);
@@ -68,12 +69,17 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
         (s.status.kind === 'ready' || (s.status.kind === 'error' && s.status.dataUrl))
         ? s.status : { kind: 'loading' } }));
       try {
-        const result = await serverConnection.request<CameraSnapshotResult>('camera.snapshot', {
-          accessoryId: accessory.id,
-          homeId: accessory.homeId,
-          // Opening, returning to the page, and Refresh all ask for a new
-          // image. The relay still coalesces requests and paces camera wakes.
-          maxAgeSec: 0,
+        const result = await queueCameraRequest(accessory.homeId, preview ? 0 : 1, () => {
+          // The tile may leave the viewport or sign out while queued.
+          if (stale()) throw new Error('Camera request cancelled');
+          return serverConnection.request<CameraSnapshotResult>('camera.snapshot', {
+            accessoryId: accessory.id,
+            homeId: accessory.homeId,
+            // Opened viewers always ask for fresh pixels. A small tile can reuse
+            // a recent still; the relay still coalesces and paces camera wakes.
+            maxAgeSec: preview ? 55 : 0,
+            ...(preview ? { maxWidth: 480 } : {}),
+          });
         });
         if (stale()) return;
         const next = {
@@ -99,7 +105,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
       } finally {
         if (!stale()) setRefreshingKey(null);
       }
-      timer = setTimeout(tick, nextSnapshotDelayMs(failures.current));
+      timer = setTimeout(tick, preview ? Math.max(60_000, nextSnapshotDelayMs(failures.current)) : nextSnapshotDelayMs(failures.current));
     };
 
     void tick();
@@ -107,7 +113,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [accessory.id, accessory.homeId, key, supported, expanded, pageVisible, refreshToken]);
+  }, [accessory.id, accessory.homeId, key, supported, expanded, pageVisible, refreshToken, preview]);
 
   return {
     status,

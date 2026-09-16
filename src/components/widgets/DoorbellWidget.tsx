@@ -6,6 +6,7 @@ import { CameraSnapshotHero } from './CameraWidget';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { CameraTileFrame } from './CameraTileFrame';
+import { CameraTilePreview } from './CameraTilePreview';
 import { isCommunity } from '@/lib/config';
 
 export const DoorbellWidget: React.FC<WidgetProps> = memo(({
@@ -35,7 +36,8 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
 }) => {
   const hasCamera = accessory.camera?.snapshot === true || accessory.camera?.stream === true;
   const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
-  const showHero = !compact && !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
+  const cameraAvailable = !isCommunity && camerasEnabled && accessory.camera?.snapshot === true;
+  const showHero = !compact && cameraAvailable;
   const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
   // Battery info
   const batteryLevelChar = getCharacteristic(accessory, 'battery_level');
@@ -73,6 +75,7 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
       isOn={hasMotion}
       isReachable={accessory.isReachable}
       accessory={accessory}
+      collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || isHidden} /> : undefined}
       compact={compact}
       expanded={preview.expanded}
       heroShape="block"

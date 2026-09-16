@@ -16,6 +16,15 @@ window.matchMedia = window.matchMedia || (((query: string) => ({
 globalThis.ResizeObserver = class {
   observe() {} unobserve() {} disconnect() {}
 } as unknown as typeof ResizeObserver;
+// Start tiles offscreen. Tests explicitly reveal them when checking preview
+// polling, independently of opening the full-size viewer.
+const observers = new Set<(entries: { isIntersecting: boolean }[]) => void>();
+globalThis.IntersectionObserver = class {
+  constructor(private callback: (entries: { isIntersecting: boolean }[]) => void) { observers.add(callback); }
+  observe() {} unobserve() {}
+  disconnect() { observers.delete(this.callback); }
+} as unknown as typeof IntersectionObserver;
+const revealTiles = () => act(() => observers.forEach(callback => callback([{ isIntersecting: true }])));
 
 // The camera hero is a cloud-relay feature: stills are captured by the relay
 // Mac's engine window. These tests pin the three gates that decide whether the
@@ -67,6 +76,7 @@ const baseProps = {
 } as const;
 
 beforeEach(() => {
+  observers.clear();
   request.mockReset();
   baseProps.onToggle.mockClear();
   community = false;
@@ -127,7 +137,7 @@ describe('CameraWidget hero', () => {
     expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ accessoryId: 'CAM-1', homeId: 'HOME-1' }));
   });
 
-  it.each([{ expanded: false }, { expanded: true, compact: true }])('does not poll a collapsed or compact doorbell (%j)', (props) => {
+  it.each([{ expanded: false }, { expanded: true, compact: true }])('does not poll an offscreen collapsed or compact doorbell (%j)', (props) => {
     render(<DoorbellWidget {...baseProps} accessory={camera()} {...props} />);
     expect(request).not.toHaveBeenCalled();
   });
@@ -195,8 +205,28 @@ describe('CameraWidget hero', () => {
     expect(img.closest('.aspect-video')).toBeNull();
   });
 
-  it('never asks while collapsed', () => {
+  it('does not ask while a collapsed tile is offscreen', () => {
     render(<CameraWidget {...baseProps} accessory={camera()} />);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it.each([CameraWidget, DoorbellWidget])('shows a full-bleed still only after the tile becomes visible', async (Component) => {
+    request.mockResolvedValue({ jpeg: 'QUJD', capturedAt: new Date().toISOString(), width: 320, height: 439, source: 'stream' });
+    const { container } = render(<Component {...baseProps} accessory={camera()} compact />);
+    expect(request).not.toHaveBeenCalled();
+    revealTiles();
+    await waitFor(() => expect(container.querySelector('[data-camera-tile-preview] img')).not.toBeNull());
+    expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ maxWidth: 480, maxAgeSec: 55 }));
+    const image = container.querySelector('[data-camera-tile-preview] img') as HTMLImageElement;
+    expect(image.className).toContain('object-cover');
+    expect(image.style.objectPosition).toBe('center 23%');
+    expect(screen.getByText(/Snapshot · just now/)).toBeTruthy();
+    expect(screen.queryByLabelText('Refresh snapshot')).toBeNull();
+  });
+
+  it('does not wake a visible camera during layout editing', () => {
+    render(<CameraWidget {...baseProps} accessory={camera()} compact editMode />);
+    revealTiles();
     expect(request).not.toHaveBeenCalled();
   });
 
