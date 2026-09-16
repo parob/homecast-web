@@ -11,6 +11,7 @@ export default defineConfig({
     'automation-editor.spec.ts',
     'initial-home-selection.spec.ts',
     'login-flows.spec.ts',
+    'tutorial.spec.ts',
     'action-failure-sheet-overflow.spec.ts',
     'status-popover-overflow.spec.ts',
     'edit-layout-header.spec.ts',
