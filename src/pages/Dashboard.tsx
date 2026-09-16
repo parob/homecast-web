@@ -3625,8 +3625,17 @@ const Dashboard = () => {
   // homes list that are computed further down this component, and the
   // gesture only fires long after render.
   const edgeSwipeBackRef = useRef<() => void>(() => {});
+  // The iOS native header has the screen (parob/homecast-cloud#120): the web
+  // header row is hidden and the document, not an inner container, scrolls.
+  const nativeHeaderActive = useNativeHeaderActive();
   useEdgeSwipeOpen({
-    enabled: isMobile && hasContentAccess && !sidebarOpen,
+    // On a room, group or collection under the native header the swipe is
+    // UIKit's own interactive pop (the bar has a real back button there),
+    // so the page's listener stands down rather than racing it. On the
+    // whole home there is nothing to pop and the page's swipe still
+    // cycles homes.
+    enabled: isMobile && hasContentAccess && !sidebarOpen
+      && !(nativeHeaderActive && !!(selectedRoomId || selectedRoomGroupId || selectedCollectionId)),
     onOpen: () => edgeSwipeBackRef.current(),
   });
   useEdgeSwipeOpen({
@@ -4106,9 +4115,6 @@ const Dashboard = () => {
     return homeNameMap.size === 1 ? [...homeNameMap.keys()][0] : null;
   }, [homeNameMap, selectedHomeId]);
 
-  // The iOS native header has the screen (parob/homecast-cloud#120): the web
-  // header row is hidden and the document, not an inner container, scrolls.
-  const nativeHeaderActive = useNativeHeaderActive();
   // Whether the shell scrolls inside a viewport-sized box rather than the
   // document: the two app shells do (the Mac app's title bar and the phone
   // app's status bar are the page's to paint under). A phone BROWSER scrolls
