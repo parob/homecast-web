@@ -9459,12 +9459,17 @@ const Dashboard = () => {
                               </span>
                             )}
                             {canToggleRoom && (
-                              <EditActionButton
-                                size="tile"
-                                label={roomHidden ? 'Unhide' : 'Hide'}
-                                ariaLabel={`${roomHidden ? 'Unhide' : 'Hide'} ${roomName}`}
-                                onClick={() => toggleRoomVisibility(selectedHomeId!, room!.id, ['home'])}
-                              />
+                              // The badge is taller than the heading's line box.
+                              // Let it overhang without growing every room when
+                              // editing starts (or shrinking them all on Done).
+                              <span className="-my-0.5 shrink-0">
+                                <EditActionButton
+                                  size="tile"
+                                  label={roomHidden ? 'Unhide' : 'Hide'}
+                                  ariaLabel={`${roomHidden ? 'Unhide' : 'Hide'} ${roomName}`}
+                                  onClick={() => toggleRoomVisibility(selectedHomeId!, room!.id, ['home'])}
+                                />
+                              </span>
                             )}
                           </div>
                         );

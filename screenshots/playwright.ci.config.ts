@@ -13,6 +13,7 @@ export default defineConfig({
     'action-failure-sheet-overflow.spec.ts',
     'status-popover-overflow.spec.ts',
     'edit-layout-header.spec.ts',
+    'edit-layout-scroll-anchor.spec.ts',
     'toast-alignment.spec.ts',
     'tab-bar-label-centring.spec.ts',
     'request-log-minimised.spec.ts',
