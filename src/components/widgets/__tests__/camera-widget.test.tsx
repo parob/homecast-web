@@ -193,7 +193,8 @@ describe('CameraWidget hero', () => {
     const img = await screen.findByAltText('Kitchen Camera snapshot');
     expect(img.getAttribute('src')).toBe('data:image/jpeg;base64,QUJD');
     expect(screen.getByText(/Requested just now/)).toBeTruthy();
-    expect(screen.getByText(/HomeKit may return an older image/)).toBeTruthy();
+    expect(screen.getByText(/Requested just now/).getAttribute('title')).toContain('HomeKit may supply an older image');
+    expect(screen.queryByText(/Last image:/)).toBeNull();
   });
 
   it('labels a stream-backed still with the actual capture time', async () => {

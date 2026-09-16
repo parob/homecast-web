@@ -4,6 +4,7 @@ import { WidgetCard } from './WidgetCard';
 import { WidgetProps, getCharacteristic } from './types';
 import { useCameraSnapshot } from '@/hooks/useCameraSnapshot';
 import { useCameraLive } from '@/hooks/useCameraLive';
+import { useCameraFrameHeight } from '@/hooks/useCameraFrameHeight';
 import { describeLiveView } from '@/lib/camera-live';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
@@ -26,6 +27,7 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
   const live = useCameraLive(accessory, expanded);
   const { status, refresh, refreshing } = useCameraSnapshot(accessory, expanded && !live.usesLive);
   const close = useExpandedOverlayClose();
+  const { frameRef, maxHeight } = useCameraFrameHeight(expanded);
   const snapshot = status.kind === 'ready' || status.kind === 'error' ? status : undefined;
   const latest = live.image && (!snapshot?.capturedAt || Date.parse(live.image.capturedAt) >= Date.parse(snapshot.capturedAt)) ? live.image : snapshot;
   const { dataUrl: image, capturedAt, source, width, height } = latest ?? {};
@@ -47,39 +49,25 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
 
   return (
     <div className="flex w-full flex-col items-center gap-2" data-camera-preview>
-      <div className="relative flex max-w-full flex-col overflow-hidden rounded-xl bg-black/80"
-        style={{ width: `min(100%, calc((100dvh - 220px) * ${aspect}))` }}>
-        {image ? (
-          <img src={image} alt={`${accessory.name} ${live.phase === 'live' ? 'live view' : 'snapshot'}`} width={width} height={height}
-            className="block h-auto w-full max-w-full object-contain" draggable={false} />
-        ) : (
-          <div className="flex h-56 w-[min(80vw,880px)] max-w-full items-center justify-center text-white/60">
-            {status.kind === 'loading' || status.kind === 'idle' ? (
-              <Loader2 className="h-6 w-6 animate-spin" />
-            ) : (
-              <Video className="h-8 w-8" />
-            )}
-          </div>
-        )}
-      </div>
-        <div className="flex w-full items-center justify-between gap-2 rounded-xl bg-black/80 px-3 py-1 text-xs text-white/90">
+        <div className="flex w-full items-center justify-between gap-2 rounded-xl bg-black/80 p-2 text-xs text-white/90" data-camera-toolbar>
           <span className="min-w-0">
-            {liveLabel ? <>
+            {liveLabel ? <span>
               {live.phase === 'live' && <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-red-400" aria-hidden="true" />}
               {liveLabel}
-              {live.phase !== 'live' && imageAge && <span className="mt-1 block text-white/65">Last image: {imageAge.toLowerCase()}</span>}
-            </> : status.kind === 'error' ? <>
-              {describeCameraFailure(status.failure)}
-              {imageAge && <span className="mt-1 block text-white/65">Last image: {imageAge.toLowerCase()}</span>}
-            </> : imageAge || 'Taking snapshot…'}
+            </span> : status.kind === 'error' ? describeCameraFailure(status.failure) : !imageAge && 'Loading…'}
+            {live.phase !== 'live' && imageAge && <time dateTime={capturedAt}
+              className={liveLabel || status.kind === 'error' ? 'mt-0.5 block text-white/65' : ''}
+              title={source === 'stream' ? capturedAt : 'Request time — HomeKit may supply an older image.'}>
+              {imageAge}
+            </time>}
           </span>
           <div className="flex shrink-0 gap-1">
             {canResume && <button type="button" aria-label="Resume live view"
               onClick={(e) => { e.stopPropagation(); live.resume(); }}
-              className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/15">
-              <Play className="h-4 w-4" />
+              className="flex min-h-11 items-center justify-center gap-1.5 rounded-full px-3 hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
+              <Play className="h-4 w-4" aria-hidden="true" />Resume
             </button>}
-            {!live.usesLive && <button
+            {!live.usesLive && !canResume && <button
               type="button"
               disabled={refreshing}
               onClick={(e) => { e.stopPropagation(); refresh(); }}
@@ -91,14 +79,26 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
             </button>}
             {close && <button type="button" aria-label="Close camera"
               onClick={(e) => { e.stopPropagation(); close(); }}
-              className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/15">
-              <X className="h-4 w-4" />
+              className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-white px-3 font-medium text-slate-950 shadow-sm hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+              <X className="h-5 w-5" aria-hidden="true" />Close
             </button>}
           </div>
         </div>
-      {image && source !== 'stream' && live.phase !== 'live' && <p className="text-center text-xs text-muted-foreground">
-        HomeKit may return an older image. This time is when it was requested.
-      </p>}
+      <div ref={frameRef} data-camera-frame className="relative max-w-full shrink-0 overflow-hidden rounded-xl bg-black/80"
+        style={{ width: `min(100%, calc(${maxHeight === undefined ? 'max(0px, 100dvh - 180px)' : `${maxHeight}px`} * ${aspect}))`, aspectRatio: aspect }}>
+        {image ? (
+          <img src={image} alt={`${accessory.name} ${live.phase === 'live' ? 'live view' : 'snapshot'}`} width={width} height={height}
+            className="absolute inset-0 h-full w-full max-w-full object-contain" draggable={false} />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-white/60">
+            {status.kind === 'loading' || status.kind === 'idle' ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : (
+              <Video className="h-8 w-8" />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
