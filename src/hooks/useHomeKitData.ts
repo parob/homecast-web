@@ -60,7 +60,7 @@ interface CacheEntry<T> {
   epoch?: number;
 }
 
-type CacheListener = () => void;
+type CacheListener = (reason?: 'reset') => void;
 
 /**
  * How long a rehydrated entry may be before we refuse to paint it.
@@ -84,6 +84,8 @@ class DataCache {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   /** Did this session start with usable data on disk? Reported in boot timing. */
   private hydratedCount = 0;
+  /** Requests started by an ended account must never publish into a new one. */
+  private sessionGeneration = 0;
   /** Monotonic generation for all-home or one-home revalidation. */
   private revalidateEpoch = 0;
   private allEpoch = 0;
@@ -182,6 +184,18 @@ class DataCache {
   clearPersisted(): void {
     if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null; }
     try { localStorage.removeItem(PERSIST_KEY); } catch { /* ignore */ }
+  }
+
+  resetSession(): void {
+    this.sessionGeneration++;
+    this.cache.clear();
+    this.pendingRequests.clear();
+    this.hydratedCount = 0;
+    this.clearPersisted();
+    // A reset removes account data; unlike ordinary invalidation it must not
+    // ask still-mounted views to fetch it again during sign-out.
+    const listeners = new Set([...this.keyListeners.values()].flatMap(set => [...set]));
+    listeners.forEach(listener => listener('reset'));
   }
 
   isStale(key: string): boolean {
@@ -314,6 +328,7 @@ class DataCache {
    * otherwise creates a new one using the fetcher.
    */
   async getOrFetch<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+    const session = this.sessionGeneration;
     const epoch = this.epochFor(key);
     const existing = this.pendingRequests.get(key);
     if (existing?.epoch === epoch) {
@@ -327,6 +342,7 @@ class DataCache {
       : Promise.resolve(this.get<T>(key)!);
     const promise = fetcher().then(
       result => {
+        if (session !== this.sessionGeneration) throw new Error('HomeKit cache session ended');
         if (epoch !== this.epochFor(key)) return current();
         // Verify and publish together. A caller storing after await would
         // reopen a gap where the route can change before the cache write.
@@ -334,6 +350,7 @@ class DataCache {
         return result;
       },
       error => {
+        if (session !== this.sessionGeneration) throw new Error('HomeKit cache session ended');
         if (epoch !== this.epochFor(key)) return current();
         throw error;
       },
@@ -599,11 +616,19 @@ function useCachedData<T>(
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
   useEffect(() => {
-    const unsubscribe = cache.subscribe(() => {
+    const unsubscribe = cache.subscribe(reason => {
       if (mountedRef.current) {
+        if (reason === 'reset') {
+          readGenerationRef.current++;
+          previousDataRef.current = { key: '', data: null };
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+          setError(null);
+          setLoading(false);
+        }
         forceUpdate(n => n + 1);
         // If cache entry was deleted (invalidated), trigger a refetch
-        if (!cache.get(cacheKey)) {
+        if (reason !== 'reset' && !cache.get(cacheKey)) {
           fetchDataRef.current(true);
         }
       }
@@ -789,8 +814,15 @@ export function useAccessoriesForHomes(
   // observation event (motion sensors, temperatures, etc.), killing performance.
   useEffect(() => {
     const unsubs = homeIds.map(id =>
-      cache.subscribe(() => {
-        if (mountedRef.current) setCacheVersion(n => n + 1);
+      cache.subscribe(reason => {
+        if (!mountedRef.current) return;
+        if (reason === 'reset') {
+          readGenerationRef.current++;
+          retryCountRef.current = 3;
+          setLoading(false);
+          setError(null);
+        }
+        setCacheVersion(n => n + 1);
       }, `accessories:${id}`)
     );
     return () => unsubs.forEach(u => u());
@@ -799,6 +831,7 @@ export function useAccessoriesForHomes(
   // Fetch accessories for each home and store in cache
   useEffect(() => {
     mountedRef.current = true;
+    retryCountRef.current = 0;
     const generation = ++readGenerationRef.current;
     const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
@@ -972,8 +1005,15 @@ export function useAllServiceGroups(
   // Subscribe to cache changes for OUR service group keys only (not all changes).
   useEffect(() => {
     const unsubs = homeIds.map(id =>
-      cache.subscribe(() => {
-        if (mountedRef.current) setCacheVersion(n => n + 1);
+      cache.subscribe(reason => {
+        if (!mountedRef.current) return;
+        if (reason === 'reset') {
+          readGenerationRef.current++;
+          retryCountRef.current = 3;
+          setLoading(false);
+          setError(null);
+        }
+        setCacheVersion(n => n + 1);
       }, `serviceGroups:${id}`)
     );
     return () => unsubs.forEach(u => u());
@@ -981,6 +1021,7 @@ export function useAllServiceGroups(
 
   useEffect(() => {
     mountedRef.current = true;
+    retryCountRef.current = 0;
     const generation = ++readGenerationRef.current;
     const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
@@ -1137,8 +1178,7 @@ export function getCachedListLength(key: string): number | null {
  * to sign in on this device.
  */
 export function clearPersistedHomeKitCache(): void {
-  invalidateHomeKitCache('all');
-  cache.clearPersisted();
+  cache.resetSession();
 }
 
 /**
