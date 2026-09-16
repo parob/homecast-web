@@ -224,8 +224,8 @@ describe('CameraWidget hero', () => {
     expect(screen.queryByLabelText('Refresh snapshot')).toBeNull();
   });
 
-  it('does not wake a visible camera during layout editing', () => {
-    render(<CameraWidget {...baseProps} accessory={camera()} compact editMode />);
+  it.each([{ editMode: true }, { editModeType: 'ui' as const }, { isHidden: true }, { isHiddenUi: true }])('does not wake a visible camera while editing or revealed as hidden (%j)', (props) => {
+    render(<CameraWidget {...baseProps} accessory={camera()} compact {...props} />);
     revealTiles();
     expect(request).not.toHaveBeenCalled();
   });

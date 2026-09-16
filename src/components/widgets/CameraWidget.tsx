@@ -161,7 +161,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       isOn={isActive || motionDetected}
       isReachable={accessory.isReachable}
       accessory={accessory}
-      collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || isHidden} /> : undefined}
+      collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
       compact={compact}
       expanded={preview.expanded}
       onExpandToggle={preview.onExpandToggle}
