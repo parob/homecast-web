@@ -89,6 +89,8 @@ class LocalModeController implements LocalModeRouter {
   private status: HomeKitStatus | null = null;
   /** Whether native has confirmed it is observing this device's HomeKit. */
   private observing = false;
+  /** A late bridge response must not revive or overwrite a newer session. */
+  private observationEpoch = 0;
   /**
    * Which accessories are in which group, from this device's own HomeKit.
    *
@@ -373,6 +375,7 @@ class LocalModeController implements LocalModeRouter {
     setRelayWritePublisher(null);
     this.groups?.stop();
     this.groups = null;
+    this.observationEpoch++;
     if (this.keepAlive) { clearInterval(this.keepAlive); this.keepAlive = null; }
     // Only stop observation if this device is not also the relay. Stopping the
     // relay's own observation would silence every client it serves.
@@ -418,11 +421,15 @@ class LocalModeController implements LocalModeRouter {
   }
 
   private async startObservation(): Promise<void> {
-    this.observing = await this.armObservation();
-    if (this.keepAlive) clearInterval(this.keepAlive);
+    const epoch = ++this.observationEpoch;
+    if (this.keepAlive) { clearInterval(this.keepAlive); this.keepAlive = null; }
+    this.observing = false;
+    const observing = await this.armObservation();
+    if (epoch !== this.observationEpoch) return;
+    this.observing = observing;
     // Native observation self-stops after 90s without a reset. In cloud mode
     // the relay's heartbeat does this; nothing does it for us.
-    this.keepAlive = setInterval(() => { void this.keepObservationAlive(); }, KEEPALIVE_MS);
+    this.keepAlive = setInterval(() => { void this.keepObservationAlive(epoch); }, KEEPALIVE_MS);
   }
 
   /** Ask native to observe. Answers whether it took. */
@@ -448,9 +455,11 @@ class LocalModeController implements LocalModeRouter {
    * (homecast-cloud#107) — and that call fails at exactly the wrong moment,
    * since Local Mode engages while the app is retrying everything at once.
    */
-  private async keepObservationAlive(): Promise<void> {
+  private async keepObservationAlive(epoch: number): Promise<void> {
+    if (epoch !== this.observationEpoch) return;
     if (!this.observing) {
-      this.observing = await this.armObservation();
+      const observing = await this.armObservation();
+      if (epoch === this.observationEpoch) this.observing = observing;
       return;
     }
     try {
@@ -459,7 +468,7 @@ class LocalModeController implements LocalModeRouter {
     } catch {
       // The bridge did not answer, so we no longer know that native is
       // observing. Re-arm on the next tick rather than assume.
-      this.observing = false;
+      if (epoch === this.observationEpoch) this.observing = false;
     }
   }
 
