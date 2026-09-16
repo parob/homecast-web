@@ -31,6 +31,15 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('camera freshness', () => {
+  it('labels an old relay fallback as a failed refresh without changing its timestamp', async () => {
+    request.mockResolvedValue({ ...snapshot(), cached: true, stale: true, refreshError: { code: 'CAMERA_BUSY', message: 'Busy' } });
+    const accessory = camera();
+    const { result } = renderHook(() => useCameraSnapshot(accessory, true));
+    await flush();
+    expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ allowStaleOnError: true }));
+    expect(result.current.status).toMatchObject({ kind: 'error', capturedAt: snapshot().capturedAt, dataUrl: 'data:image/jpeg;base64,QUJD', failure: { code: 'CAMERA_BUSY' } });
+  });
+
   it('restores a persisted image and its original time even when the first refresh fails', async () => {
     const stored = { dataUrl: 'data:image/jpeg;base64,QUJD', capturedAt: '2026-09-15T12:00:00Z', width: 720, height: 1280, source: 'stream' as const };
     vi.spyOn(cameraSnapshotStore, 'read').mockResolvedValue(stored);

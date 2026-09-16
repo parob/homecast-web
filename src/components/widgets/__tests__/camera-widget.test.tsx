@@ -223,7 +223,7 @@ describe('CameraWidget hero', () => {
     const image = container.querySelector('[data-camera-tile-preview] img') as HTMLImageElement;
     expect(image.className).toContain('object-cover');
     expect(image.style.objectPosition).toBe('center 23%');
-    expect(screen.getByText(/Snapshot · just now/)).toBeTruthy();
+    expect(screen.getByLabelText('Snapshot captured just now')).toBeTruthy();
     expect(screen.queryByLabelText('Refresh snapshot')).toBeNull();
   });
 

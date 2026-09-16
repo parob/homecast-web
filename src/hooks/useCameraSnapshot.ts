@@ -90,10 +90,15 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
             // Opened viewers always ask for fresh pixels. A small tile can reuse
             // a recent still; the relay still coalesces and paces camera wakes.
             maxAgeSec: preview ? 55 : 0,
+            allowStaleOnError: true,
             ...(preview ? { maxWidth: 480 } : {}),
           });
         });
         if (stale()) return;
+        const refreshFailure = result.stale
+          ? result.refreshError ?? { code: 'SNAPSHOT_STALE', message: 'Showing the last saved image; a fresh snapshot is unavailable.' }
+          : undefined;
+        if (refreshFailure && ['PERMISSION_DENIED', 'UNAUTHORIZED', 'CAMERAS_DISABLED'].includes(refreshFailure.code)) throw refreshFailure;
         const next = {
           dataUrl: snapshotDataUrl(result),
           capturedAt: result.capturedAt,
@@ -102,8 +107,9 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
           source: result.source,
         };
         setCameraSnapshot(key, next, generation, revision);
-        failures.current = 0;
-        setState({ key, generation, status: { kind: 'idle' } });
+        failures.current = refreshFailure ? failures.current + 1 : 0;
+        setState({ key, generation, status: refreshFailure ? { kind: 'error', failure: refreshFailure } : { kind: 'idle' } });
+        if (refreshFailure && isPermanentCameraFailure(refreshFailure.code)) return;
       } catch (err) {
         if (stale()) return;
         const failure = toFailure(err);

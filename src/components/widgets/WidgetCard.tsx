@@ -98,7 +98,7 @@ interface WidgetCardProps {
    * thing you reach for. `children` become the secondary controls beside it.
    */
   hero?: React.ReactNode;
-  /** Camera still behind the collapsed tile; never behind expanded controls. */
+  /** Camera background plus an in-flow age label; never behind expanded controls. */
   collapsedPreview?: React.ReactNode;
   /**
    * 'bar' is a tall drag control that wants a narrow column; 'block' is a
@@ -391,12 +391,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Compact mode header content - vertical layout matching preview style
   const compactHeaderContent = (
-    <div className={showTilePreview ? 'flex h-full flex-col justify-between gap-6' : 'space-y-2'}>
+    <div className="space-y-2">
       <div className="flex items-start justify-between">
-        {iconElement}
+        <div className={showTilePreview ? 'relative z-10 shrink-0' : undefined}>{iconElement}</div>
+        {showTilePreview && collapsedPreview}
         {effectiveHeaderAction && (
           <div
-            className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+            className={`relative z-10 shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {effectiveHeaderAction}
@@ -409,15 +410,15 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </div>
         )}
       </div>
-      <div>
+      <div className={showTilePreview ? 'relative z-10' : undefined}>
         {/* No `selectable` here. That class exists to punch a hole in the Mac
             and iOS shells' global `user-select: none`, and on a tile it did
             exactly that \u2014 a drag or a long-press highlighted the name. The
             wrapper's select-none can't outrank it, so the opt-in has to go. */}
-        <CardTitle className={`${showTilePreview && !effectiveCompact ? 'text-sm' : 'text-xs'} font-medium truncate`}>
+        <CardTitle className="text-xs font-medium truncate">
           {displayTitle}
         </CardTitle>
-        <CardDescription className={`${showTilePreview && !effectiveCompact ? 'text-xs' : 'text-[10px]'} mt-0.5`}>
+        <CardDescription className={`text-[10px] mt-0.5 ${showTilePreview ? 'truncate' : ''}`}>
           {effectiveSubtitle || '\u00A0'}
         </CardDescription>
       </div>
@@ -431,8 +432,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // Non-compact mode header content - horizontal layout
   const headerContent = (
     <div className="flex min-w-0 gap-2.5 items-center">
-      {iconElement}
-      <div className="min-w-0 flex-1">
+      <div className={showTilePreview ? 'relative z-10 shrink-0' : undefined}>{iconElement}</div>
+      <div className={`min-w-0 flex-1 ${showTilePreview ? 'relative z-10' : ''}`}>
         <div className={!effectiveSubtitle && !multiLineTitle ? 'translate-y-2' : 'translate-y-0'}>
           {/* `break-words` is what makes the two-line clamp end in an ellipsis.
               Without it a word longer than the column — "Conditioner" beside a
@@ -451,7 +452,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               collapses the subtitle away when the title needs two lines. */}
           <div className={`overflow-hidden ${hideSubtitleForMultiLine ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
             <CardDescription
-              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'}`}
+              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} ${showTilePreview ? 'truncate' : ''}`}
             >
               {effectiveSubtitle || '\u00A0'}
             </CardDescription>
@@ -652,12 +653,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   const cardInner = (
     <>
-      {showTilePreview && collapsedPreview}
-      <CardHeader className={showTilePreview ? `relative p-3 pb-7 ${effectiveCompact ? 'h-[140px]' : 'h-[172px]'} [&_h3]:!text-white [&_p]:!text-white/80 [&_.text-muted-foreground]:!text-white/80` : effectiveCompact ? "p-3" : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`}>
-        {effectiveCompact || showTilePreview ? (
+      <CardHeader className={`${effectiveCompact ? 'p-3' : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`} ${showTilePreview ? 'relative [&_h3]:!text-white [&_p]:!text-white/80 [&_.text-muted-foreground]:!text-white/80' : ''}`}>
+        {effectiveCompact ? (
           // Compact mode - vertical layout with switch inside
           <div
-            className={`${showTilePreview ? 'h-full' : ''} ${noResponseClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-pointer'}`}
+            className={`${noResponseClass} ${hiddenClass} ${isDragging ? '!cursor-grabbing' : '!cursor-pointer'}`}
             {...(dragHandle?.attributes || {})}
             {...(dragHandle?.listeners || {})}
           >
@@ -673,18 +673,21 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             >
               {headerContent}
             </div>
-            {effectiveHeaderAction && (
-              <div
-                className={`relative shrink-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                {effectiveHeaderAction}
-                {effectiveDisabled && effectiveOnDisabledClick && (
-                  <div
-                    className="absolute inset-0 z-50 pointer-events-auto cursor-default"
-                    onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
-                  />
-                )}
+            {(effectiveHeaderAction || showTilePreview) && (
+              <div className={`min-w-0 shrink-0 ${showTilePreview ? 'flex max-w-[35%] flex-col items-end' : ''}`}>
+                {effectiveHeaderAction && <div
+                  className={`relative z-10 shrink-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {effectiveHeaderAction}
+                  {effectiveDisabled && effectiveOnDisabledClick && (
+                    <div
+                      className="absolute inset-0 z-50 pointer-events-auto cursor-default"
+                      onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
+                    />
+                  )}
+                </div>}
+                {showTilePreview && collapsedPreview}
               </div>
             )}
           </div>

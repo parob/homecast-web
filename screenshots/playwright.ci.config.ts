@@ -9,6 +9,7 @@ export default defineConfig({
   ...base,
   testMatch: [
     'camera-cache-reload.spec.ts',
+    'camera-tile-layout.spec.ts',
     'automation-editor.spec.ts',
     'initial-home-selection.spec.ts',
     'login-flows.spec.ts',
