@@ -1,7 +1,6 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Video, RefreshCw, Loader2, X } from 'lucide-react';
 import { WidgetCard } from './WidgetCard';
-import { CameraModeControls } from './CameraModeControls';
 import { WidgetProps, getCharacteristic } from './types';
 import { useCameraSnapshot } from '@/hooks/useCameraSnapshot';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
@@ -93,8 +92,6 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
 
 export const CameraWidget: React.FC<WidgetProps> = memo(({
   accessory,
-  onToggle,
-  getEffectiveValue,
   compact,
   expanded,
   onExpandToggle,
@@ -166,9 +163,7 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       onToggleShowHidden={onToggleShowHidden}
       onShare={onShare}
       locationSubtitle={locationSubtitle}
-    >
-      {preview.expanded && <CameraModeControls accessory={accessory} onToggle={onToggle} getEffectiveValue={getEffectiveValue} />}
-    </WidgetCard>
+    />
     </CameraTileFrame>
   );
 });
