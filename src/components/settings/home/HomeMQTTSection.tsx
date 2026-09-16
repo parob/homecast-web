@@ -23,6 +23,9 @@ import { isMQTTAvailable, getMQTTBrokers, removeMQTTBroker } from '@/lib/mqtt-br
 import type { MQTTBrokerConfig } from '@/lib/mqtt-bridge';
 import { AddBrokerDialog } from '../AddBrokerDialog';
 import { toast } from 'sonner';
+import { useHomeServing } from '@/hooks/useHomeServing';
+import { useWebSocket } from '@/contexts/WebSocketContext';
+import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
 
 /**
  * Per-home MQTT — the managed broker toggle (Cloud) and custom brokers
@@ -125,12 +128,13 @@ function BrokerCard({ broker, homeId, onRefresh, onRemove }: { broker: MQTTBroke
 export function HomeMQTTSection({
   home,
   isAdmin,
-  relayOnline,
 }: {
   home: { id: string; name: string };
   isAdmin: boolean;
-  relayOnline: boolean;
 }) {
+  const serving = useHomeServing(home.id, 'cloud');
+  const { quality } = useWebSocket();
+  const routeAvailable = serving?.state === 'served' && quality !== 'offline' && quality !== 'connecting';
   const [addOpen, setAddOpen] = useState(false);
   const [mqttToggling, setMqttToggling] = useState(false);
   const [setHomeMqttEnabledMut] = useMutation(SET_HOME_MQTT_ENABLED);
@@ -238,6 +242,7 @@ export function HomeMQTTSection({
       {!isCommunity && (
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">MQTT</p>
       )}
+      {!isCommunity && <HomeConnectionSummary home={home} scope="cloud" surface="mqtt_relay" />}
 
       {/* Homecast MQTT Broker (cloud only) */}
       {!isCommunity && (() => {
@@ -264,26 +269,18 @@ export function HomeMQTTSection({
               <p className="text-xs text-muted-foreground">Publish device state to the managed MQTT broker</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {mqttEnabled && (() => {
-                // Three states:
-                //  • Active — relay's-pod bridge is serving + broker-connected
-                //  • Awaiting relay — relay is online but the bridge hasn't
-                //    started serving this home yet (just enabled; takes up to
-                //    ~1 min) — also the loading state while the relay is up
-                //  • Relay offline — relay is genuinely down, nothing publishes
+              {mqttEnabled && routeAvailable && (() => {
+                // The summary explains routing. This pill describes MQTT's
+                // own publishing state only while that cloud route exists.
                 const active = !!(mqttStatus?.serving && mqttStatus?.brokerConnected);
                 const last = mqttStatus?.lastPublishAt;
                 const tone = active
                   ? { cls: 'bg-green-500/10 text-green-600 dark:text-green-400', dot: 'bg-green-500',
                       label: 'Active',
                       tip: last ? `Last published ${formatRelativeAgo(new Date(last * 1000).toISOString())}` : 'Publishing device state' }
-                  : relayOnline
-                  ? { cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', dot: 'bg-sky-500 animate-pulse',
-                      label: 'Awaiting relay',
-                      tip: 'Broker enabled — waiting for the relay to start publishing (up to a minute)' }
-                  : { cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', dot: 'bg-amber-500',
-                      label: 'Relay offline',
-                      tip: 'Enabled, but the relay is offline so no state is being published' };
+                  : { cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', dot: 'bg-sky-500 animate-pulse',
+                      label: mqttStatus ? 'Awaiting publishing' : 'Checking MQTT…',
+                      tip: 'Broker enabled — waiting for the relay to start publishing (up to a minute)' };
                 return (
                   <span className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${tone.cls}`} title={tone.tip}>
                     <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />

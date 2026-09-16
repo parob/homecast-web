@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, RefreshCw, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Button } from '@/components/ui/button';
@@ -9,12 +9,14 @@ import type { CameraCapabilities } from '@/native/homekit-bridge';
 import { GET_HOME_CAMERAS_ENABLED } from '@/lib/graphql/queries';
 import { SET_HOME_CAMERAS_ENABLED } from '@/lib/graphql/mutations';
 import type { HomeKitHome } from '@/lib/graphql/types';
+import { useHomeServing } from '@/hooks/useHomeServing';
+import { useWebSocket } from '@/contexts/WebSocketContext';
+import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
 
 interface HomeCamerasEnabledResponse { homeCamerasEnabled: boolean | null }
 
 interface Props {
   home: HomeKitHome;
-  relayOnline: boolean;
   isAdmin: boolean;
 }
 
@@ -22,7 +24,11 @@ interface Props {
  * What this home's relay can capture, and the owner's opt-in for camera
  * images. Capturing the app's own window requires no Screen Recording grant.
  */
-export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
+export function HomeCamerasSection({ home, isAdmin }: Props) {
+  const serving = useHomeServing(home.id, 'cloud');
+  const { quality } = useWebSocket();
+  const canCheck = serving?.state === 'served' && quality !== 'offline' && quality !== 'connecting';
+  const requestKey = canCheck ? `${home.id}:${serving.by ?? ''}` : null;
   const { data: enabledData, refetch: refetchEnabled } = useQuery<HomeCamerasEnabledResponse>(GET_HOME_CAMERAS_ENABLED, {
     variables: { homeId: home.id },
     fetchPolicy: 'network-only',
@@ -35,28 +41,34 @@ export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
     await refetchEnabled();
   };
 
-  const [caps, setCaps] = useState<CameraCapabilities | null>(null);
-  const [error, setError] = useState<{ code: string; message: string } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{
+    key: string; loading: boolean; caps?: CameraCapabilities;
+    error?: { code: string; message: string };
+  } | null>(null);
+  const sequence = useRef(0);
+  const current = result?.key === requestKey ? result : null;
+  const caps = current?.caps;
+  const error = current?.error;
+  const loading = current?.loading ?? false;
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    if (!requestKey) return;
+    const attempt = ++sequence.current;
+    setResult({ key: requestKey, loading: true });
     try {
-      const result = await serverConnection.request<CameraCapabilities>('camera.capabilities', { homeId: home.id });
-      setCaps(result);
+      const caps = await serverConnection.request<CameraCapabilities>('camera.capabilities', { homeId: home.id });
+      if (attempt === sequence.current) setResult({ key: requestKey, loading: false, caps });
     } catch (err) {
       const e = err as { code?: string; message?: string };
-      setCaps(null);
-      setError({ code: e.code || 'INTERNAL_ERROR', message: e.message || String(err) });
-    } finally {
-      setLoading(false);
+      if (attempt === sequence.current) setResult({ key: requestKey, loading: false,
+        error: { code: e.code || 'INTERNAL_ERROR', message: e.message || String(err) } });
     }
-  }, [home.id]);
+  }, [home.id, requestKey]);
 
   useEffect(() => {
-    if (relayOnline) void load();
-  }, [relayOnline, load]);
+    void load();
+    return () => { ++sequence.current; };
+  }, [load]);
 
   // Build 70's screenRecording field was a capture probe, not permission.
   const captureAvailable = caps?.supported === true && caps.engineWindow &&
@@ -76,6 +88,8 @@ export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
         </div>
       </div>
 
+      <HomeConnectionSummary home={home} scope="cloud" surface="camera_relay" />
+
       <div className="rounded-lg border p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -92,9 +106,7 @@ export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-medium">Camera access</div>
           <div className="flex items-center gap-2">
-            {!relayOnline ? (
-              <Badge variant="secondary">Relay offline</Badge>
-            ) : error ? (
+            {error ? (
               <Badge variant="destructive">{error.code === 'UNKNOWN_ACTION' ? 'Server update needed' : error.code === 'UNKNOWN_METHOD' ? 'Relay update needed' : error.code}</Badge>
             ) : caps ? (
               captureAvailable ? (
@@ -103,9 +115,9 @@ export function HomeCamerasSection({ home, relayOnline, isAdmin }: Props) {
                 <Badge variant="destructive" className="gap-1"><ShieldAlert className="h-3 w-3" /> Capture unavailable</Badge>
               )
             ) : (
-              <Badge variant="secondary">Checking…</Badge>
+              <Badge variant="secondary">{loading ? 'Checking…' : 'Not checked'}</Badge>
             )}
-            <Button variant="ghost" size="icon" onClick={() => void load()} disabled={!relayOnline || loading} aria-label="Refresh">
+            <Button variant="ghost" size="icon" onClick={() => void load()} disabled={!canCheck || loading} aria-label="Refresh">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
