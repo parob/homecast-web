@@ -8333,14 +8333,9 @@ const Dashboard = () => {
                   rather than truncating: an instruction cut off mid-sentence is
                   worse than one on a second line.
 
-                  Kept short because the bar does NOT have the room it was
-                  written for. Between the burger and Done this column is 196px
-                  on a 390pt phone and 234px on a 430pt one; "Press and hold a
-                  widget or menu item to rearrange" measures 248px, so it wrapped
-                  on every iPhone narrower than ~430 and cleared that one by 7px.
-                  This fits with room to spare down to a 375pt SE, which is what
-                  keeps the subtitle at the two lines it is meant to be —
-                  edit-layout-header.spec.ts holds it to that at three widths. */}
+                  Keep both instructions short enough for the column between
+                  Done and its invisible twin. The browser test checks that
+                  each stays on one line at narrow phone widths. */}
               <div className="flex min-w-0 flex-1 flex-col items-center">
                 <span className="text-sm font-semibold leading-tight">Editing Layout</span>
                 <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
@@ -8351,7 +8346,7 @@ const Dashboard = () => {
                     back into place — without saying so, a tile appearing at the
                     bottom reads as the mode having moved it. */}
                 <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/45' : 'text-muted-foreground/70'}`}>
-                  Hidden items are moved to the end
+                  Hidden items appear last
                 </span>
               </div>
               <button
