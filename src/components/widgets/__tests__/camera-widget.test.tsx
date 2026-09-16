@@ -195,15 +195,20 @@ describe('CameraWidget hero', () => {
     await waitFor(() => expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ accessoryId: 'CAM-1', homeId: 'HOME-1' })));
     const img = await screen.findByAltText('Kitchen Camera snapshot');
     expect(img.getAttribute('src')).toBe('data:image/jpeg;base64,QUJD');
-    expect(screen.getByText(/Requested just now/)).toBeTruthy();
-    expect(screen.getByText(/Requested just now/).getAttribute('title')).toContain('HomeKit may supply an older image');
+    const age = screen.getByLabelText('Requested just now');
+    expect(age.textContent).toBe('just now');
+    expect(age.getAttribute('title')).toContain('HomeKit may supply an older image');
+    expect(age.closest('[data-camera-frame]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Refresh snapshot' }).closest('[data-camera-frame]')).not.toBeNull();
     expect(screen.queryByText(/Last image:/)).toBeNull();
   });
 
   it('labels a stream-backed still with the actual capture time', async () => {
     request.mockResolvedValue({ jpeg: 'QUJD', capturedAt: new Date().toISOString(), width: 1280, height: 720, source: 'stream' });
     render(<CameraWidget {...baseProps} accessory={camera()} expanded />);
-    expect(await screen.findByText(/Captured just now/)).toBeTruthy();
+    const age = await screen.findByLabelText('Captured just now');
+    expect(age.textContent).toBe('just now');
+    expect(age.getAttribute('title')).not.toContain('HomeKit may supply an older image');
     expect(screen.queryByText(/HomeKit may return an older image/)).toBeNull();
   });
 

@@ -1,0 +1,25 @@
+/* Portrait feeds can be narrower than the card: respond to the actual image,
+   not the window. Keep transport controls usable before secondary metadata. */
+.camera-feed {
+  container: camera-feed / inline-size;
+}
+
+.camera-feed-age {
+  display: none;
+}
+
+@container camera-feed (min-width: 220px) {
+  [data-camera-feed-overlay] {
+    padding-inline: 12px;
+  }
+
+  .camera-feed-age {
+    display: flex;
+  }
+}
+
+@container camera-feed (max-width: 140px) {
+  .camera-feed-dot {
+    display: none;
+  }
+}

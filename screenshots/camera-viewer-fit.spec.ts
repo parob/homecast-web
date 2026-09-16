@@ -99,3 +99,70 @@ test('queued camera uses a short status and an obvious close control', async ({ 
   await expect(page.getByRole('button', { name: 'Close camera' })).toHaveText('');
   await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(2);
 });
+
+for (const [phase, label] of [['queued', 'Queued · 2'], ['paused', 'Paused'], ['error', 'Relay changed'], ['snapshot', 'Snapshots only']] as const) {
+  test(`${phase} status is one line inside the feed, with its original image age`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 760 });
+    await page.goto(`/screenshots/fixtures/camera-live.html?overlay&cached&phase=${phase}`);
+    await page.getByRole('button', { name: 'Open camera' }).click();
+    const frame = page.locator('[data-camera-frame]');
+    const toolbar = frame.locator('[data-camera-toolbar]');
+    await expect(toolbar.getByText(label, { exact: true })).toBeVisible();
+    await expect(toolbar.locator('time')).toBeVisible();
+    await expect(toolbar.locator('time')).toHaveText(/\d+s ago/);
+    const geometry = await toolbar.evaluate(el => {
+      const row = el.querySelector('[data-camera-status-row]')!;
+      const frame = el.closest('[data-camera-frame]')!.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      const label = row.querySelector('[data-camera-status-label]')!;
+      const time = row.querySelector('time')!;
+      return { inside: r.top >= frame.top && r.bottom <= frame.bottom + 1 && r.left >= frame.left && r.right <= frame.right + 1,
+        overflow: row.scrollWidth - row.clientWidth,
+        labelLines: label.getBoundingClientRect().height / parseFloat(getComputedStyle(label).lineHeight),
+        timeLines: time.getBoundingClientRect().height / parseFloat(getComputedStyle(time).lineHeight),
+        sameLine: Math.abs(label.getBoundingClientRect().top - time.getBoundingClientRect().top),
+        background: getComputedStyle(el).backgroundImage };
+    });
+    expect(geometry.inside).toBe(true);
+    expect(geometry.overflow).toBeLessThanOrEqual(1);
+    expect(geometry.labelLines).toBeLessThanOrEqual(1);
+    expect(geometry.timeLines).toBeLessThanOrEqual(1);
+    expect(geometry.sameLine).toBeLessThanOrEqual(1);
+    expect(geometry.background).toContain('linear-gradient');
+
+    if (phase === 'paused' || phase === 'error') {
+      const resume = toolbar.getByRole('button', { name: 'Resume live view' });
+      await expect(resume).toBeVisible();
+      await resume.click();
+      await expect(toolbar.getByText('Live · No audio', { exact: true })).toBeVisible();
+    } else if (phase === 'snapshot') {
+      const requests = Number(await page.locator('html').getAttribute('data-snapshot-requests'));
+      await toolbar.getByRole('button', { name: 'Refresh snapshot' }).click();
+      await expect.poll(async () => Number(await page.locator('html').getAttribute('data-snapshot-requests'))).toBeGreaterThan(requests);
+    }
+  });
+}
+
+test('a narrow portrait feed keeps status and controls on one line without spilling out', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 500 });
+  await page.goto('/screenshots/fixtures/camera-live.html?overlay&cached&phase=paused');
+  await page.getByRole('button', { name: 'Open camera' }).click();
+  const frame = page.locator('[data-camera-frame]');
+  await expect(frame.getByText('Paused', { exact: true })).toBeVisible();
+  await expect(frame.locator('time')).toBeHidden();
+  const resume = frame.getByRole('button', { name: 'Resume live view' });
+  await expect(resume).toBeVisible();
+  await expect.poll(() => resume.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  const geometry = await resume.evaluate(button => {
+    const b = button.getBoundingClientRect();
+    const f = button.closest('[data-camera-frame]')!.getBoundingClientRect();
+    const row = button.closest('[data-camera-status-row]')!;
+    return { width: b.width, height: b.height, inside: b.left >= f.left && b.right <= f.right && b.bottom <= f.bottom,
+      overflow: row.scrollWidth - row.clientWidth };
+  });
+  expect(geometry.width).toBeGreaterThanOrEqual(44);
+  expect(geometry.height).toBeGreaterThanOrEqual(44);
+  expect(geometry.inside).toBe(true);
+  expect(geometry.overflow).toBeLessThanOrEqual(1);
+  await expectFitted(page, 500);
+});
