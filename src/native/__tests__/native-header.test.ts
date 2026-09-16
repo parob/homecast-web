@@ -34,6 +34,8 @@ import {
   NATIVE_HEADER_COVER_ATTR,
   publishRefreshDone,
   nativeHeaderRowCenter,
+  nativeHeaderContentInset,
+  isNativePageHeading,
   NATIVE_HEADER_EVENT,
   NATIVE_HEADER_TARGET_ATTR,
   type NativeHeaderControl,
@@ -44,11 +46,11 @@ interface TestWindow {
   homecastNativeHeaderEnabled?: boolean;
   __homecastNativeHeader?: {
     tap: (c: string) => void;
-    setEnabled: (e: boolean, bar?: number, status?: number) => void;
+    setEnabled: (e: boolean, bar?: number, status?: number, base?: number, eyebrow?: number) => void;
     selectHome?: (id: string) => void;
     refresh?: (kind: string) => void;
   };
-  homecastNativeHeaderInsets?: { bar: number; status: number };
+  homecastNativeHeaderInsets?: { bar: number; status: number; base?: number; eyebrow?: number };
   webkit?: { messageHandlers?: { homecast?: { postMessage: (m: unknown) => void } } };
 }
 
@@ -296,6 +298,26 @@ describe('the Home-app-shaped bar (large title, title menu, native ⋯)', () => 
     expect(nativeHeaderInsets()).toEqual({ bar: 168, status: 62 });
   });
 
+  it('pads for the eyebrow itself when the shell reports the base band, and falls back to the whole bar when it does not', () => {
+    installNativeBuild();
+    installNativeHeaderBridge({ onTap: () => {} });
+    // A newer shell, on a room page: the whole band is 186 (base 168 + an
+    // 18pt eyebrow). The page pads by the base plus the line only while IT
+    // is on a page — so a pop to the home repads in the same render.
+    w().__homecastNativeHeader!.setEnabled(true, 186, 62, 168, 18);
+    expect(nativeHeaderContentInset(true)).toBe(186);
+    expect(nativeHeaderContentInset(false)).toBe(168);
+    // The row's centre line comes from the base, so it does not move by 18
+    // between the home and a room.
+    expect(nativeHeaderRowCenter()).toBe(62 + (168 - 52 - 62) / 2);
+    // An older shell says only what it measured, eyebrow included or not.
+    w().__homecastNativeHeader!.setEnabled(true, 186, 62);
+    expect(nativeHeaderContentInset(false)).toBe(186);
+    expect(isNativePageHeading('Front Door', 'George Street')).toBe(true);
+    expect(isNativePageHeading('George Street', 'George Street')).toBe(false);
+    expect(isNativePageHeading('  ', 'George Street')).toBe(false);
+  });
+
   it('tells the shell the page is ready once the bridge is installed', () => {
     const sent = installNativeBuild();
     installNativeHeaderBridge({ onTap: () => {} });
@@ -333,9 +355,10 @@ describe('stepping aside for web overlays', () => {
   it('reports covered while a Radix dialog or sheet is open, and once per change', async () => {
     const sent = installNativeBuild();
     const stop = watchNativeHeaderCover(document.body);
-    // The initial check publishes the resting state exactly once.
+    // The initial check publishes the resting state exactly once (with the
+    // dim flag, which rests alongside it).
     expect(sent.filter((m) => (m as { covered?: boolean }).covered !== undefined)).toEqual([
-      { action: 'header.setState', covered: false },
+      { action: 'header.setState', covered: false, dimmed: false },
     ]);
 
     const sheet = document.createElement('div');
@@ -358,7 +381,7 @@ describe('stepping aside for web overlays', () => {
     bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'false');
     document.body.appendChild(bar);
     const stop = watchNativeHeaderCover(document.body);
-    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false, dimmed: false });
 
     bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'true');
     await Promise.resolve();
@@ -368,6 +391,21 @@ describe('stepping aside for web overlays', () => {
     await Promise.resolve();
     expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false });
 
+    stop();
+  });
+
+  it('reports dimmed while a widget is expanded, and not covered', async () => {
+    const sent = installNativeBuild();
+    const stop = watchNativeHeaderCover(document.body);
+    const panel = document.createElement('div');
+    panel.setAttribute('data-expanded-overlay', 'open');
+    document.body.appendChild(panel);
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', dimmed: true });
+    panel.setAttribute('data-expanded-overlay', 'closing');
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', dimmed: false });
+    panel.remove();
     stop();
   });
 

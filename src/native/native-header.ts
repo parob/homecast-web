@@ -102,6 +102,8 @@ export interface NativeHeaderState {
    * while one is open, the way a presented sheet covers the Home app's bar.
    */
   covered?: boolean;
+  /** A widget is expanded over the page: the bar stays, dimmed behind it. */
+  dimmed?: boolean;
   /**
    * What the ☰ button offers natively: the current home's rooms and room
    * groups, the collections and their groups. Homes are not here — they
@@ -164,8 +166,31 @@ export const NATIVE_HEADER_EVENT = 'homecast:native-header';
  * because `env(safe-area-inset-top)` shrinks as the large title collapses,
  * reading it live would move the content under the finger.
  */
-export function nativeHeaderInsets(): { bar: number; status: number } {
+export function nativeHeaderInsets(): { bar: number; status: number; base?: number; eyebrow?: number } {
   return win()?.homecastNativeHeaderInsets ?? { bar: 0, status: 0 };
+}
+
+/**
+ * How far the content starts below the top of the screen, for a page that
+ * is (`onPage`) or is not showing a room, group or collection heading.
+ *
+ * The shell's band is 18pt taller on a room page, for the home's name above
+ * the room's. A shell that reports `base` lets the page add that line itself,
+ * in the same render that changes the heading; waiting for the shell to
+ * measure and report back left the home view padded for a room for a frame
+ * or two after a pop, and the content jumped. An older shell reports only
+ * `bar`, already including the line as the shell last saw it.
+ */
+export function nativeHeaderContentInset(onPage: boolean): number {
+  const { bar, base, eyebrow } = nativeHeaderInsets();
+  if (typeof base === 'number' && typeof eyebrow === 'number') return base + (onPage ? eyebrow : 0);
+  return bar;
+}
+
+/** Whether a heading is a page heading, by the rule the shell uses. */
+export function isNativePageHeading(heading: string | undefined, title: string | undefined): boolean {
+  const h = (heading ?? '').trim();
+  return h.length > 0 && h !== (title ?? '');
 }
 
 /**
@@ -182,8 +207,9 @@ export const NATIVE_HEADER_LARGE_TITLE_HEIGHT = 52;
  * band (bar == status) and is just its buttons on a standard-height row.
  */
 export function nativeHeaderRowCenter(): number {
-  const { bar, status } = nativeHeaderInsets();
-  const compactBottom = bar > status ? bar - NATIVE_HEADER_LARGE_TITLE_HEIGHT : status + 54;
+  const { bar, status, base } = nativeHeaderInsets();
+  const band = typeof base === 'number' ? base : bar;
+  const compactBottom = band > status ? band - NATIVE_HEADER_LARGE_TITLE_HEIGHT : status + 54;
   return status + (compactBottom - status) / 2;
 }
 
@@ -217,14 +243,16 @@ interface NativeHeaderWindow extends Window {
   homecastNativeHeaderEnabled?: boolean;
   __homecastNativeHeader?: {
     tap: (control: string) => void;
-    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number) => void;
+    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number, baseInset?: number, eyebrow?: number) => void;
     selectHome?: (homeId: string) => void;
     menuAction?: (itemId: string) => void;
     navigate?: (itemId: string) => void;
     refresh?: (kind: string) => void;
   };
-  /** The bar's full height (large title shown) and the status bar alone, pt. */
-  homecastNativeHeaderInsets?: { bar: number; status: number };
+  /** The bar's full height (large title shown) and the status bar alone, pt.
+   *  `base` (newer shells) is the height without the eyebrow line a room
+   *  page adds above its name; `eyebrow` is that line's height. */
+  homecastNativeHeaderInsets?: { bar: number; status: number; base?: number; eyebrow?: number };
   webkit?: {
     messageHandlers?: {
       homecast?: { postMessage: (message: unknown) => void };
@@ -312,6 +340,7 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   if (state.menu !== undefined) message.menu = state.menu;
   if (state.appearance !== undefined) message.appearance = state.appearance;
   if (state.covered !== undefined) message.covered = state.covered;
+  if (state.dimmed !== undefined) message.dimmed = state.dimmed;
   if (state.navigation !== undefined) message.navigation = state.navigation;
 
   return post(message);
@@ -388,6 +417,30 @@ export function publishRefreshDone(): boolean {
   return post({ action: 'header.refreshDone' });
 }
 
+/**
+ * Tell the shell the page has PAINTED the view whose heading it just
+ * published. The heading goes out before the browser has drawn the new
+ * page; the shell slides a picture of the new page in, and a picture taken
+ * before the paint slid in blank. Two animation frames after the heading:
+ * the first runs before the next paint, the second after it. Returns a
+ * cancel, for a heading that changes again first.
+ */
+export function publishPaintedAfterNextFrame(): () => void {
+  if (typeof requestAnimationFrame === 'undefined') return () => {};
+  let first = requestAnimationFrame(() => {
+    first = 0;
+    second = requestAnimationFrame(() => {
+      second = 0;
+      post({ action: 'header.painted' });
+    });
+  });
+  let second = 0;
+  return () => {
+    if (first) cancelAnimationFrame(first);
+    if (second) cancelAnimationFrame(second);
+  };
+}
+
 export function installNativeHeaderBridge(handlers: {
   onTap: (control: NativeHeaderControl) => void;
   onEnabledChange?: (enabled: boolean) => void;
@@ -417,10 +470,12 @@ export function installNativeHeaderBridge(handlers: {
       // `evaluateJavaScript` nobody is reading the result of.
       if (isControl(control)) handlers.onTap(control);
     },
-    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number) => {
+    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number, baseInset?: number, eyebrow?: number) => {
       w.homecastNativeHeaderEnabled = enabled;
       if (typeof barInset === 'number' && typeof statusInset === 'number') {
-        w.homecastNativeHeaderInsets = { bar: barInset, status: statusInset };
+        w.homecastNativeHeaderInsets = typeof baseInset === 'number' && typeof eyebrow === 'number'
+          ? { bar: barInset, status: statusInset, base: baseInset, eyebrow }
+          : { bar: barInset, status: statusInset };
       }
       handlers.onEnabledChange?.(enabled);
       w.dispatchEvent(new CustomEvent(NATIVE_HEADER_EVENT, { detail: { enabled } }));
@@ -470,26 +525,42 @@ export function isPageCovered(root: HTMLElement | Document = document): boolean 
     .some((el) => !el.closest(POPPER_WRAPPER));
 }
 
+/** An expanded widget's panel, while open (see `ExpandedOverlay`). */
+export const NATIVE_HEADER_DIM_SELECTOR = '[data-expanded-overlay="open"]';
+
+/** Whether a widget is expanded over the page — the bar dims behind it. */
+export function isPageDimmed(root: HTMLElement | Document = document): boolean {
+  return root.querySelector(NATIVE_HEADER_DIM_SELECTOR) !== null;
+}
+
 /**
- * Publish `covered` whenever a web overlay opens or closes.
+ * Publish `covered` whenever a web overlay opens or closes, and `dimmed`
+ * whenever a widget expands or collapses.
  *
  * Watched on the DOM rather than lifted from state on purpose: the dashboard
  * owns dozens of dialogs and sheets, each with its own flag, and every future
  * one would have to remember to report itself. Radix stamps them all the same
  * way, so one observer covers them all. Returns a teardown.
+ *
+ * An expanded widget is not a cover: the page's own header stays reachable
+ * over it (activating it dismisses the widget), so the bar stays too — but
+ * behind the page's scrim, which the native bar floats above, it would read
+ * as the one thing not dimmed. It dims itself instead.
  */
 export function watchNativeHeaderCover(root: HTMLElement = document.body): () => void {
   if (!isNativeHeaderAvailable()) return () => {};
-  let last: boolean | null = null;
+  let lastCovered: boolean | null = null;
+  let lastDimmed: boolean | null = null;
   const check = () => {
     const covered = isPageCovered(root);
-    if (covered !== last) {
-      last = covered;
-      publishHeaderState({ covered });
-    }
+    const dimmed = isPageDimmed(root);
+    const state: NativeHeaderState = {};
+    if (covered !== lastCovered) { lastCovered = covered; state.covered = covered; }
+    if (dimmed !== lastDimmed) { lastDimmed = dimmed; state.dimmed = dimmed; }
+    if (Object.keys(state).length > 0) publishHeaderState(state);
   };
   const observer = new MutationObserver(check);
-  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', NATIVE_HEADER_COVER_ATTR] });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', NATIVE_HEADER_COVER_ATTR, 'data-expanded-overlay'] });
   check();
   return () => observer.disconnect();
 }
