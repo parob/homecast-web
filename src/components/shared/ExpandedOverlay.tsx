@@ -1,6 +1,11 @@
 import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useEffect, createContext } from 'react';
 import { createPortal } from 'react-dom';
 import { RemoveScroll } from 'react-remove-scroll';
+
+/** A backdrop touch that travels this far is a scroll, not a tap. */
+const BACKDROP_DRAG_DISMISS_PX = 10;
+/** Wheel travel over the page (not the panel) before the panel dismisses. */
+const BACKGROUND_SCROLL_DISMISS_PX = 40;
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { overlayScrim } from '@/lib/overlay-scrim';
@@ -388,8 +393,16 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   }, []);
 
   // Dismiss background taps, but keep the gesture available to navigation.
-  // Wheel/touch scroll stays in this panel (or a layer above it), never in
-  // the dashboard. This also covers the native shell's inner page scroller.
+  //
+  // Scrolling: a wheel or a finger INSIDE the panel scrolls the panel and
+  // stops at its edge — RemoveScroll below keeps it from chaining into the
+  // page (the page used to jump 800px when the panel hit its end). A wheel
+  // or a drag that starts OUTSIDE the panel is the page's: it scrolls the
+  // page as it always did, and once it has clearly become a scroll the panel
+  // dismisses, because a fixed panel left behind by the tile it grew from is
+  // a panel floating over the wrong place. An earlier cut locked the page
+  // entirely while a panel was open (parob/homecast-web#176), which read as
+  // the page having stopped scrolling.
   useEffect(() => {
     if (!isExpanded) return;
 
@@ -456,7 +469,13 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     };
     const trackBackdropTouch = (e: PointerEvent) => {
       if (!backdropTouch || e.pointerId !== backdropTouch.id) return;
-      if (Math.hypot(e.clientX - backdropTouch.x, e.clientY - backdropTouch.y) > 8) backdropTouch.moved = true;
+      if (backdropTouch.moved) return;
+      if (Math.hypot(e.clientX - backdropTouch.x, e.clientY - backdropTouch.y) > BACKDROP_DRAG_DISMISS_PX) {
+        // A drag on the backdrop is the page scrolling under the panel.
+        backdropTouch.moved = true;
+        backdropTouch = null;
+        onClose();
+      }
     };
     const releaseBackdropTouch = (e: PointerEvent) => {
       trackBackdropTouch(e);
@@ -478,10 +497,17 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     };
     const canScroll = (target: EventTarget | null) =>
       (target instanceof Node && !!contentRef.current?.contains(target)) || isAboveOverlay(target);
-    const blockBackgroundScroll = (e: WheelEvent | TouchEvent) => {
-      // Preserve browser pinch-to-zoom, including trackpad pinch gestures.
-      if (('touches' in e && e.touches.length > 1) || ('ctrlKey' in e && e.ctrlKey)) return;
-      if (!canScroll(e.target) && e.cancelable) e.preventDefault();
+    // A wheel outside the panel scrolls the page; past a little travel that
+    // is a scroll, not a nudge, and the panel goes.
+    let backgroundWheel = 0;
+    const handleBackgroundWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // Trackpad pinch-to-zoom.
+      if (canScroll(e.target)) return;
+      backgroundWheel += Math.abs(e.deltaY) + Math.abs(e.deltaX);
+      if (backgroundWheel >= BACKGROUND_SCROLL_DISMISS_PX) {
+        backgroundWheel = 0;
+        onClose();
+      }
     };
     const blockBackgroundKeys = (e: KeyboardEvent) => {
       // Radix can open on keydown and suppress the corresponding click.
@@ -511,8 +537,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     document.addEventListener('pointerup', releaseBackdropTouch, true);
     document.addEventListener('pointercancel', releaseBackdropTouch, true);
     document.addEventListener('click', handleNavigationClick, true);
-    document.addEventListener('wheel', blockBackgroundScroll, { passive: false });
-    document.addEventListener('touchmove', blockBackgroundScroll, { passive: false });
+    document.addEventListener('wheel', handleBackgroundWheel, { passive: true });
     document.addEventListener('keydown', blockBackgroundKeys, true);
     window.addEventListener('scroll', handleScroll, true);
     return () => {
@@ -521,8 +546,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       document.removeEventListener('pointerup', releaseBackdropTouch, true);
       document.removeEventListener('pointercancel', releaseBackdropTouch, true);
       document.removeEventListener('click', handleNavigationClick, true);
-      document.removeEventListener('wheel', blockBackgroundScroll);
-      document.removeEventListener('touchmove', blockBackgroundScroll);
+      document.removeEventListener('wheel', handleBackgroundWheel);
       document.removeEventListener('keydown', blockBackgroundKeys, true);
       window.removeEventListener('scroll', handleScroll, true);
     };
@@ -668,7 +692,11 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
           <div
             ref={scrimRef}
             aria-hidden
-            style={{ zIndex: baseZ, touchAction: 'none' }}
+            // No `touch-action: none` here: a finger that starts on the scrim
+            // is scrolling the page (it dismisses the panel as it goes), and
+            // that declaration stopped the browser from starting the scroll
+            // at all.
+            style={{ zIndex: baseZ }}
             // Opacity is NOT tied to `ready`. That flag waits for the panel to
             // be measured, which waits for the widget inside it to render —
             // heavy — so the blur arrived a beat after the press instead of
@@ -679,11 +707,14 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               isClosing ? 'opacity-0' : 'opacity-100'
             } ${ready && !isClosing ? 'pointer-events-auto' : 'pointer-events-none'}`}
           />
-          {/* Use the same reference-counted body lock as Radix. noIsolation
-              leaves portalled menus/dialogs above us scrollable; the document
-              guard above blocks only background input. The panel's own scroll
-              boundaries and touch gestures are handled by RemoveScroll. */}
-          <RemoveScroll forwardProps ref={panelRef} noIsolation allowPinchZoom>
+          {/* RemoveScroll for one thing only: a wheel or a finger inside the
+              panel that reaches the panel's edge stops there instead of
+              chaining into the page. `noIsolation` leaves the page and any
+              portalled menu or dialog scrollable, and `removeScrollBar` off
+              keeps it from setting `overflow: hidden` on the body — which is
+              the page's own scroller in a browser and in the iOS shell, and
+              locked it solid. */}
+          <RemoveScroll forwardProps ref={panelRef} noIsolation allowPinchZoom removeScrollBar={false}>
           <div
             data-expanded-overlay={isExpanded ? 'open' : 'closing'}
             // Marks this as expanded-widget content even though the portal puts

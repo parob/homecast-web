@@ -12,12 +12,12 @@ afterEach(cleanup);
 
 async function open(onClose = vi.fn()) {
   const view = render(<div><ExpandedOverlay isExpanded onClose={onClose}><button>Widget control</button></ExpandedOverlay></div>);
-  await waitFor(() => expect(document.body.hasAttribute('data-scroll-locked')).toBe(true));
+  await waitFor(() => expect(document.querySelector('[data-expanded-overlay="open"]')).not.toBeNull());
   return { ...view, onClose };
 }
 
 describe('expanded widget scroll and navigation', () => {
-  it('distinguishes a backdrop tap from a drag before dismissing', async () => {
+  it('does not dismiss on finger-down, but does once a backdrop drag has become a scroll', async () => {
     const { onClose } = await open();
     const backdrop = document.querySelector('.fixed-full-screen')!;
     const touch = (type: string, y: number) => {
@@ -27,9 +27,25 @@ describe('expanded widget scroll and navigation', () => {
     };
     touch('pointerdown', 500);
     expect(onClose).not.toHaveBeenCalled();
-    touch('pointermove', 200);
-    touch('pointerup', 200);
+    // A wobble is not a scroll.
+    touch('pointermove', 496);
     expect(onClose).not.toHaveBeenCalled();
+    // Real travel is: the page is scrolling under the panel, so the panel
+    // goes — once, however far the finger carries on.
+    touch('pointermove', 470);
+    touch('pointermove', 300);
+    touch('pointerup', 200);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('dismisses on a backdrop tap and swallows the click that follows', async () => {
+    const { onClose } = await open();
+    const backdrop = document.querySelector('.fixed-full-screen')!;
+    const touch = (type: string, y: number) => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: 5, clientY: y });
+      Object.defineProperties(event, { pointerType: { value: 'touch' }, pointerId: { value: 1 } });
+      act(() => { backdrop.dispatchEvent(event); });
+    };
     touch('pointerdown', 500);
     touch('pointerup', 500);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -38,20 +54,33 @@ describe('expanded widget scroll and navigation', () => {
     expect(click.defaultPrevented).toBe(true);
   });
 
-  it('blocks background wheel/keyboard without dismissing, and releases its body lock on unmount', async () => {
+  it('lets a wheel over the page scroll it, dismissing once it has travelled, and never locks the body', async () => {
     const { unmount, onClose } = await open();
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
+    const nudge = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 20 });
+    document.body.dispatchEvent(nudge);
+    expect(nudge.defaultPrevented).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
     const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 400 });
     document.body.dispatchEvent(wheel);
-    expect(wheel.defaultPrevented).toBe(true);
+    expect(wheel.defaultPrevented).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // Keys still stay off the page: an arrow with a panel open is for the panel.
     const key = new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true });
     document.body.dispatchEvent(key);
     expect(key.defaultPrevented).toBe(true);
-    expect(onClose).not.toHaveBeenCalled();
     unmount();
-    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
     const after = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 400 });
     document.body.dispatchEvent(after);
     expect(after.defaultPrevented).toBe(false);
+  });
+
+  it('a wheel inside the panel is the panel\'s, and does not dismiss', async () => {
+    const { onClose } = await open();
+    const inside = document.querySelector('[data-expanded-overlay="open"] button')!;
+    const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 400 });
+    inside.dispatchEvent(wheel);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('does not consume browser pinch-to-zoom', async () => {
