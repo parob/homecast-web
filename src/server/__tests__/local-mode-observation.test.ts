@@ -48,6 +48,7 @@ vi.mock('../home-serving', () => ({
   getThisDevice: () => null,
   servedByThisDevice: () => false,
   setDeviceServing: () => {},
+  notifyDeviceServingChanged: () => {},
 }));
 
 vi.mock('../connection', () => ({

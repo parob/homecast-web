@@ -276,6 +276,13 @@ export function getThisDevice(): string | null { return thisDevice; }
 /** Registered by the Local Mode controller: does this device serve `homeId` itself right now? */
 export function setDeviceServing(fn: typeof deviceServing): void { deviceServing = fn; }
 
+/** The local half changed; notify the same readers without altering server facts. */
+export function notifyDeviceServingChanged(homeIds: Iterable<string> = []): void {
+  for (const id of new Set([...facts.keys(), ...[...homeIds].map(key)])) {
+    for (const fn of listeners) fn(id, getHomeServing(id));
+  }
+}
+
 /** Registered by the data layer: how to re-ask the server about a home. */
 export function setRefetch(fn: typeof refetch): void { refetch = fn; }
 

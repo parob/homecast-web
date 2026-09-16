@@ -203,7 +203,7 @@ export function decideLocalMode(i: LocalModeInputs, prev: LocalModeMemo): LocalM
 
   // 4. An explicit "on" skips the waiting.
   if (i.override === 'on') {
-    return { active: true, reason: 'manual', memo: { active: true, pendingSince: null } };
+    return { active: true, reason: 'manual', memo: { active: true, pendingSince: null, reason: 'manual' } };
   }
 
   // `reconnecting` counts, and leaving it out was a real hole.
