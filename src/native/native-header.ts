@@ -417,6 +417,30 @@ export function publishRefreshDone(): boolean {
   return post({ action: 'header.refreshDone' });
 }
 
+/**
+ * Tell the shell the page has PAINTED the view whose heading it just
+ * published. The heading goes out before the browser has drawn the new
+ * page; the shell slides a picture of the new page in, and a picture taken
+ * before the paint slid in blank. Two animation frames after the heading:
+ * the first runs before the next paint, the second after it. Returns a
+ * cancel, for a heading that changes again first.
+ */
+export function publishPaintedAfterNextFrame(): () => void {
+  if (typeof requestAnimationFrame === 'undefined') return () => {};
+  let first = requestAnimationFrame(() => {
+    first = 0;
+    second = requestAnimationFrame(() => {
+      second = 0;
+      post({ action: 'header.painted' });
+    });
+  });
+  let second = 0;
+  return () => {
+    if (first) cancelAnimationFrame(first);
+    if (second) cancelAnimationFrame(second);
+  };
+}
+
 export function installNativeHeaderBridge(handlers: {
   onTap: (control: NativeHeaderControl) => void;
   onEnabledChange?: (enabled: boolean) => void;

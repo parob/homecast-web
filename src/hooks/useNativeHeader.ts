@@ -12,6 +12,7 @@ import {
   type NativeHeaderRefreshKind,
   nativeHeaderContentInset,
   isNativePageHeading,
+  publishPaintedAfterNextFrame,
 } from '@/native/native-header';
 
 /**
@@ -119,6 +120,15 @@ export function useNativeHeader(
   useEffect(() => {
     publishHeaderState(state);
   }, [state]);
+  // And, when the heading changes (a room opened, the home come back to),
+  // a word once the new view is on screen — the shell's slide waits for it.
+  const pageKey = `${state.title ?? ''}\u0000${state.heading ?? ''}`;
+  const lastPageKeyRef = useRef(pageKey);
+  useEffect(() => {
+    if (lastPageKeyRef.current === pageKey) return;
+    lastPageKeyRef.current = pageKey;
+    return publishPaintedAfterNextFrame();
+  }, [pageKey]);
 
   return active;
 }
