@@ -9,31 +9,10 @@ import { config } from '@/lib/config';
 // address can change while the app is running.
 const API_URL = () => config.apiUrl;
 
-// Simple in-memory image cache to prevent repeated network requests
+// Keep the image that actually loaded, including its working CORS mode.
+// Loading a second image without crossOrigin loses both that mode and the
+// sampleable pixels, and can make the browser fetch the same URL again.
 const imageCache = new Map<string, HTMLImageElement>();
-
-function preloadImage(url: string): Promise<HTMLImageElement> {
-  // Check if already cached
-  const cached = imageCache.get(url);
-  if (cached) {
-    return Promise.resolve(cached);
-  }
-
-  // Load and cache
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      imageCache.set(url, img);
-      resolve(img);
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-function isImageCached(url: string): boolean {
-  return imageCache.has(url);
-}
 
 // Ensure URL is absolute (handles relative paths from API)
 function toAbsoluteUrl(url: string | undefined): string | undefined {
@@ -197,11 +176,16 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       }
     }
 
+  }, [currentKey, activeKey, effectiveSettings, currentBg]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A transition updates currentBg itself. Cleaning up on that update
+  // cancelled the loading deadline immediately after starting it.
+  useEffect(() => {
     return () => {
       if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
       if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
     };
-  }, [currentKey, activeKey, effectiveSettings, currentBg]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Called by ImageBackground when it has analyzed the loaded image
   const handleImageLuminance = (luminance: number) => {
@@ -259,6 +243,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       {/* Previous background (fades out) */}
       {prevBg && prevBg.type !== 'none' && (
         <BackgroundLayer
+          key={getBackgroundKey(prevBg)}
           settings={prevBg}
           brightness={effectiveSettings?.brightness ?? 50}
           blur={effectiveSettings?.blur ?? 20}
@@ -269,6 +254,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       {/* Current background (fades in) */}
       {currentBg && currentBg.type !== 'none' && (
         <BackgroundLayer
+          key={getBackgroundKey(currentBg)}
           settings={currentBg}
           brightness={effectiveSettings?.brightness ?? 50}
           blur={effectiveSettings?.blur ?? 20}
@@ -417,49 +403,37 @@ function ImageBackground({
   // Determine the image URL (ensure custom URLs are absolute)
   const imageUrl = toAbsoluteUrl(url) || (presetId ? PRESET_IMAGES[presetId] : null);
 
-  // Check if image is already cached - if so, mark as loaded immediately
-  const isCached = imageUrl ? isImageCached(imageUrl) : false;
-  const [isLoaded, setIsLoaded] = useState(isCached);
+  const cachedImage = imageUrl ? imageCache.get(imageUrl) : undefined;
+  // A cached URL is not proof that this DOM image is ready to paint. Keep the
+  // outgoing layer until this element loads (or is already complete below).
+  const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [samplePixels, setSamplePixels] = useState(true);
+  const [samplePixels, setSamplePixels] = useState(() => !cachedImage || cachedImage.crossOrigin === 'anonymous');
   const imgRef = useRef<HTMLImageElement>(null);
   const onLoadCalledRef = useRef(false);
 
-  // Reset loaded state when URL changes (but check cache first)
+  // Reset for a new source, retaining a previously successful loading mode.
   const urlKey = imageUrl || '';
   useEffect(() => {
     onLoadCalledRef.current = false;
-    setSamplePixels(true);
-    if (imageUrl) {
-      const cached = isImageCached(imageUrl);
-      setIsLoaded(cached);
-      setHasError(false);
-
-      // If cached, notify parent immediately
-      if (cached && !onLoadCalledRef.current) {
-        onLoadCalledRef.current = true;
-        // Analyze luminance from cached image
-        const cachedImg = imageCache.get(imageUrl);
-        if (cachedImg) {
-          onLuminanceReady?.(analyzeLoadedImage(cachedImg));
-          onHeaderLuminanceReady?.(analyzeLoadedImageBand(cachedImg));
-          onTopColorReady?.(getImageTopColor(cachedImg));
-        }
-        onLoad?.();
-      }
-    } else {
-      setIsLoaded(false);
-      setHasError(false);
-    }
+    const cached = imageUrl ? imageCache.get(imageUrl) : undefined;
+    setSamplePixels(!cached || cached.crossOrigin === 'anonymous');
+    setIsLoaded(false);
+    setHasError(false);
   }, [urlKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A quick return can promote the still-mounted outgoing layer back to the
+  // current one. It already decoded, but must report readiness for this visit.
+  const reportsReady = Boolean(onLoad);
+  useEffect(() => {
+    if (reportsReady) onLoadCalledRef.current = false;
+  }, [reportsReady]);
 
   // Check if image is already complete (loaded before onLoad attached)
   useEffect(() => {
     if (imgRef.current?.complete && imgRef.current?.naturalHeight > 0 && !onLoadCalledRef.current) {
       onLoadCalledRef.current = true;
-      if (imageUrl) {
-        preloadImage(imageUrl).catch(() => {});
-      }
+      if (imageUrl) imageCache.set(imageUrl, imgRef.current);
       setIsLoaded(true);
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
       onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
@@ -491,10 +465,7 @@ function ImageBackground({
   const handleLoad = () => {
     if (onLoadCalledRef.current) return; // Prevent double-calling
     onLoadCalledRef.current = true;
-    // Cache the image URL on successful load
-    if (imageUrl) {
-      preloadImage(imageUrl).catch(() => {});
-    }
+    if (imageUrl && imgRef.current) imageCache.set(imageUrl, imgRef.current);
     setIsLoaded(true);
     // Analyze luminance and top color from the loaded image element
     if (imgRef.current) {
