@@ -16,7 +16,7 @@
  * rendered geometry, which jsdom does not have.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks } from './mocks';
+import { setupMocks, waitForDashboard } from './mocks';
 import { HOME_ID } from './fixtures';
 
 const HOW_MANY = 130;
@@ -62,7 +62,7 @@ test.describe('Action failure sheet, at scale', () => {
 
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForSelector('[data-tour="sidebar-menu"]', { timeout: 20000 });
+    await waitForDashboard(page);
 
     await openFailures(page, HOW_MANY);
 
@@ -103,7 +103,7 @@ test.describe('Action failure sheet, at scale', () => {
 
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}`);
-    await page.waitForSelector('[data-tour="sidebar-menu"]', { timeout: 20000 });
+    await waitForDashboard(page);
 
     await openFailures(page, HOW_MANY);
 

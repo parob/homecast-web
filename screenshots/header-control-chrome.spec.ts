@@ -15,7 +15,7 @@
  * Captures land in the gitignored `output/header-chrome/`.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks, overrideEntityLayouts, overrideSettings } from './mocks';
+import { setupMocks, overrideEntityLayouts, overrideSettings, waitForDashboard } from './mocks';
 import { HOME_ID, SHARED_HOME_ID } from './fixtures';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -61,7 +61,7 @@ async function shot(page: Page, background: Record<string, unknown>, name: strin
   });
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
-  await expect(page.locator('[data-tour="sidebar-menu"]')).toBeVisible({ timeout: 20000 });
+  await waitForDashboard(page);
   // Let the background image decode — the dark/light verdict is measured off
   // the loaded pixels, so a shot taken too early catches the wrong styling.
   await page.waitForTimeout(3200);
