@@ -26,8 +26,8 @@
  * separate orderings.
  *
  * `NO_DEVICE` is a trigger, not a belief. A refusal for a home this store says
- * is `served` means the store is stale; it asks for a refetch and changes
- * nothing. The refusal never becomes a state of its own.
+ * is `served` means the store is stale; discard that claim and refetch. The
+ * refusal never becomes an offline/waiting state of its own.
  *
  * Pure where it can be (`parseServing`, `synthesiseServing`, `composeServing`),
  * so the rules are tested rather than eyeballed against a throttled browser.
@@ -158,9 +158,9 @@ export function invalidateHomeServing(): void {
 const listeners = new Set<Listener>();
 let thisDevice: string | null = null;
 let deviceServing: (homeId: string) => { active: boolean; since?: string | null } = () => ({ active: false });
-let refetch: (homeId: string) => void = () => {};
-/** Homes a refusal has already asked a refetch for, cleared when an answer lands. */
-const staleAsked = new Set<string>();
+let refetch: (homeId: string) => void | Promise<unknown> = () => {};
+/** Deduplicate only while a revalidation is pending, so failures can recover. */
+const staleAsked = new Map<string, object>();
 
 const key = (homeId: string) => homeId.toUpperCase();
 
@@ -249,17 +249,35 @@ export function isHomeUnserved(homeId: string): boolean {
 /**
  * The cloud refused a request for this home with `NO_DEVICE`.
  *
- * If the store thought the home was served, it is stale: ask for a refetch,
- * once, and change nothing. If it already knew the home was not served, the
- * refusal is expected and nothing happens. The refusal is never stored.
+ * If the store thought the home was served, discard that stale claim and ask
+ * the server again. A failed refresh leaves the home unknown, and a later
+ * refusal may retry. Known unserved homes already explain the refusal.
+ * Only the server can supply the replacement fact; NO_DEVICE never becomes
+ * an invented offline or waiting state.
  */
 export function noteRefused(homeId: string): void {
   const k = key(homeId);
   const current = facts.get(k);
-  if (!current || current.state !== 'served') return;
+  if (current ? current.state !== 'served' : !changedAt.has(k)) return;
   if (staleAsked.has(k)) return;
-  staleAsked.add(k);
-  refetch(k);
+  const pending = {};
+  staleAsked.set(k, pending);
+  if (current) {
+    facts.delete(k);
+    changedAt.set(k, ++revision);
+    browserLogger.logInfo('home_serving_refused', { statusVersion: 1, homeId: k, previous: current, revision });
+    for (const fn of listeners) fn(k, null);
+  }
+  const complete = () => { if (staleAsked.get(k) === pending) staleAsked.delete(k); };
+  const failed = () => {
+    if (staleAsked.get(k) === pending) browserLogger.logWarn('home_serving_refetch_failed', { statusVersion: 1, homeId: k });
+  };
+  try {
+    void Promise.resolve(refetch(k)).catch(failed).finally(complete);
+  } catch {
+    failed();
+    complete();
+  }
 }
 
 export function subscribeHomeServing(fn: Listener): () => void {
