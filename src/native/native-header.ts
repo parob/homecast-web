@@ -164,8 +164,31 @@ export const NATIVE_HEADER_EVENT = 'homecast:native-header';
  * because `env(safe-area-inset-top)` shrinks as the large title collapses,
  * reading it live would move the content under the finger.
  */
-export function nativeHeaderInsets(): { bar: number; status: number } {
+export function nativeHeaderInsets(): { bar: number; status: number; base?: number; eyebrow?: number } {
   return win()?.homecastNativeHeaderInsets ?? { bar: 0, status: 0 };
+}
+
+/**
+ * How far the content starts below the top of the screen, for a page that
+ * is (`onPage`) or is not showing a room, group or collection heading.
+ *
+ * The shell's band is 18pt taller on a room page, for the home's name above
+ * the room's. A shell that reports `base` lets the page add that line itself,
+ * in the same render that changes the heading; waiting for the shell to
+ * measure and report back left the home view padded for a room for a frame
+ * or two after a pop, and the content jumped. An older shell reports only
+ * `bar`, already including the line as the shell last saw it.
+ */
+export function nativeHeaderContentInset(onPage: boolean): number {
+  const { bar, base, eyebrow } = nativeHeaderInsets();
+  if (typeof base === 'number' && typeof eyebrow === 'number') return base + (onPage ? eyebrow : 0);
+  return bar;
+}
+
+/** Whether a heading is a page heading, by the rule the shell uses. */
+export function isNativePageHeading(heading: string | undefined, title: string | undefined): boolean {
+  const h = (heading ?? '').trim();
+  return h.length > 0 && h !== (title ?? '');
 }
 
 /**
@@ -182,8 +205,9 @@ export const NATIVE_HEADER_LARGE_TITLE_HEIGHT = 52;
  * band (bar == status) and is just its buttons on a standard-height row.
  */
 export function nativeHeaderRowCenter(): number {
-  const { bar, status } = nativeHeaderInsets();
-  const compactBottom = bar > status ? bar - NATIVE_HEADER_LARGE_TITLE_HEIGHT : status + 54;
+  const { bar, status, base } = nativeHeaderInsets();
+  const band = typeof base === 'number' ? base : bar;
+  const compactBottom = band > status ? band - NATIVE_HEADER_LARGE_TITLE_HEIGHT : status + 54;
   return status + (compactBottom - status) / 2;
 }
 
@@ -217,14 +241,16 @@ interface NativeHeaderWindow extends Window {
   homecastNativeHeaderEnabled?: boolean;
   __homecastNativeHeader?: {
     tap: (control: string) => void;
-    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number) => void;
+    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number, baseInset?: number, eyebrow?: number) => void;
     selectHome?: (homeId: string) => void;
     menuAction?: (itemId: string) => void;
     navigate?: (itemId: string) => void;
     refresh?: (kind: string) => void;
   };
-  /** The bar's full height (large title shown) and the status bar alone, pt. */
-  homecastNativeHeaderInsets?: { bar: number; status: number };
+  /** The bar's full height (large title shown) and the status bar alone, pt.
+   *  `base` (newer shells) is the height without the eyebrow line a room
+   *  page adds above its name; `eyebrow` is that line's height. */
+  homecastNativeHeaderInsets?: { bar: number; status: number; base?: number; eyebrow?: number };
   webkit?: {
     messageHandlers?: {
       homecast?: { postMessage: (message: unknown) => void };
@@ -417,10 +443,12 @@ export function installNativeHeaderBridge(handlers: {
       // `evaluateJavaScript` nobody is reading the result of.
       if (isControl(control)) handlers.onTap(control);
     },
-    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number) => {
+    setEnabled: (enabled: boolean, barInset?: number, statusInset?: number, baseInset?: number, eyebrow?: number) => {
       w.homecastNativeHeaderEnabled = enabled;
       if (typeof barInset === 'number' && typeof statusInset === 'number') {
-        w.homecastNativeHeaderInsets = { bar: barInset, status: statusInset };
+        w.homecastNativeHeaderInsets = typeof baseInset === 'number' && typeof eyebrow === 'number'
+          ? { bar: barInset, status: statusInset, base: baseInset, eyebrow }
+          : { bar: barInset, status: statusInset };
       }
       handlers.onEnabledChange?.(enabled);
       w.dispatchEvent(new CustomEvent(NATIVE_HEADER_EVENT, { detail: { enabled } }));

@@ -10,6 +10,8 @@ import {
   nativeHeaderInsets,
   type NativeHeaderState,
   type NativeHeaderRefreshKind,
+  nativeHeaderContentInset,
+  isNativePageHeading,
 } from '@/native/native-header';
 
 /**
@@ -90,17 +92,22 @@ export function useNativeHeader(
     window.addEventListener(NATIVE_HEADER_EVENT, bump);
     return () => window.removeEventListener(NATIVE_HEADER_EVENT, bump);
   }, []);
+  // The band is taller on a room page (the home's name above the room's),
+  // and the page adds that line itself as it changes heading — see
+  // `nativeHeaderContentInset` — so the padding changes in the same render
+  // as the content, not a round trip later.
+  const onPage = isNativePageHeading(state.heading, state.title);
   useEffect(() => {
     if (!active) return;
     const root = document.documentElement;
-    const { bar, status } = nativeHeaderInsets();
+    const { status } = nativeHeaderInsets();
     root.style.setProperty('--safe-area-top', `${status}px`);
-    root.style.setProperty('--native-header-inset', `${bar}px`);
+    root.style.setProperty('--native-header-inset', `${nativeHeaderContentInset(onPage)}px`);
     return () => {
       root.style.removeProperty('--safe-area-top');
       root.style.removeProperty('--native-header-inset');
     };
-  }, [active, insetsVersion]);
+  }, [active, insetsVersion, onPage]);
 
   // Published on every change, and deliberately whether or not the bar is on
   // screen: flipping the preview must not produce a bar with a blank title for
