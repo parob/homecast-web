@@ -443,6 +443,11 @@ export function getEntityLayout(entityType?: string, entityId?: string) {
 // ── Setup all mocks ──────────────────────────────────────────────────────────
 
 export async function setupMocks(page: Page) {
+  // These third-party bootstraps inject iframes and background requests that
+  // can delay page load independently of the UI being tested. Keep captures
+  // and geometry checks independent of live advertising/analytics services.
+  await page.route(/^https:\/\/(pagead2\.googlesyndication\.com|www\.googletagmanager\.com)\//, route =>
+    route.fulfill({ contentType: 'application/javascript', body: '' }));
   await injectAuth(page);
   // Force cloud mode so the app connects WS to localhost:8080 (not 8081).
   // Community mode uses httpPort+1 for WS, but Playwright can't intercept cross-port WS.
