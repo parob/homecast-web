@@ -80,12 +80,15 @@ class DataCache {
   private keyListeners = new Map<string, Set<CacheListener>>();
   private staleTime = 5 * 60 * 1000; // 5 minutes (matches Apollo's behavior)
   // Track pending requests globally to deduplicate across hook instances
-  private pendingRequests = new Map<string, Promise<unknown>>();
+  private pendingRequests = new Map<string, { epoch: number; promise: Promise<unknown> }>();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   /** Did this session start with usable data on disk? Reported in boot timing. */
   private hydratedCount = 0;
-  /** Bumped to ask for a re-check of everything. See revalidateAll. */
+  /** Monotonic generation for all-home or one-home revalidation. */
   private revalidateEpoch = 0;
+  private allEpoch = 0;
+  private homesEpoch = 0;
+  private homeEpochs = new Map<string, number>();
   private epochListeners = new Set<CacheListener>();
 
   constructor() {
@@ -102,8 +105,10 @@ class DataCache {
     return entry.data as T;
   }
 
-  set<T>(key: string, data: T): void {
-    this.cache.set(key, { data, timestamp: Date.now(), epoch: this.revalidateEpoch });
+  set<T>(key: string, data: T, fetched = true): void {
+    // A value broadcast confirms that value, not the cached topology's source.
+    this.cache.set(key, { data, timestamp: Date.now(),
+      epoch: fetched ? this.epochFor(key) : this.cache.get(key)?.epoch });
     this.notify(key);
     this.schedulePersist();
   }
@@ -186,7 +191,7 @@ class DataCache {
   }
 
   /**
-   * Ask for every cached read to be re-checked, without dropping any of it.
+   * Re-check cached reads (optionally one home), without dropping any of them.
    *
    * Deliberately NOT invalidate(): that deletes, which empties the screen and
    * flashes a loading state, and doing it on every reconnect is the footgun
@@ -205,9 +210,21 @@ class DataCache {
    * PERSIST_MAX_AGE check on the next launch — which would cost the instant
    * paint this cache exists to provide.
    */
-  revalidateAll(): void {
+  revalidateAll(homeId?: string): void {
     this.revalidateEpoch++;
+    this.homesEpoch = this.revalidateEpoch;
+    if (homeId) this.homeEpochs.set(homeId.toUpperCase(), this.revalidateEpoch);
+    else {
+      this.allEpoch = this.revalidateEpoch;
+      this.homeEpochs.clear();
+    }
     this.epochListeners.forEach(l => l());
+  }
+
+  private epochFor(key: string): number {
+    if (key === 'homes') return this.homesEpoch;
+    const homeId = key.split(':')[1]?.toUpperCase();
+    return Math.max(this.allEpoch, this.homeEpochs.get(homeId) ?? 0);
   }
 
   /**
@@ -218,7 +235,7 @@ class DataCache {
    * update could reach it, so elapsed time says nothing about freshness.
    */
   needsRevalidate(key: string): boolean {
-    return (this.cache.get(key)?.epoch ?? -1) < this.revalidateEpoch;
+    return (this.cache.get(key)?.epoch ?? -1) < this.epochFor(key);
   }
 
   subscribeRevalidate(fn: CacheListener): () => void {
@@ -296,7 +313,7 @@ class DataCache {
    * Check if there's already a pending request for this key
    */
   hasPendingRequest(key: string): boolean {
-    return this.pendingRequests.has(key);
+    return this.pendingRequests.get(key)?.epoch === this.epochFor(key);
   }
 
   /**
@@ -304,17 +321,33 @@ class DataCache {
    * otherwise creates a new one using the fetcher.
    */
   async getOrFetch<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
-    // If there's already a pending request, return it
+    const epoch = this.epochFor(key);
     const existing = this.pendingRequests.get(key);
-    if (existing) {
-      return existing as Promise<T>;
+    if (existing?.epoch === epoch) {
+      return existing.promise as Promise<T>;
     }
 
-    // Create new request and track it
-    const promise = fetcher().finally(() => {
-      this.pendingRequests.delete(key);
+    // A handover must not reuse a request to the previous source. Its late
+    // success OR failure joins the current read, never replacing current data.
+    const current = () => this.needsRevalidate(key)
+      ? this.getOrFetch(key, fetcher)
+      : Promise.resolve(this.get<T>(key)!);
+    const promise = fetcher().then(
+      result => {
+        if (epoch !== this.epochFor(key)) return current();
+        // Verify and publish together. A caller storing after await would
+        // reopen a gap where the route can change before the cache write.
+        this.set(key, result);
+        return result;
+      },
+      error => {
+        if (epoch !== this.epochFor(key)) return current();
+        throw error;
+      },
+    ).finally(() => {
+      if (this.pendingRequests.get(key)?.promise === promise) this.pendingRequests.delete(key);
     });
-    this.pendingRequests.set(key, promise);
+    this.pendingRequests.set(key, { epoch, promise });
     return promise;
   }
 }
@@ -539,9 +572,8 @@ function useCachedData<T>(
     let willRetry = false;
     try {
       // Use getOrFetch to deduplicate requests across hook instances
-      const result = await cache.getOrFetch(cacheKey, fetcher);
+      await cache.getOrFetch(cacheKey, fetcher);
       if (mountedRef.current) {
-        cache.set(cacheKey, result);
         setError(null); // Clear error on successful retry
         retryCountRef.current = 0; // Reset on success
       }
@@ -598,9 +630,9 @@ function useCachedData<T>(
   // pending, indefinitely, until someone pulled to refresh.
   useEffect(() => {
     return cache.subscribeRevalidate(() => {
-      if (mountedRef.current) fetchDataRef.current(true);
+      if (mountedRef.current && cache.needsRevalidate(cacheKey)) fetchDataRef.current(true);
     });
-  }, []);
+  }, [cacheKey]);
 
   // Fetch on mount or when dependencies change
   useEffect(() => {
@@ -812,13 +844,6 @@ export function useAccessoriesForHomes(
           })
           .then(result => normalizeAccessories(result.accessories))
         )
-        .then(normalized => {
-          // Store in per-home cache so updates work
-          if (mountedRef.current) {
-            cache.set(`accessories:${homeId}`, normalized);
-          }
-          return normalized;
-        })
         .catch(() => [] as HomeKitAccessory[])
       )
     ).then(() => {
@@ -857,11 +882,7 @@ export function useAccessoriesForHomes(
           homeId,
           includeValues: true,
         }).then(result => normalizeAccessories(result?.accessories ?? []))
-      ).then(normalized => {
-        if (mountedRef.current) {
-          cache.set(`accessories:${homeId}`, normalized);
-        }
-      }).catch(() => {});
+      ).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheVersion, homeIdsKey, options.skip]);
@@ -897,13 +918,10 @@ export function useAccessoriesForHomes(
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
-          serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
+          cache.getOrFetch(`accessories:${homeId}`, () => serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
             homeId,
             includeValues: true,
-          })
-          .then(result => {
-            cache.set(`accessories:${homeId}`, normalizeAccessories(result.accessories));
-          })
+          }).then(result => normalizeAccessories(result.accessories)))
           .catch(() => {})
         )
       );
@@ -969,25 +987,21 @@ export function useAllServiceGroups(
       return () => { mountedRef.current = false; };
     }
 
-    const allCached = homeIds.every(id => cache.get<HomeKitServiceGroup[]>(`serviceGroups:${id}`) !== null);
-    if (allCached) {
+    const toFetch = homesNeedingFetch('serviceGroups', homeIds);
+    if (toFetch.length === 0) {
       setLoading(false);
       return () => { mountedRef.current = false; };
     }
 
-    setLoading(true);
+    setLoading(homeIds.some(id => cache.get(`serviceGroups:${id}`) === null));
     setError(null);
 
     Promise.all(
-      homeIds.map(homeId =>
+      toFetch.map(homeId =>
         cache.getOrFetch(`serviceGroups:${homeId}`, () =>
           serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
             .then(result => result?.serviceGroups ?? [])
-        ).then(groups => {
-          if (mountedRef.current) {
-            cache.set(`serviceGroups:${homeId}`, groups);
-          }
-        }).catch(() => {})
+        ).catch(() => {})
       )
     ).then(() => {
       if (mountedRef.current) setLoading(false);
@@ -1013,12 +1027,10 @@ export function useAllServiceGroups(
     if (uncached.length === 0 || retryCountRef.current >= 3) return;
     retryCountRef.current++;
     for (const homeId of uncached) {
-      serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
-        .then(result => {
-          if (mountedRef.current) {
-            cache.set(`serviceGroups:${homeId}`, result?.serviceGroups ?? []);
-          }
-        }).catch(() => {});
+      cache.getOrFetch(`serviceGroups:${homeId}`, () =>
+        serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
+          .then(result => result?.serviceGroups ?? []))
+        .catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheVersion, homeIdsKey, options.skip]);
@@ -1044,8 +1056,9 @@ export function useAllServiceGroups(
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
-          serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
-            .then(result => { cache.set(`serviceGroups:${homeId}`, result.serviceGroups); })
+          cache.getOrFetch(`serviceGroups:${homeId}`, () =>
+            serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
+              .then(result => result?.serviceGroups ?? []))
             .catch(() => {})
         )
       );
@@ -1079,8 +1092,8 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
 }
 
 /**
- * Re-check every cached HomeKit read against the relay, keeping what is on
- * screen until an answer arrives.
+ * Re-check cached HomeKit reads, keeping what is on screen until an answer
+ * arrives. An optional homeId scopes error recovery to the affected home.
  *
  * Called when the connection becomes usable and when the app comes back from
  * being hidden — the two moments where our picture may have gone stale with
@@ -1088,8 +1101,8 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
  * loading state and no layout shift, and it costs the same handful of requests
  * that pulling to refresh already does.
  */
-export function revalidateHomeKitCache(): void {
-  cache.revalidateAll();
+export function revalidateHomeKitCache(homeId?: string): void {
+  cache.revalidateAll(homeId);
 }
 
 /**
@@ -1174,7 +1187,7 @@ export function getCacheTimestamp(key: string): number | null {
  * Used by CollectionDetail which fetches service groups directly.
  */
 export function setServiceGroupsInCache(homeId: string, serviceGroups: HomeKitServiceGroup[]): void {
-  cache.set(`serviceGroups:${homeId}`, serviceGroups);
+  cache.set(`serviceGroups:${homeId}`, serviceGroups, false);
 }
 
 /**
@@ -1211,7 +1224,7 @@ function updateCharacteristicInCacheKey(
   });
 
   if (updated) {
-    cache.set(cacheKey, newAccessories);
+    cache.set(cacheKey, newAccessories, false);
   }
   return updated;
 }
@@ -1277,7 +1290,7 @@ function updateReachabilityInCacheKey(
   });
 
   if (updated) {
-    cache.set(cacheKey, newAccessories);
+    cache.set(cacheKey, newAccessories, false);
   }
   return updated;
 }

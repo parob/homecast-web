@@ -53,6 +53,8 @@ class LocalIdentity {
   private cached: Cached | null = null;
   private userId = '';
   private inFlight: Promise<SyncResult | null> | null = null;
+  /** Changes only when the address map changes, not on a periodic no-op sync. */
+  revision = 0;
 
   /** Point at a user's cached map. Keyed per user so accounts can't bleed. */
   load(userId: string): void {
@@ -113,7 +115,10 @@ class LocalIdentity {
 
   private adopt(c: Cached): void {
     this.cached = c;
-    this.liveToHc = new Map(Object.entries(c.live));
+    // Match cloud responses and cache keys; UUID case is not identity.
+    const next = new Map(Object.entries(c.live).map(([live, hc]) => [live.toUpperCase(), hc.toUpperCase()]));
+    if (next.size !== this.liveToHc.size || [...next].some(([live, hc]) => this.liveToHc.get(live) !== hc)) this.revision++;
+    this.liveToHc = next;
     this.hcToLive = new Map();
     for (const [live, hc] of this.liveToHc) this.hcToLive.set(hc.toUpperCase(), live);
   }

@@ -17,11 +17,15 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+const revalidate = vi.hoisted(() => vi.fn());
+vi.mock('../../hooks/useHomeKitData', () => ({ revalidateHomeKitCache: revalidate }));
+
 const homekit = vi.hoisted(() => ({
   getStatus: vi.fn(async () => ({
     ready: true, authorized: true, restricted: false, determined: true, homeCount: 1,
   })),
   isAvailable: () => true,
+  listHomes: vi.fn(async () => []),
   startObserving: vi.fn(async () => ({ success: true, observing: true })),
   stopObserving: vi.fn(async () => ({ success: true, observing: false })),
   resetObservationTimeout: vi.fn(async () => ({ success: true })),
@@ -58,6 +62,7 @@ vi.mock('../connection', () => ({
 
 vi.mock('../local-identity', () => ({
   localIdentity: {
+    revision: 0,
     loadLast: () => {},
     hasUser: () => false,
     counts: () => null,
@@ -80,6 +85,41 @@ describe('Local Mode observation', () => {
     localStorage.setItem('homecast-local-mode', 'on');
     homekit.startObserving.mockClear();
     homekit.resetObservationTimeout.mockClear();
+    revalidate.mockReset();
+  });
+
+  it('refreshes cached reads after the new route is active, in both directions', async () => {
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    const routes: boolean[] = [];
+    revalidate.mockImplementation(() => { routes.push(controller.isActive()); });
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(routes).toEqual([true]);
+    setLocalModeOverride('off');
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(routes).toEqual([true, false]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(routes).toEqual([true, false]);
+  });
+
+  it('refreshes when reconciliation changes addresses while Local Mode stays active', async () => {
+    const { controller } = await import('../local-mode-controller');
+    const { localIdentity } = await import('../local-identity');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    revalidate.mockClear();
+    vi.mocked(localIdentity.sync).mockImplementationOnce(async () => {
+      localIdentity.revision++;
+      return null;
+    });
+    await controller.resyncIdentity();
+    expect(controller.isActive()).toBe(true);
+    expect(revalidate).toHaveBeenCalledTimes(1);
+    await controller.resyncIdentity();
+    expect(revalidate).toHaveBeenCalledTimes(1);
   });
 
   afterEach(() => {
