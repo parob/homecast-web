@@ -15,7 +15,7 @@ import {
   HomeKit, isLocalCapable, isRelayCapable, withCallReason, type HomeKitStatus,
 } from '../native/homekit-bridge';
 import { executeHomeKitAction } from '../relay/local-handler';
-import { getHomeServing, getThisDevice, servedByThisDevice, setDeviceServing } from './home-serving';
+import { getHomeServing, getThisDevice, servedByThisDevice, setDeviceServing, notifyDeviceServingChanged } from './home-serving';
 import {
   serverConnection, communityRequest, clearCommunityCache, setLocalModeRouter,
   type LocalModeRouter,
@@ -23,6 +23,7 @@ import {
 import { setRelayWritePublisher, getRelayWritePublisher } from '../relay/relay-write';
 import { HomeKitServiceGroupResolver } from '../automation/service-group-resolver';
 import { localIdentity } from './local-identity';
+import { browserLogger } from '../lib/browser-logger';
 import { revalidateHomeKitCache } from '../hooks/useHomeKitData';
 
 const OVERRIDE_KEY = 'homecast-local-mode';
@@ -70,7 +71,9 @@ export function setLocalModeOverride(v: LocalModeOverride): void {
 type Listener = (s: LocalModeState) => void;
 
 class LocalModeController implements LocalModeRouter {
-  private memo: LocalModeMemo = EMPTY_MEMO;
+  // Apply the same policy and debounce independently to each home. Observation
+  // and the write publisher are shared while at least one home needs them.
+  private homes = new Map<string, { memo: LocalModeMemo; since: string | null }>();
   private state: LocalModeState = {
     active: false, reason: null, identityState: 'unmapped', matched: 0, reported: 0,
     bridgeReady: false, blocked: 'loading', status: null,
@@ -96,8 +99,6 @@ class LocalModeController implements LocalModeRouter {
    * translates on the way to the UI, as it does for everything else.
    */
   private groups: HomeKitServiceGroupResolver | null = null;
-  /** When Local Mode last engaged, ISO-8601, for the composed fact's `since`. */
-  private activeSince: string | null = null;
 
   start(): void {
     if (this.started) return;
@@ -118,8 +119,8 @@ class LocalModeController implements LocalModeRouter {
     // here rather than imported there so the dependency keeps pointing one
     // way — the controller knows about the store, never the reverse.
     setDeviceServing((homeId) => ({
-      active: this.state.active && this.canServe('accessories.list', { homeId }),
-      since: this.activeSince,
+      active: this.canServe('accessories.list', { homeId }),
+      since: this.homeState(homeId)?.since,
     }));
     void this.probeBridge();
     this.tick = setInterval(() => this.evaluate(), TICK_MS);
@@ -141,8 +142,16 @@ class LocalModeController implements LocalModeRouter {
     return () => this.listeners.delete(fn);
   }
 
-  getState(): LocalModeState { return this.state; }
+  getState(homeId?: string | null): LocalModeState {
+    if (!homeId) return this.state;
+    const active = this.canServe('accessories.list', { homeId });
+    return { ...this.state, active, reason: active ? this.homeState(homeId)?.memo.reason ?? null : null };
+  }
   isActive(): boolean { return this.state.active; }
+
+  private homeState(homeId: string) {
+    return this.homes.get(localIdentity.toStable(homeId).toUpperCase()) ?? this.homes.get('*');
+  }
 
   /** Re-decide immediately rather than waiting for the next tick. */
   refresh(): void {
@@ -176,7 +185,9 @@ class LocalModeController implements LocalModeRouter {
       const res = await withCallReason('local mode: which homes does this device have',
         () => executeHomeKitAction('homes.list', {})) as { homes?: Array<{ id: string }> };
       const ids = (res?.homes ?? []).map((h) => h.id?.toUpperCase()).filter(Boolean) as string[];
-      if (ids.length > 0) this.liveHomeIds = new Set(ids);
+      this.liveHomeIds = new Set(ids);
+      this.emit({ ...this.state }, true);
+      notifyDeviceServingChanged(ids);
     } catch {
       // Keep the previous set: an empty one would refuse every request.
     }
@@ -199,7 +210,7 @@ class LocalModeController implements LocalModeRouter {
 
     const conn = serverConnection.getState();
     const cachedHomes = readCachedHomes();
-    const homes = cachedHomes ?? [];
+    const homes = (cachedHomes ?? []).map(h => ({ ...h, id: localIdentity.toStable(h.id).toUpperCase() }));
 
     // The server's fact per home, uncomposed. `effectiveServing` would fold
     // this controller's own answer back into its input.
@@ -217,17 +228,33 @@ class LocalModeController implements LocalModeRouter {
       now: Date.now(),
     };
 
-    const d = decideLocalMode(inputs, this.memo);
-    this.memo = d.memo;
-    if (d.active && !this.state.active) this.activeSince = new Date().toISOString();
-    if (!d.active) this.activeSince = null;
+    const nextHomes: typeof this.homes = new Map();
+    // No account homes: preserve the first-run/offline policy for whatever
+    // HomeKit provides. Otherwise every decision has a concrete home id.
+    for (const home of homes.length ? homes : [null]) {
+      const id = home?.id ?? '*';
+      const prev = this.homes.get(id);
+      const d = decideLocalMode({ ...inputs, homes: home ? [home] : [] }, prev?.memo ?? EMPTY_MEMO);
+      nextHomes.set(id, {
+        memo: d.memo,
+        since: d.active ? prev?.since ?? new Date(inputs.now).toISOString() : null,
+      });
+    }
+    const previousHomes = this.homes;
+    const homeChanged = nextHomes.size !== previousHomes.size || [...nextHomes].some(([id, next]) => {
+      const prev = previousHomes.get(id);
+      return next.memo.active !== prev?.memo.active || next.memo.reason !== prev?.memo.reason;
+    });
+    this.homes = nextHomes;
+    const activeHome = [...nextHomes.values()].find(h => h.memo.active);
+    const active = !!activeHome;
 
     // Warm the identity map while the cloud is still reachable, rather than
     // discovering we need it at the moment the relay dies. `sync()` throttles
     // itself per topology hash, but building the report costs a handful of
     // HomeKit calls, so the attempt is gated here too — this runs on a 1s tick.
     //
-    // Deliberately not gated on `!d.active`: Local Mode very often engages
+    // Deliberately not gated on `!active`: Local Mode very often engages
     // *before* the first successful report (a relay that was already offline at
     // launch, or a manual pin), and gating it there meant the one code path that
     // could ever mint the map stopped running the moment it was needed. Nothing
@@ -240,10 +267,10 @@ class LocalModeController implements LocalModeRouter {
       void this.syncIdentity();
     }
 
-    const sourceChanged = d.active !== this.state.active;
+    const sourceChanged = active !== this.state.active;
     if (sourceChanged) {
-      if (d.active) this.engage(); else this.disengage();
-    } else if (d.active) {
+      if (active) this.engage(); else this.disengage();
+    } else if (active) {
       // Self-healing. `stopRelayDuties` nulls the publisher unconditionally, so
       // a socket drop on a relay-capable Mac can clear ours out from under us.
       // Re-claiming it every tick is cheaper than coordinating ownership.
@@ -253,15 +280,32 @@ class LocalModeController implements LocalModeRouter {
     this.emit({
       ...this.state,
       ...identityFrom(localIdentity.counts()),
-      active: d.active,
-      reason: d.reason ?? this.state.reason,
+      active,
+      reason: activeHome?.memo.reason ?? null,
       bridgeReady: this.bridgeReady,
       status: this.status,
-      blocked: d.active ? null : this.describeBlocker(inputs),
-    });
+      blocked: active ? null : this.describeBlocker(inputs),
+    }, homeChanged);
     // Reconnect happens before the 20s recovery hold expires. Only now do
     // reads use the new source; refreshing on reconnect alone reads local again.
-    if (sourceChanged) revalidateHomeKitCache();
+    if (homeChanged) {
+      for (const id of new Set([...previousHomes.keys(), ...nextHomes.keys()])) {
+        const previous = previousHomes.get(id)?.memo;
+        const next = nextHomes.get(id)?.memo;
+        if (!previous?.active && !next?.active) continue;
+        if (previous?.active === next?.active && previous?.reason === next?.reason) continue;
+        browserLogger.logInfo('local_mode_changed', {
+          statusVersion: 1, homeId: id === '*' ? null : id,
+          active: next?.active ?? false, reason: next?.reason ?? null,
+          previousActive: previous?.active ?? false,
+          socketState: conn.connectionState,
+          relayServing: id === '*' ? null : getHomeServing(id),
+        });
+      }
+      clearCommunityCache();
+      notifyDeviceServingChanged(homes.map(h => h.id));
+      revalidateHomeKitCache();
+    }
   }
 
   /**
@@ -296,8 +340,8 @@ class LocalModeController implements LocalModeRouter {
     return null;
   }
 
-  private emit(next: LocalModeState): void {
-    const changed = next.active !== this.state.active
+  private emit(next: LocalModeState, homeChanged = false): void {
+    const changed = homeChanged || next.active !== this.state.active
       || next.reason !== this.state.reason
       || next.identityState !== this.state.identityState
       || next.matched !== this.state.matched
@@ -334,7 +378,6 @@ class LocalModeController implements LocalModeRouter {
     // relay's own observation would silence every client it serves.
     if (!isRelayCapable()) void HomeKit.stopObserving().catch(() => {});
     this.observing = false;
-    this.memo = EMPTY_MEMO;
   }
 
   /**
@@ -431,6 +474,7 @@ class LocalModeController implements LocalModeRouter {
     // returns null while a perfectly good cached map is still loaded, and the
     // status the user sees should describe the map they actually have.
     this.emit({ ...this.state, ...identityFrom(localIdentity.counts()) });
+    notifyDeviceServingChanged(this.liveHomeIds);
     if (localIdentity.revision !== this.observedIdentityRevision) {
       // Warm-up and engage can await the same sync. Publish its map change once.
       this.observedIdentityRevision = localIdentity.revision;
@@ -446,8 +490,9 @@ class LocalModeController implements LocalModeRouter {
   // ── routing ───────────────────────────────────────────────────────────────
 
   canServe(action: string, payload: Record<string, unknown>): boolean {
+    const homeId = payload.homeId as string | undefined;
     return localModeCanServe(action, payload.homeId as string | undefined, {
-      active: this.state.active,
+      active: this.state.active && (!homeId || this.homeState(homeId)?.memo.active === true),
       cloudReachable: serverConnection.getState().connectionState === 'connected',
       liveHomeIds: this.liveHomeIds,
       hcToLive: localIdentity.stableToLive(),

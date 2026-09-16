@@ -16,7 +16,7 @@ const INACTIVE: LocalModeState = {
   bridgeReady: false, blocked: 'loading', status: null,
 };
 
-export function useLocalMode(): LocalModeState {
+export function useLocalMode(homeId?: string | null): LocalModeState {
   const [state, setState] = useState<LocalModeState>(INACTIVE);
 
   useEffect(() => {
@@ -30,11 +30,11 @@ export function useLocalMode(): LocalModeState {
 
     void import('../server/local-mode-controller').then(({ controller }) => {
       if (cancelled) return;
-      unsubscribe = controller.subscribe(setState);
+      unsubscribe = controller.subscribe(() => setState(controller.getState(homeId)));
     });
 
     return () => { cancelled = true; unsubscribe?.(); };
-  }, []);
+  }, [homeId]);
 
   return state;
 }

@@ -53,6 +53,7 @@ vi.mock('../home-serving', () => ({
   getThisDevice: () => null,
   servedByThisDevice: () => false,
   setDeviceServing: () => {},
+  notifyDeviceServingChanged: () => {},
 }));
 
 const broadcasts = vi.hoisted(() => [] as Array<Record<string, unknown>>);

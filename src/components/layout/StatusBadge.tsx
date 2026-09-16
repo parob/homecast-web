@@ -136,7 +136,7 @@ export function StatusBadge({
   onOpenRelaySettings,
 }: StatusBadgeProps) {
   const { quality } = useWebSocket();
-  const localMode = useLocalMode();
+  const localMode = useLocalMode(homeId);
   const [open, setOpen] = useState(false);
   const openTimeRef = useRef(0);
 
