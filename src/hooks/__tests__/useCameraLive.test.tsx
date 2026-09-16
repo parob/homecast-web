@@ -56,6 +56,11 @@ describe('live camera lifecycle', () => {
     expect(view.result.current).toMatchObject({ phase: 'queued', queuePosition: 2, usesLive: true });
     await act(async () => { await vi.advanceTimersByTimeAsync(40_000); });
     expect(view.result.current.phase).toBe('queued');
+    emit({ type: 'camera_live_state', watchId: watch(), streamId: 'stream', state: 'streaming' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(view.result.current.phase).toBe('connecting');
+    emit(frame());
+    expect(view.result.current.phase).toBe('live');
   });
 
   it('does not let an old session or out-of-order frame overwrite the picture', async () => {

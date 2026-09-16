@@ -89,6 +89,9 @@ export function useCameraLive(accessory: HomeKitAccessory, expanded: boolean) {
       } else if (result.state === 'queued' && !lastImage) {
         update('queued', { queuePosition: result.queuePosition });
       } else if (phase !== 'live') {
+        // Waiting for capacity is not a failed first frame. Start the frame
+        // deadline when promoted, not when the viewer joined the queue.
+        if (phase === 'queued') lastFrame = Date.now();
         update('connecting');
       }
     };
@@ -119,6 +122,7 @@ export function useCameraLive(accessory: HomeKitAccessory, expanded: boolean) {
     });
     void serverConnection.request<CameraLiveStatus>('camera.live.start', payload).then(result => {
       if (!valid()) { release(); return; }
+      if (!lastImage) lastFrame = Date.now();
       acceptStatus(result);
       if (!valid()) return;
       keepalive = setInterval(() => {
