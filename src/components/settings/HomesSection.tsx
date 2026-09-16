@@ -35,11 +35,9 @@ import type {
   HomeKitHome,
 } from '@/lib/graphql/types';
 import { toast } from 'sonner';
-import { formatLastOnline, formatRelativeAgo } from '@/lib/relay-last-seen';
 import { useHomes } from '@/hooks/useHomeKitData';
 import { CLOUD_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
-import { isHomeUnserved } from '@/server/home-serving';
-import { useHomeServingVersion } from '@/hooks/useHomeServing';
+import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
 
 interface HomesSectionProps {
   homes: HomeKitHome[];
@@ -321,11 +319,9 @@ function EnrollmentCard({ enrollment, onCancel, onConfirmInvite, onResetInvite, 
 
 const ROLE_LABELS: Record<string, string> = { owner: 'Owner', admin: 'Admin', control: 'Control', view: 'View' };
 
-function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitHome; onSwitchToCloud?: () => void; onClick?: () => void }) {
+export function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitHome; onSwitchToCloud?: () => void; onClick?: () => void }) {
   const isCloud = home.isCloudManaged;
   const isOwner = !home.role || home.role === 'owner';
-  useHomeServingVersion();
-  const isOffline = isHomeUnserved(home.id);
   return (
     <div
       className={`rounded-lg border bg-muted/30 p-3 space-y-1.5 ${onClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
@@ -358,17 +354,8 @@ function SelfHostedHomeCard({ home, onSwitchToCloud, onClick }: { home: HomeKitH
           {onClick && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
         </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isOffline ? 'bg-red-500' : 'bg-green-500'}`} />
-        <p className="text-xs text-muted-foreground">
-          {isOffline ? formatLastOnline(home.relayLastSeenAt) : `Online · ${formatRelativeAgo(home.relayLastSeenAt)}`}
-        </p>
-      </div>
-      {isOwner ? (
-        <p className="text-xs text-muted-foreground">
-          {isCloud ? 'Hosted by Homecast, always on' : 'Connected via your Mac'}
-        </p>
-      ) : (
+      <HomeConnectionSummary home={home} surface="home_settings_list" />
+      {!isOwner && (
         <p className="text-xs text-muted-foreground">
           Owned by {home.ownerEmail || 'another user'}
         </p>

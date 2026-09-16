@@ -11,9 +11,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, Cloud, Monitor, Users, Sparkles, X } from 'lucide-react';
+import { Users, Sparkles, X } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
-import { formatRelativeAgo } from '@/lib/relay-last-seen';
 import { homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
 import { isNoticeDismissed, dismissNotice } from '@/lib/notice-dismissal';
 import { RelayFullAccessDialog } from './RelayFullAccessDialog';
@@ -22,8 +21,8 @@ import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
 import type { HomeKitHome, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
 import { toast } from 'sonner';
-import { isHomeServed } from '@/server/home-serving';
-import { useHomeServingVersion } from '@/hooks/useHomeServing';
+import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
+import { useHomeServing } from '@/hooks/useHomeServing';
 
 /**
  * The home's landing page — who and what it is, and the one destructive action
@@ -42,7 +41,7 @@ export function HomeOverviewSection({
   /** The sub-section list, on layouts that have no sidebar to show it. */
   children?: React.ReactNode;
 }) {
-  useHomeServingVersion();
+  const serving = useHomeServing(home.id);
   // Dismissed for good, by id *and* name — a home's id varies in case between
   // sources and can be re-minted, and the old one-key-per-id scheme let the
   // notice come back when it did. See lib/notice-dismissal.ts.
@@ -92,15 +91,12 @@ export function HomeOverviewSection({
     }
   };
 
-  const relayKindLabel = isCloudManaged ? 'Cloud Relay' : 'Self-hosted relay';
-  const RelayKindIcon = isCloudManaged ? Cloud : Monitor;
   const roleLabel = isShared
     ? (home.role === 'admin' ? 'Admin'
        : home.role === 'view' ? 'View'
        : home.role === 'control' ? 'Control'
        : 'Shared')
     : null;
-  const relayOnline = isHomeServed(home.id);
 
   return (
     <div className="space-y-4">
@@ -155,27 +151,7 @@ export function HomeOverviewSection({
         <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-xs">
           {!isCommunity && (
             <>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <RelayKindIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="font-medium">{relayKindLabel}</span>
-                </div>
-                <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${
-                  relayOnline
-                    ? 'bg-green-500/10 text-green-600'
-                    : 'bg-red-500/10 text-red-600'
-                }`}>
-                  {relayOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-                  {relayOnline ? 'Online' : 'Offline'}
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Last online</span>
-                <span className="font-medium">
-                  {home.relayLastSeenAt ? formatRelativeAgo(home.relayLastSeenAt) : 'Never'}
-                </span>
-              </div>
+              <HomeConnectionSummary home={home} surface="home_settings_detail" />
 
               {roleLabel && (
                 <div className="flex justify-between">
@@ -236,10 +212,10 @@ export function HomeOverviewSection({
             <span className="font-medium">{home.roomCount ?? 0}</span>
           </div>
 
-          {!isCommunity && home.relayId && (
+          {!isCommunity && serving?.by && (
             <div className="flex justify-between gap-2">
-              <span className="text-muted-foreground shrink-0">Relay ID</span>
-              <span className="font-mono text-[10px] truncate max-w-[180px]" title={home.relayId}>{home.relayId}</span>
+              <span className="text-muted-foreground shrink-0">Serving device</span>
+              <span className="font-mono text-[10px] truncate max-w-[180px]" title={serving.by}>{serving.by}</span>
             </div>
           )}
 
