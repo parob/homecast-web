@@ -13,13 +13,6 @@
 /** How often an expanded tile refreshes its still. */
 export const SNAPSHOT_REFRESH_MS = 10_000;
 
-/**
- * The relay serves its cached still if it is younger than this. A little under
- * the refresh so a tile that just opened gets a fresh capture rather than the
- * one from the previous viewer's last tick.
- */
-export const SNAPSHOT_MAX_AGE_SEC = 8;
-
 /** Ceiling on the back-off after repeated failures. */
 export const SNAPSHOT_BACKOFF_MAX_MS = 60_000;
 
@@ -34,6 +27,8 @@ export interface CameraSnapshotResult {
   /** base64 JPEG */
   jpeg: string;
   capturedAt: string;
+  /** Older relays omit this; HomeKit's captureDate is a request timestamp. */
+  source?: 'stream' | 'snapshot';
   width: number;
   height: number;
   cached: boolean;
@@ -44,11 +39,13 @@ export interface CameraFailure {
   message: string;
 }
 
+export type SnapshotImage = Pick<CameraSnapshotResult, 'capturedAt' | 'width' | 'height' | 'source'> & { dataUrl: string };
+
 export type SnapshotStatus =
   | { kind: 'idle' }
   | { kind: 'loading' }
-  | { kind: 'ready'; dataUrl: string; capturedAt: string; width: number; height: number }
-  | { kind: 'error'; failure: CameraFailure; dataUrl?: string; capturedAt?: string };
+  | ({ kind: 'ready' } & SnapshotImage)
+  | ({ kind: 'error'; failure: CameraFailure } & Partial<SnapshotImage>);
 
 /** Whether a tile should be asking for stills at all right now. */
 export function shouldPollSnapshots(input: {
@@ -77,6 +74,8 @@ export function isPermanentCameraFailure(code: string): boolean {
   return (
     code === 'CAMERA_NOT_SUPPORTED' ||
     code === 'CAMERAS_DISABLED' ||
+    code === 'PERMISSION_DENIED' ||
+    code === 'UNAUTHORIZED' ||
     code === 'CAMERA_UNAVAILABLE' ||
     code === 'SCREEN_RECORDING_DENIED' ||
     code === 'CAMERA_CAPTURE_UNAVAILABLE' ||
@@ -90,6 +89,9 @@ export function describeCameraFailure(failure: CameraFailure): string {
   switch (failure.code) {
     case 'CAMERAS_DISABLED':
       return 'Camera images are turned off for this home.';
+    case 'PERMISSION_DENIED':
+    case 'UNAUTHORIZED':
+      return 'You no longer have access to this camera.';
     case 'SCREEN_RECORDING_DENIED':
     case 'CAMERA_CAPTURE_UNAVAILABLE':
       // Build 70 used SCREEN_RECORDING_DENIED for a failed own-window capture.

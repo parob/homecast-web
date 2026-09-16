@@ -231,6 +231,8 @@ export interface CameraSnapshot {
   /** base64 JPEG */
   jpeg: string;
   capturedAt: string;
+  /** Only stream-backed stills have a frame-capture timestamp. */
+  source?: 'stream' | 'snapshot';
   width: number;
   height: number;
   cached: boolean;

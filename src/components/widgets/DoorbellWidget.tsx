@@ -5,6 +5,7 @@ import { WidgetProps, getCharacteristic, hasServiceType } from './types';
 import { CameraSnapshotHero } from './CameraWidget';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
+import { CameraTileFrame } from './CameraTileFrame';
 import { isCommunity } from '@/lib/config';
 
 export const DoorbellWidget: React.FC<WidgetProps> = memo(({
@@ -52,6 +53,7 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
   const BatteryIcon = isLowBattery ? BatteryLow : (batteryLevel !== null && batteryLevel < 30 ? BatteryWarning : Battery);
 
   return (
+    <CameraTileFrame preview={preview}>
     <WidgetCard
       title={accessory.name}
       subtitle={
@@ -96,5 +98,6 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
       onShare={onShare}
       locationSubtitle={locationSubtitle}
     />
+    </CameraTileFrame>
   );
 });

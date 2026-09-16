@@ -13,6 +13,9 @@ window.matchMedia = window.matchMedia || (((query: string) => ({
   addListener: () => {}, removeListener: () => {},
   addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
 })) as unknown as typeof window.matchMedia);
+globalThis.ResizeObserver = class {
+  observe() {} unobserve() {} disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 // The camera hero is a cloud-relay feature: stills are captured by the relay
 // Mac's engine window. These tests pin the three gates that decide whether the
@@ -80,8 +83,10 @@ describe('CameraWidget hero', () => {
     fireEvent.click(screen.getByText('Entry Camera'));
     expect(await screen.findByAltText('Entry Camera snapshot')).toBeTruthy();
     expect(request).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByText('Entry Camera'));
-    expect(screen.queryByAltText('Entry Camera snapshot')).toBeNull();
+    // The full-size tile now opens the same floating viewer as a compact one.
+    // A visible close control works without reaching the original tile.
+    fireEvent.click(screen.getByRole('button', { name: 'Close camera' }));
+    await waitFor(() => expect(screen.queryByAltText('Entry Camera snapshot')).toBeNull());
   });
 
   it.each([
@@ -169,7 +174,25 @@ describe('CameraWidget hero', () => {
     await waitFor(() => expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ accessoryId: 'CAM-1', homeId: 'HOME-1' })));
     const img = await screen.findByAltText('Kitchen Camera snapshot');
     expect(img.getAttribute('src')).toBe('data:image/jpeg;base64,QUJD');
-    expect(screen.getByText(/Captured just now/)).toBeTruthy();
+    expect(screen.getByText(/Requested just now/)).toBeTruthy();
+    expect(screen.getByText(/HomeKit may return an older image/)).toBeTruthy();
+  });
+
+  it('labels a stream-backed still with the actual capture time', async () => {
+    request.mockResolvedValue({ jpeg: 'QUJD', capturedAt: new Date().toISOString(), width: 1280, height: 720, source: 'stream' });
+    render(<CameraWidget {...baseProps} accessory={camera()} expanded />);
+    expect(await screen.findByText(/Captured just now/)).toBeTruthy();
+    expect(screen.queryByText(/HomeKit may return an older image/)).toBeNull();
+  });
+
+  it('preserves portrait dimensions and does not force a doorbell into a 16:9 box', async () => {
+    request.mockResolvedValue({ jpeg: 'QUJD', capturedAt: new Date().toISOString(), width: 320, height: 439, source: 'stream' });
+    render(<DoorbellWidget {...baseProps} accessory={camera({ name: 'Front Door' })} expanded />);
+    const img = await screen.findByAltText('Front Door snapshot');
+    expect(img.getAttribute('width')).toBe('320');
+    expect(img.getAttribute('height')).toBe('439');
+    expect(img.className).toContain('object-contain');
+    expect(img.closest('.aspect-video')).toBeNull();
   });
 
   it('never asks while collapsed', () => {
