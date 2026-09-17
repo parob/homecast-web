@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { CameraCloseButton, CameraSnapshotHero } from '../../src/components/widgets/CameraWidget';
 import { WidgetCard } from '../../src/components/widgets/WidgetCard';
 import { ExpandedOverlay } from '../../src/components/shared/ExpandedOverlay';
+import { useOverlayViewport } from '../../src/hooks/useOverlayViewport';
+import { prefersImmersiveCamera } from '../../src/lib/camera-viewer';
 import { Video } from 'lucide-react';
 import { serverConnection } from '../../src/server/connection';
 import { cameraSnapshotCacheGeneration, cameraSnapshotCacheKey, setCameraSnapshot, setCameraSnapshotAccount } from '../../src/lib/camera-snapshot-cache';
@@ -82,13 +84,17 @@ function Fixture() {
 function OverlayFixture() {
   const [opened, setOpened] = useState(false);
   const accessory = { id: 'camera-0', homeId: 'home', name: 'Front Door', services: [], isReachable: true, camera: { snapshot: true, stream: true } };
+  // Mirrors CameraWidget's own two lines, so the fixture exercises the same
+  // decision the app makes rather than a fixture-only one.
+  const viewport = useOverlayViewport(opened);
+  const immersive = opened && prefersImmersiveCamera(viewport);
   return <main style={{ padding: '55vh 24px 24px' }}>
     <button onClick={() => setOpened(true)}>Open camera</button>
     <ExpandedOverlay isExpanded={opened} onClose={() => setOpened(false)} bottomInset={Number(params.get('inset') ?? 0)}>
       <WidgetCard title={accessory.name} subtitle="Doorbell camera · 96%" icon={<Video />} expanded isReachable
-        headerAction={<CameraCloseButton />}
-        heroShape="block" heroStack onShare={() => {}}
-        hero={<CameraSnapshotHero accessory={accessory} expanded={opened} />} />
+        headerAction={<CameraCloseButton onImage={immersive} />}
+        heroShape="block" heroStack onShare={() => {}} heroImmersive={immersive}
+        hero={<CameraSnapshotHero accessory={accessory} expanded={opened} immersive={immersive} />} />
     </ExpandedOverlay>
   </main>;
 }

@@ -114,6 +114,17 @@ interface WidgetCardProps {
    * "H…", "C…", "A…". Widgets whose hero is wide say so here.
    */
   heroStack?: boolean;
+  /**
+   * Lay the expanded card's chrome OVER the hero instead of above and below it.
+   *
+   * For a hero that is the whole point of the panel — a camera's live view —
+   * on a screen too short to stack a header, the image and an action row. The
+   * header and actions become one translucent bar across the top of the image,
+   * and the hero gets the card's whole height rather than what is left of it.
+   * Only the caller knows its hero can carry chrome legibly, so nobody gets
+   * this by default.
+   */
+  heroImmersive?: boolean;
   className?: string;
   style?: React.CSSProperties;
   accessory?: HomeKitAccessory;
@@ -203,6 +214,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   collapsedPreview,
   heroShape = 'bar',
   heroStack,
+  heroImmersive,
   className = '',
   style,
   accessory,
@@ -430,9 +442,14 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const hideSubtitleForMultiLine = multiLineTitle && isReachable;
 
   // Non-compact mode header content - horizontal layout
-  const headerContent = (
+  // `withIcon: false` is for the immersive camera bar, where the accessory's
+  // type disc sits on top of its own live picture — the most literal statement
+  // of what the accessory is, next to the least. Everything else about the
+  // name and subtitle (the two-line clamp, the subtitle collapse) has to stay
+  // shared, which is why this is a parameter rather than a second block.
+  const renderHeaderContent = (withIcon = true) => (
     <div className="flex min-w-0 gap-2.5 items-center">
-      <div className={showTilePreview ? 'relative z-10 shrink-0' : undefined}>{iconElement}</div>
+      {withIcon && <div className={showTilePreview ? 'relative z-10 shrink-0' : undefined}>{iconElement}</div>}
       <div className={`min-w-0 flex-1 ${showTilePreview ? 'relative z-10' : ''}`}>
         <div className={!effectiveSubtitle && !multiLineTitle ? 'translate-y-2' : 'translate-y-0'}>
           {/* `break-words` is what makes the two-line clamp end in an ellipsis.
@@ -461,6 +478,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       </div>
     </div>
   );
+  const headerContent = renderHeaderContent();
 
   // Apply No Response styling to inner content only, not the tooltip portal
   const noResponseClass = !isReachable ? 'opacity-50 grayscale' : '';
@@ -651,7 +669,37 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     });
   }
 
-  const cardInner = (
+  // The whole card is the hero, with its chrome floating on top. Deliberately
+  // not a variant of the stacked branch below: that one's job is to give the
+  // header, the hero and the actions each their own band, and every rule in it
+  // is about sharing height between them. Here there is nothing to share.
+  const immersive = showHero && heroImmersive;
+
+  const immersiveInner = (
+    <div
+      className="relative overflow-hidden rounded-[inherit]"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className={`${noResponseClass} ${hiddenClass}`}>{hero}</div>
+      {/* One bar, top-aligned: name on the left, actions and the close control
+          on the right. The gradient is what keeps a white name legible over a
+          daylit doorway — the image underneath is not ours to choose. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 bg-gradient-to-b from-black/75 via-black/40 to-transparent px-3 pb-10 pt-2 [&_.text-muted-foreground]:!text-white/80 [&_h3]:!text-white [&_p]:!text-white/80">
+        <div className="pointer-events-auto min-w-0 flex-1">{renderHeaderContent(false)}</div>
+        <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+          {/* `mt-0` undoes the row's stacked-layout top margin: here it is not
+              sitting under anything. */}
+          {expandedActions.length > 0 && (
+            <div className="[&>div]:!mt-0"><ExpandedActionBar actions={expandedActions} onDark /></div>
+          )}
+          {effectiveHeaderAction}
+        </div>
+      </div>
+    </div>
+  );
+
+  const cardInner = immersive ? immersiveInner : (
     <>
       <CardHeader className={`${effectiveCompact ? 'p-3' : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`} ${showTilePreview ? 'relative [&_h3]:!text-white [&_p]:!text-white/80 [&_.text-muted-foreground]:!text-white/80' : ''}`}>
         {effectiveCompact ? (
