@@ -291,26 +291,6 @@ function formatHumidity(value: number): string {
   return `${Math.round(value)}%`;
 }
 
-function formatTemperatureRange(min: number, max: number, avg: number, count: number): string {
-  if (count === 1) {
-    return formatTemperature(avg);
-  }
-  if (Math.abs(max - min) < 0.5) {
-    return formatTemperature(avg);
-  }
-  return `${formatTemperature(min)} – ${formatTemperature(max)}`;
-}
-
-function formatHumidityRange(min: number, max: number, avg: number, count: number): string {
-  if (count === 1) {
-    return formatHumidity(avg);
-  }
-  if (Math.abs(max - min) < 3) {
-    return formatHumidity(avg);
-  }
-  return `${formatHumidity(min)} – ${formatHumidity(max)}`;
-}
-
 function formatLockState(value: number | boolean): string {
   if (typeof value === 'boolean') return value ? 'Locked' : 'Unlocked';
   switch (value) {
@@ -394,8 +374,8 @@ export function AreaSummary({ appearance = 'bubbles',
 
     // Temperature
     if (sensorData.temperature) {
-      const { avg, min, max, readings } = sensorData.temperature;
-      const label = formatTemperatureRange(min, max, avg, readings.length);
+      const { avg, readings } = sensorData.temperature;
+      const label = formatTemperature(avg);
       result.push(
         <SummaryItem
           appearance={appearance}
@@ -418,8 +398,8 @@ export function AreaSummary({ appearance = 'bubbles',
 
     // Humidity
     if (sensorData.humidity) {
-      const { avg, min, max, readings } = sensorData.humidity;
-      const label = formatHumidityRange(min, max, avg, readings.length);
+      const { avg, readings } = sensorData.humidity;
+      const label = formatHumidity(avg);
       result.push(
         <SummaryItem
           appearance={appearance}
