@@ -241,6 +241,8 @@ interface NativeHeaderWindow extends Window {
   homecastNativeHeaderAvailable?: boolean;
   /** The bar is drawing right now. Kept in step by `setEnabled` below. */
   homecastNativeHeaderEnabled?: boolean;
+  /** This shell animates home cycling with its interactive navigation pop. */
+  homecastNativeHomeSwipeAvailable?: boolean;
   __homecastNativeHeader?: {
     tap: (control: string) => void;
     setEnabled: (enabled: boolean, barInset?: number, statusInset?: number, baseInset?: number, eyebrow?: number) => void;
@@ -296,6 +298,11 @@ export function isNativeHeaderAvailable(): boolean {
 export function isNativeHeaderEnabled(): boolean {
   const w = win();
   return w?.homecastNativeHeaderAvailable === true && w?.homecastNativeHeaderEnabled === true;
+}
+
+/** Older shells still need the web's home-cycling gesture. */
+export function isNativeHomeSwipeEnabled(): boolean {
+  return isNativeHeaderEnabled() && win()?.homecastNativeHomeSwipeAvailable === true;
 }
 
 /**
