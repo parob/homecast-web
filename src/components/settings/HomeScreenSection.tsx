@@ -14,26 +14,9 @@ import {
 import { describeError } from '@/lib/describe-error';
 
 /**
- * Per-home control over the summary row at the top of the home view — which
- * pills appear. Whether an *individual* card inside the Scenes pill appears is
- * not set here: that lives on the card, through Edit Layout on touch and the
- * right-click menu on a desktop. There was a page of switches for it
- * (`home/HomeActionsSection`), stacked here before that; it went once the cards
- * could be hidden and unhidden from both platforms.
- *
- * Scenes carries two switches rather than one. It holds two kinds of card —
- * Apple Home's scenes and the shortcuts derived from the home's accessories —
- * and they were separate pills until they merged, so anyone who had already
- * turned one off keeps exactly the choice they made. The pill goes when both
- * are off.
- *
- * Both sets are stored in the home's layout blob (the same `stored_entities`
- * row as its accessory layout) as *hidden* lists, so a home that predates this
- * setting shows everything with no migration.
- *
- * Unlike the MQTT and Analytics switches, these are optimistic: `useHomeLayout`
- * writes the Apollo cache before it mutates, so a flip lands on the dashboard
- * behind the dialog in the same tick. Don't add a refetch.
+ * Home-level visibility for room scenes and inline status readings. Individual
+ * scenes hide on their cards; Automations is always reachable from the menu.
+ * Keep both scene content flags so existing visibility choices still apply.
  */
 export function HomeScreenSection({ home }: { home: { id: string; name: string } }) {
   const { layout, updateLayout, loading } = useHomeLayout(home.id);
@@ -63,7 +46,7 @@ export function HomeScreenSection({ home }: { home: { id: string; name: string }
   return (
     <div className="space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Home Screen</p>
-      {SUMMARY_PILL_ORDER.map(id => (
+      {SUMMARY_PILL_ORDER.filter(id => id !== 'automations').map(id => (
         id === 'scenes' ? (
           <div key={id} className="space-y-1">
             <p className="text-sm font-medium">{SUMMARY_PILL_LABEL[id]}</p>

@@ -27,9 +27,10 @@ import { runningSubtitle } from './running-subtitle';
 export function ActionCard({
   action, homeId, isDarkBackground, isViewOnly, editMode, touchMode,
   running, elapsed, runningTextOf, onPress, onRun, isHidden, onToggleHidden,
-  renderPanel,
+  renderPanel, tile = false,
 }: {
   action: HomeAction;
+  tile?: boolean;
   homeId?: string | null;
   isDarkBackground?: boolean;
   isViewOnly?: boolean;
@@ -137,7 +138,7 @@ export function ActionCard({
           : (inert ? 'cursor-default' : 'cursor-pointer'),
       )}
       {...(isHidden ? { 'data-hidden-item': 'true' } : {})}
-      style={{ contain: 'layout style paint' }}
+      style={{ contain: 'layout style paint', minHeight: tile ? 'var(--scene-tile-height, 96px)' : undefined }}
       // The arithmetic the subtitle no longer carries. Native title rather than
       // a Radix tooltip: this card is a press target on touch, and Radix closes
       // on pointerdown, so a tooltip here would fight the thing it sits on.
@@ -148,29 +149,23 @@ export function ActionCard({
         'absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 transform-gpu',
         isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80',
       )} />
-      {/* Everything on this row is a little smaller than a tile's,
-          to buy the name room. On the compact grid a 180px card
-          spends ~115px on chrome — a 32px chip, the toggle, gaps and
-          padding — leaving the name about 65px, which "All switches
-          & outlets" wrapped into two lines and then clipped. A 24px
-          chip, tighter padding and 13px type give back enough that
-          most names fit, and the ones that do not now trail off on
-          one line rather than losing their second. */}
-      <div className="relative z-[1] flex items-center gap-2 p-2.5">
+      {/* Match WidgetCard’s compact padding, icon, label gap and control scale.
+          SceneGridSizing gives all visible scene cards the same height. */}
+      <div data-scene-tile-content={tile ? '' : undefined} className={tile ? 'relative z-[1] grid grid-cols-[1fr_auto] items-start gap-x-2 gap-y-2 p-3' : 'relative z-[1] flex items-center gap-2 p-2.5'}>
         {/* The ring rides this chip's rim while the action's
             writes are still travelling. It is the only thing on a
             two-way card that moves: the toggle's thumb follows the
             catalog, which follows the accessories, which do not
             change until the relay confirms. */}
-        <PendingRing pendingKey={actionKey(action.id)} className={cn('h-6 w-6', colors.text)}>
-          <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full shadow-sm', colors.bg, colors.text)}>
-            <Icon className="h-3 w-3" />
+        <PendingRing pendingKey={actionKey(action.id)} className={cn(tile ? 'h-8 w-8' : 'h-6 w-6', colors.text)}>
+          <div className={cn('flex shrink-0 items-center justify-center rounded-full shadow-sm', tile ? 'h-8 w-8' : 'h-6 w-6', colors.bg, colors.text)}>
+            <Icon className={tile ? "h-4 w-4" : "h-3 w-3"} />
           </div>
         </PendingRing>
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0 flex-1", tile && "order-3 col-span-2")}>
           <p
             title={action.label}
-            className={cn('text-[13px] font-medium leading-tight truncate transition-colors duration-300', isDarkBackground && 'text-white')}
+            className={cn('font-medium break-words transition-colors duration-300', tile ? 'text-xs leading-tight tracking-tight' : 'text-[13px] leading-snug', isDarkBackground && 'text-white')}
           >
             {action.label}
           </p>
@@ -188,7 +183,7 @@ export function ActionCard({
               not just seen. */}
           <p
             aria-live={running ? 'polite' : undefined}
-            className={cn('text-[10px] truncate tabular-nums transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
+            className={cn('break-words tabular-nums transition-colors duration-300', tile ? 'text-[10px] mt-0.5' : 'text-xs', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}
           >
             {running ? runningSubtitle(runningTextOf(action), elapsed) : action.subtitle}
           </p>
@@ -204,7 +199,7 @@ export function ActionCard({
           // `flex items-center`, not a bare span: blockified as a flex item it
           // still builds a line box around the toggle, and the leading under
           // the button pushed it visibly above the row's centre line.
-          <span className="shrink-0 flex items-center" onClick={(e) => e.stopPropagation()}>
+          <span className={cn("shrink-0 flex items-center", tile && "order-2 relative scale-90 origin-top-right")} onPointerDown={tile ? e => e.stopPropagation() : undefined} onClick={(e) => e.stopPropagation()}>
             <TriStateToggle
               state={toggle.state}
               wide
@@ -221,7 +216,7 @@ export function ActionCard({
         ) : (
           /* Decorative: the whole card is the button, since a
              one-way action has nothing to open or edit. */
-          <span className={cn('shrink-0 flex items-center rounded-lg p-1.5', isDarkBackground ? 'text-white/70' : 'text-muted-foreground')}>
+          <span className={cn('shrink-0 flex items-center justify-center rounded-lg', tile ? 'order-2 relative h-6 w-6 scale-90 origin-top-right' : 'p-1.5', isDarkBackground ? 'text-white/70' : 'text-muted-foreground')}>
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           </span>
         )}

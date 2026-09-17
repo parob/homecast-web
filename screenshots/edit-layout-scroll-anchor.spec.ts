@@ -125,7 +125,11 @@ test.describe('Edit Layout holds your place', () => {
     await expect(page.locator(LANDMARK)).toBeVisible();
 
     // Short enough that there is room to scroll, then scrolled past Bedroom so
-    // the space that opens and closes is off the top of the screen.
+    // the space that opens and closes is off the top of the screen. Measured
+    // from Bedroom itself, not a fixed offset: what sits above the first room
+    // (the home's status and scenes) has grown before and will again, and a
+    // number that once cleared it leaves Bedroom on screen — where the reveal
+    // grows the page below the anchor, legitimately, and this proves nothing.
     await page.setViewportSize({ width: 428, height: 500 });
     await page.waitForTimeout(500);
     // `instant`, and then settled for a beat: `scroll-behavior: smooth` is set
@@ -133,9 +137,15 @@ test.describe('Edit Layout holds your place', () => {
     // lands — and the anchor lets go the moment the offset moves under it,
     // which is the right thing to do for a viewer's flick and would make this
     // test pass for entirely the wrong reason.
-    await page.evaluate(() => window.scrollTo({ top: 700, behavior: 'instant' as ScrollBehavior }));
+    const target = await page.evaluate(() => {
+      const bedroom = document.querySelector('main [data-room-name="Bedroom"]')!.getBoundingClientRect();
+      const top = Math.round(window.scrollY + bedroom.bottom + 40);
+      window.scrollTo({ top, behavior: 'instant' as ScrollBehavior });
+      return top;
+    });
     await page.waitForTimeout(600);
-    expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(700);
+    expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(target);
+    expect(await page.evaluate(() => document.querySelector('main [data-room-name="Bedroom"]')!.getBoundingClientRect().bottom)).toBeLessThan(0);
   });
 
   test('entering does not move the page under you', async ({ page }) => {

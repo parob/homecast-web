@@ -7,6 +7,7 @@ import {
 import { isLiveFrame, type CameraLivePhase, type CameraLiveStatus } from '@/lib/camera-live';
 import type { SnapshotImage } from '@/lib/camera-snapshot';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
+import { randomUUID } from '@/lib/uuid';
 
 interface LiveState {
   key: string;
@@ -40,7 +41,7 @@ export function useCameraLive(accessory: HomeKitAccessory, expanded: boolean) {
 
   useEffect(() => {
     if (!expanded || !supported || !visible || !connected || !cameraSnapshotAccount()) return;
-    const watchId = crypto.randomUUID();
+    const watchId = randomUUID();
     const payload = { watchId, homeId: accessory.homeId, accessoryId: accessory.id };
     let closed = false;
     let streamId: string | undefined;

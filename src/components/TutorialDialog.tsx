@@ -101,9 +101,9 @@ const STEPS: TourStep[] = [
     position: 'right',
   },
   {
-    target: 'automations',
+    target: 'header-menu',
     title: 'Automations',
-    description: 'Automations run your accessories on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open a home\'s view to create one from scratch or use a template.',
+    description: 'Automations run your accessories on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open the top-right menu and choose Automations to create one from scratch or use a template.',
     position: 'bottom',
   },
   {

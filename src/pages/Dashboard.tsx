@@ -44,7 +44,7 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { useDebugDockHeight } from '@/lib/debug-dock';
-import { activateHeaderControl, isNativeHomeSwipeEnabled, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
+import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
@@ -64,23 +64,24 @@ import { useEntitySync } from '@/hooks/useEntitySync';
 import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLayout, useRoomGroupLayout } from '@/hooks/useEntityLayout';
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
 import { MasonryGrid } from '@/components/MasonryGrid';
-import { AreaSummary, StatusPill } from '@/components/summary';
+import { AreaSummary } from '@/components/summary';
 import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
 import {
-  isSummarySectionVisible, isScenesSectionVisible, withHomeActionVisibility, withSummarySectionVisibility,
-  withScenesSectionVisibility, withSceneVisibility,
-  type HomeActionId, type SummarySectionId,
+  isSummarySectionVisible, withHomeActionVisibility,
+  withSceneVisibility,
+  type HomeActionId,
 } from '@/lib/summary-sections';
-import { SummarySectionEditPills } from '@/components/summary/SummarySectionEditPills';
-import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
-import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
+import { AutomationsSection } from '@/components/automations/AutomationsSection';
+import { SceneGridSizing } from '@/components/scenes/SceneGridSizing';
+import { useSceneCards, cardKey, type Card as SceneGridCard } from '@/components/scenes/ScenesSection';
+import { mergeVisibleOrder } from '@/lib/scene-rooms';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
 import { useVirtualAccessories, type VirtualTimerInfo } from '@/components/virtual-accessories/useVirtualAccessories';
 import { VirtualAccessoryEditProvider } from '@/components/widgets/VirtualAccessoryEditContext';
 
 /**
  * Bucket name for accessories that belong to the home rather than to a room.
- * Never shown — the group renders first and unlabelled — but it has to be a
+ * Rendered as Scenes, but internally it still needs a unique
  * name because rooms are grouped by name. The NUL prefix is what stops it
  * colliding with a real room someone actually named "home-level", so it has to
  * stay in memory: see HOME_LEVEL_CONTEXT_ID for the form that gets stored.
@@ -105,6 +106,7 @@ const BREADCRUMB_LINK_CLASS =
   'align-baseline opacity-60 hover:opacity-100 transition-opacity cursor-pointer';
 
 import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
+import { DragHandleArea } from '@/components/shared/DragHandleArea';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
 import { AppBootFallback, SidebarRowsSkeleton, AccessoryGridSkeleton } from '@/components/LoadingSkeletons';
@@ -210,7 +212,6 @@ import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AutoHeight } from '@/components/ui/auto-height';
 import { RemeasureDuringLift } from '@/components/shared/RemeasureDuringLift';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Switch } from '@/components/ui/switch';
@@ -248,7 +249,7 @@ import {
   Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
+  Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart, Zap} from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import {
   ContextMenu,
@@ -1511,7 +1512,6 @@ const Dashboard = () => {
       setSelectedRoomId(null);
       setSelectedCollectionId(null);
       setSelectedCollection(null);
-      setAutomationsOpen(true);
     } else if (tutorialPrevSelectionRef.current) {
       const prev = tutorialPrevSelectionRef.current;
       setSelectedHomeIdRaw(prev.home);
@@ -1519,14 +1519,8 @@ const Dashboard = () => {
       setSelectedCollectionId(prev.collectionId);
       setSelectedCollection(prev.collection);
       tutorialPrevSelectionRef.current = null;
-      // Close what the tour opened. The enter branch expands Automations so the
-      // spotlight has something to land on, and restoring only the *selection*
-      // left it hanging open afterwards — which is why a first run ended with a
-      // pill expanded that the user never touched. All three, not just that one:
-      // closed is their initial state, so this restores it whatever the tour did.
-      setScenesOpen(false);
+      // Restore the normal dashboard when the guided tour ends.
       setAutomationsOpen(false);
-      setStatusOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tutorialDemoActive]);
@@ -2093,12 +2087,8 @@ const Dashboard = () => {
   releaseAnchorRef.current = releaseAnchor;
 
   useEffect(() => () => window.clearTimeout(liftWatchdogRef.current), []);
-  // Scenes/Automations/Status sections, toggled by the pills in the summary
-  // row — mutually exclusive, so opening one closes the other two. All are
-  // home-view only: room views keep the sensor bubbles inline.
-  const [scenesOpen, setScenesOpen] = useState(false);
+  // Automations is reached through the home's overflow menu.
   const [automationsOpen, setAutomationsOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
 
   // Helper accessories: ours, not HomeKit's, so they live in the room grid
   // alongside real accessories and in a home-level folder above the rooms.
@@ -3424,8 +3414,9 @@ const Dashboard = () => {
     contextId: string,
     groups: HomeKitServiceGroup[],
     accessories: HomeKitAccessory[],
-    currentEditMode?: 'ui' | null
-  ): Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory }> => {
+    currentEditMode?: 'ui' | null,
+    sceneCards: SceneGridCard[] = [],
+  ): Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory } | { type: 'scene'; data: SceneGridCard }> => {
     // Always read from Apollo cache for consistent behavior in both home view and room view
     let effectiveRoomLayout: RoomLayoutData | null = null;
     if (contextId && contextId !== 'all') {
@@ -3442,16 +3433,20 @@ const Dashboard = () => {
       }
     }
 
-    const order = effectiveRoomLayout?.itemOrder || [];
+    const order = (contextId === HOME_LEVEL_CONTEXT_ID || contextId === 'all'
+      ? homeLayout?.dashboardItemOrder?.[contextId] : undefined)
+      ?? effectiveRoomLayout?.itemOrder ?? [];
 
     // Build items array with type info
-    const items: Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory }> = [
+    const items: Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory } | { type: 'scene'; data: SceneGridCard }> = [
       ...groups.map(g => ({ type: 'group' as const, data: g, id: `group-${g.id}` })),
       ...accessories.map(a => ({ type: 'accessory' as const, data: a, id: a.id })),
+      ...sceneCards.map(card => ({ type: 'scene' as const, data: card, id: cardKey(card) })),
     ];
 
     // Helper to check if an item is hidden (using room entity layout)
     const isItemHidden = (item: typeof items[0]): boolean => {
+      if (item.type === 'scene') return item.data.isHidden;
       if (item.type === 'group') {
         return effectiveRoomLayout?.visibility?.hiddenGroups?.includes(item.data.id) ?? false;
       } else {
@@ -3469,8 +3464,8 @@ const Dashboard = () => {
     } else {
       const orderMap = new Map(order.map((id, idx) => [id, idx]));
       sortedItems = [...items].sort((a, b) => {
-        const aId = a.type === 'group' ? `group-${a.data.id}` : a.data.id;
-        const bId = b.type === 'group' ? `group-${b.data.id}` : b.data.id;
+        const aId = a.type === 'group' ? `group-${a.data.id}` : a.type === 'scene' ? cardKey(a.data) : a.data.id;
+        const bId = b.type === 'group' ? `group-${b.data.id}` : b.type === 'scene' ? cardKey(b.data) : b.data.id;
         const aIdx = orderMap.get(aId);
         const bIdx = orderMap.get(bId);
         if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx;
@@ -3489,7 +3484,7 @@ const Dashboard = () => {
 
     return sortedItems;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showHiddenItems, apolloClient, itemOrderVersion, accessorySurface]);
+  }, [showHiddenItems, apolloClient, itemOrderVersion, accessorySurface, homeLayout?.dashboardItemOrder]);
 
   // Handle drag end for reordering (unified for groups and accessories)
   // Saves to room entity layout (StoredEntity)
@@ -3611,9 +3606,7 @@ const Dashboard = () => {
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
 
   // Swipe in from the left edge to go back, the way an iOS navigation stack
-  // does: a room, room group or collection returns to the whole home, and the
-  // whole home steps to the previous home in the title menu's order, round and
-  // round through all of them. It used
+  // does: a room, room group or collection returns to the whole home. It used
   // to open the navigation drawer; the home name's own menu now covers what
   // the drawer offered, and the drawer's own swipe-to-close still lives in
   // SheetContent. Gated the same way the menu button was: on md and up the
@@ -3621,22 +3614,24 @@ const Dashboard = () => {
   // go back to. The gesture stands down whenever a dialog is over the page —
   // including the admin panel, which runs its own scoped swipe below.
   //
-  // Through a ref because what "back" means depends on selections and the
-  // homes list that are computed further down this component, and the
-  // gesture only fires long after render.
+  // The whole home has nothing to go back to. It once stepped to the previous
+  // home from here (and the iOS shell animated the same, from either edge);
+  // both are parked for now, so the listener is off on the home rather than
+  // catching a gesture that does nothing.
+  //
+  // Through a ref because what "back" means depends on selections that are
+  // computed further down this component, and the gesture only fires long
+  // after render.
   const edgeSwipeBackRef = useRef<() => void>(() => {});
   // The iOS native header has the screen (parob/homecast-cloud#120): the web
   // header row is hidden and the document, not an inner container, scrolls.
   const nativeHeaderActive = useNativeHeaderActive();
   useEdgeSwipeOpen({
-    // On a room, group or collection under the native header the swipe is
-    // UIKit's own interactive pop (the bar has a real back button there),
-    // so the page's listener stands down rather than racing it. On the
-    // whole home newer shells animate home cycling too; older ones still
-    // need this listener.
-    enabled: isMobile && hasContentAccess && !sidebarOpen
-      && !isNativeHomeSwipeEnabled()
-      && !(nativeHeaderActive && !!(selectedRoomId || selectedRoomGroupId || selectedCollectionId)),
+    // Under the native header the swipe is UIKit's own interactive pop (the
+    // bar has a real back button there), so the page's listener stands down
+    // rather than racing it.
+    enabled: isMobile && hasContentAccess && !sidebarOpen && !nativeHeaderActive
+      && !!(selectedRoomId || selectedRoomGroupId || selectedCollectionId),
     onOpen: () => edgeSwipeBackRef.current(),
   });
   useEdgeSwipeOpen({
@@ -4194,19 +4189,13 @@ const Dashboard = () => {
   );
 
   // What the left-edge swipe does (see `useEdgeSwipeOpen` above): out of a
-  // room, group or collection to the whole home; from the whole home to the
-  // previous home in the menu's order, wrapping from the first to the last so
-  // the gesture cycles through every home.
+  // room, group or collection to the whole home.
   useEffect(() => {
     edgeSwipeBackRef.current = () => {
       if (!selectedHomeId) return;
       if (selectedRoomId || selectedRoomGroupId || selectedCollectionId) {
         handleSelectHome(selectedHomeId);
-        return;
       }
-      const index = nativeHomes.findIndex((home) => home.id === selectedHomeId);
-      if (index < 0 || nativeHomes.length < 2) return;
-      handleSelectHome(nativeHomes[(index - 1 + nativeHomes.length) % nativeHomes.length].id);
     };
   });
 
@@ -5073,25 +5062,6 @@ const Dashboard = () => {
   // moving the grid under the finger. On a phone the sidebar is a closed
   // overlay, so this is invisible there either way.
   const editingSidebar = isTouchDevice && editMode && !liftInFlight;
-  /*
-   * The summary row, unlike the sidebar, changes at the lift.
-   *
-   * It is the one thing you are looking at when the hold takes, so waiting for
-   * the drop made the mode arrive in two parts. It does move the grid: measured
-   * against the built CSS, the edit row is the same height as the live one at
-   * 414pt and up, and a second line — 24px to 56px — at 375 and 390, because its
-   * pills each carry a control the live ones do not and it reveals sections that
-   * are hidden the rest of the time.
-   *
-   * Two things make that acceptable rather than a jump under the finger:
-   * AutoHeight animates the step, and RemeasureDuringLift re-reads the grid's
-   * rects while it moves, so a drop still lands where it looks like it will.
-   *
-   * Reserving the space in the live pills was tried and is worse — it makes the
-   * normal row two lines on the commonest phones and still mismatches above
-   * that, because the live pills carry counts the edit ones do not.
-   */
-  const editingSummaryRow = isTouchDevice && editMode;
   const EDIT_SIDEBAR_EXTRA = 56;
   const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
   const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
@@ -5351,7 +5321,8 @@ const Dashboard = () => {
 
   // Group accessories by room
   const accessoriesByRoom = useMemo(() => {
-    const grouped: Record<string, HomeKitAccessory[]> = {};
+    const grouped: Record<string, HomeKitAccessory[]> = Object.fromEntries(rooms.map(room => [room.name, []]));
+    grouped[HOME_LEVEL_ROOM] = [];
     for (const accessory of accessories) {
       // An accessory with no room belongs to the home rather than to any part
       // of it. HomeKit has no such thing, so this only happens for helper
@@ -5365,7 +5336,7 @@ const Dashboard = () => {
       grouped[roomName].push(accessory);
     }
     return grouped;
-  }, [accessories]);
+  }, [accessories, rooms]);
 
   // Get service groups that have accessories in a specific room
   const getGroupsForRoom = useCallback((roomAccessories: HomeKitAccessory[]) => {
@@ -5441,7 +5412,9 @@ const Dashboard = () => {
   const [dragCrossRoomBlocked, setDragCrossRoomBlocked] = useState(false);
   /** What to tell someone who tries it, which differs by what they dragged. */
   const crossRoomAdvice = useCallback(
-    (accessoryId: string) => (isVirtualAccessoryId(accessoryId)
+    (accessoryId: string) => (accessoryId.startsWith('scene:') ? 'Open the scene to change its display location'
+      : accessoryId.startsWith('action:') ? 'This shortcut controls the whole home'
+      : isVirtualAccessoryId(accessoryId)
       ? 'Edit the virtual accessory to change its location'
       : 'Use the Apple Home app to move accessories between rooms'),
     [isVirtualAccessoryId],
@@ -5526,8 +5499,8 @@ const Dashboard = () => {
       : null;
 
     const entries = selectedRoomId
-      ? Object.entries(accessoriesByRoom).filter(([_, accs]) =>
-          accs.some(a => a.roomId === selectedRoomId)
+      ? Object.entries(accessoriesByRoom).filter(([name, accs]) =>
+          rooms.some(room => room.id === selectedRoomId && room.name === name) || accs.some(a => a.roomId === selectedRoomId)
         )
       : Object.entries(accessoriesByRoom).filter(([roomName]) => {
           if (groupRoomIds) {
@@ -5674,19 +5647,6 @@ const Dashboard = () => {
     })).catch(() => toast.error('Could not hide that scene'));
   }, [updateHomeLayout]);
 
-  /**
-   * Persist the arrangement of the Scenes section's cards.
-   *
-   * The order arrives holding only what was on screen, exactly as the room and
-   * sidebar reorders do. A card that was absent at the time reappears at the end
-   * rather than in its old slot — the same trade those two already make, and
-   * `applyHomeCardOrder` is what makes an absent key harmless meanwhile.
-   */
-  const handleReorderSceneCards = useCallback((order: string[]) => {
-    void updateHomeLayout(prev => ({ ...prev, sceneCardOrder: order }))
-      .catch(() => toast.error('Could not save that arrangement'));
-  }, [updateHomeLayout]);
-
   const handleToggleAutomationHidden = useCallback((key: string, visible: boolean) => {
     void updateHomeLayout(prev => ({
       ...prev,
@@ -5697,53 +5657,12 @@ const Dashboard = () => {
     })).catch(() => toast.error('Could not hide that automation'));
   }, [updateHomeLayout]);
 
-  /** Persist the arrangement of the Automations section's cards. See above. */
+  /** Persist the arrangement inside the Automations dialog. */
   const handleReorderAutomationCards = useCallback((order: string[]) => {
     void updateHomeLayout(prev => ({ ...prev, automationCardOrder: order }))
       .catch(() => toast.error('Could not save that arrangement'));
   }, [updateHomeLayout]);
 
-  /**
-   * Which summary section is expanded, as one value. The three booleans are kept
-   * mutually exclusive by their own handlers, so this is the same state read the
-   * way the edit row needs it.
-   */
-  const openSummarySection: SummarySectionId | null =
-    scenesOpen ? 'scenes'
-    : automationsOpen ? 'automations'
-    : statusOpen ? 'status'
-    : null;
-
-  /** Open one and close the rest — the same exclusivity the live pills enforce. */
-  const handleToggleSummaryOpen = useCallback((id: SummarySectionId) => {
-    setScenesOpen(id === 'scenes' ? (o => !o) : false);
-    setAutomationsOpen(id === 'automations' ? (o => !o) : false);
-    setStatusOpen(id === 'status' ? (o => !o) : false);
-  }, []);
-
-  /**
-   * Turn a summary section on or off from the row itself, in Edit Layout.
-   *
-   * The same per-home `hiddenSummarySections` list Settings → Home → Home Screen
-   * writes, so the two cannot disagree.
-   */
-  const handleToggleSummarySection = useCallback((id: SummarySectionId, visible: boolean) => {
-    void updateHomeLayout(prev => ({
-      ...prev,
-      visibility: {
-        ...prev?.visibility,
-        // Scenes is one pill over two flags, so the row's eye moves both. Its
-        // halves are separable only in Settings, which has a switch for each.
-        hiddenSummarySections: id === 'scenes'
-          ? withScenesSectionVisibility(prev?.visibility?.hiddenSummarySections, visible)
-          : withSummarySectionVisibility(prev?.visibility?.hiddenSummarySections, id, visible),
-      },
-    })).catch(() => toast.error('Could not save that'));
-  }, [updateHomeLayout]);
-
-  // Scenes holds both kinds of card, so it survives while either half is on.
-  const showScenes = isScenesSectionVisible(homeLayout);
-  const showAutomations = isSummarySectionVisible(homeLayout, 'automations');
   const showStatus = isSummarySectionVisible(homeLayout, 'status');
 
   const runHomeAction = useRunHomeAction({
@@ -5751,6 +5670,17 @@ const Dashboard = () => {
     isViewOnly,
     updateCharacteristicInCache,
   });
+
+  const handlePlaceScene = useCallback((sceneId: string, roomId: string | null | undefined) => {
+    void updateHomeLayout(prev => {
+      const sceneRooms = { ...prev?.sceneRooms };
+      if (roomId === undefined) delete sceneRooms[sceneId];
+      else sceneRooms[sceneId] = roomId;
+      return { ...prev, sceneRooms };
+    }).catch(() => toast.error('Could not save scene location'));
+  }, [updateHomeLayout]);
+
+
 
   // Check if accessory is an info-only device (bridge, range extender, sensors, etc.)
   const isInfoDevice = (accessory: HomeKitAccessory): boolean => {
@@ -6145,81 +6075,6 @@ const Dashboard = () => {
 
 
 
-  // Stable callback for toggling hidden items visibility (shared by all widgets)
-  /**
-   * Drag overlay for the shared context.
-   *
-   * The per-room renderer could only see its own room's items, which was fine
-   * when a drag could not leave one. Now it can, so the lookup has to span the
-   * home — otherwise the floating tile vanishes the moment you cross a border.
-   */
-  /**
-   * The tile that follows your finger. It must be the tile you picked up — same
-   * editMode, and an inert `onHide` so the Hide button does not vanish the moment
-   * you lift it. You cannot tap it mid-drag, so the handler does nothing.
-   */
-  const renderSharedDragOverlay = useCallback((activeId: string) => {
-    if (activeId.startsWith('group-')) {
-      const group = serviceGroups.find(g => `group-${g.id}` === activeId);
-      if (!group) return null;
-      const groupMembers = getAccessoriesInGroup(group);
-      // The room the grid would have given it. A group tile titles itself with
-      // the room stripped off — "Lights", under a Kitchen heading that already
-      // says where it is — and the stripping only happens when it is told the
-      // room. Without this the lifted copy grew the room back the instant you
-      // picked it up ("Kitchen Lights"), which reads as a different tile.
-      //
-      // Undefined when the grid is not grouped by room, because there is no
-      // heading above it then and the grid does not strip either.
-      const overlayRoomName = groupByRoom ? groupMembers[0]?.roomName : undefined;
-      return (
-        <div className="relative cursor-grabbing opacity-90">
-          {/* editMode must match the grid, or the lifted copy is not the tile
-              you picked up — its controls come back and its edit buttons go. */}
-          <ServiceGroupWidget
-            group={group}
-            accessories={groupMembers}
-            homeName={getHomeName(groupMembers[0]?.homeId)}
-            roomName={overlayRoomName}
-            onHide={() => {}}
-            onToggle={() => {}}
-            onSlider={() => {}}
-            getEffectiveValue={getEffectiveValue}
-            compact={compactMode}
-            iconStyle={activeIconStyle}
-            editMode={isTouchDevice && editMode}
-          />
-        </div>
-      );
-    }
-    const accessory = accessories.find(a => a.id === activeId);
-    if (!accessory) return null;
-    return (
-      <div className="relative cursor-grabbing opacity-90">
-        <AccessoryWidget
-          homeName={getHomeName(accessory.homeId)}
-          accessory={accessory}
-          onHide={() => {}}
-          onToggle={() => {}}
-          onSlider={() => {}}
-          getEffectiveValue={getEffectiveValue}
-          compact={compactMode}
-          iconStyle={activeIconStyle}
-          editMode={isTouchDevice && editMode}
-        />
-        {dragCrossRoomBlocked && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
-            <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
-              {crossRoomAdvice(activeId)}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
-      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice,
-      isTouchDevice, editMode, groupByRoom]);
-
   // Desktop's Show Hidden Items, off the context menus. Switching it off is the
   // same act as Done — the revealed things are being put away — so it leaves the
   // same way rather than blinking out.
@@ -6283,9 +6138,7 @@ const Dashboard = () => {
     // Collapse the summary sections either way. On the way in, the edit row
     // replaces the pills and opens nothing, so a section left expanded behind it
     // has no visible control; on the way out, closed is their initial state.
-    setScenesOpen(false);
     setAutomationsOpen(false);
-    setStatusOpen(false);
     // Editing always shows hidden things — you cannot bring back what you cannot
     // see, and a toggle for it was one more control to misread. `getOrderedItems`
     // already sorts revealed items to the end of the grid, so they are out of the
@@ -6449,6 +6302,80 @@ const Dashboard = () => {
 
   // Determine if there's an active background and if it's dark enough for light text
   const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(displayedBackground, bgImageLuminance);
+
+  const dashboardScenes = useSceneCards({
+    homeId: selectedHomeId ?? '', accessories: actionAccessories, homeLayout, rooms,
+    open: true, tile: true, compact: compactMode, isDarkBackground, isViewOnly,
+    onRunAction: runHomeAction, showHidden: showHiddenItems,
+    layoutEdit: layoutEditState, revealHidden: editingSidebar || showHiddenItems,
+    onToggleActionHidden: selectedHomeId && !isViewOnly ? handleToggleHomeActionHidden : undefined,
+    onToggleSceneHidden: selectedHomeId && !isViewOnly ? handleToggleSceneHidden : undefined,
+    onPlaceScene: selectedHomeId && !isViewOnly ? handlePlaceScene : undefined,
+  });
+
+  const renderSharedDragOverlay = useCallback((activeId: string) => {
+    const sceneCard = dashboardScenes.cards.find(card => cardKey(card) === activeId);
+    if (sceneCard) return <div className="opacity-90">{dashboardScenes.renderCard(sceneCard)}</div>;
+    if (activeId.startsWith('group-')) {
+      const group = serviceGroups.find(g => `group-${g.id}` === activeId);
+      if (!group) return null;
+      const groupMembers = getAccessoriesInGroup(group);
+      // The room the grid would have given it. A group tile titles itself with
+      // the room stripped off — "Lights", under a Kitchen heading that already
+      // says where it is — and the stripping only happens when it is told the
+      // room. Without this the lifted copy grew the room back the instant you
+      // picked it up ("Kitchen Lights"), which reads as a different tile.
+      //
+      // Undefined when the grid is not grouped by room, because there is no
+      // heading above it then and the grid does not strip either.
+      const overlayRoomName = groupByRoom ? groupMembers[0]?.roomName : undefined;
+      return (
+        <div className="relative cursor-grabbing opacity-90">
+          {/* editMode must match the grid, or the lifted copy is not the tile
+              you picked up — its controls come back and its edit buttons go. */}
+          <ServiceGroupWidget
+            group={group}
+            accessories={groupMembers}
+            homeName={getHomeName(groupMembers[0]?.homeId)}
+            roomName={overlayRoomName}
+            onHide={() => {}}
+            onToggle={() => {}}
+            onSlider={() => {}}
+            getEffectiveValue={getEffectiveValue}
+            compact={compactMode}
+            iconStyle={activeIconStyle}
+            editMode={isTouchDevice && editMode}
+          />
+        </div>
+      );
+    }
+    const accessory = accessories.find(a => a.id === activeId);
+    if (!accessory) return null;
+    return (
+      <div className="relative cursor-grabbing opacity-90">
+        <AccessoryWidget
+          homeName={getHomeName(accessory.homeId)}
+          accessory={accessory}
+          onHide={() => {}}
+          onToggle={() => {}}
+          onSlider={() => {}}
+          getEffectiveValue={getEffectiveValue}
+          compact={compactMode}
+          iconStyle={activeIconStyle}
+          editMode={isTouchDevice && editMode}
+        />
+        {dragCrossRoomBlocked && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
+            <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
+              {crossRoomAdvice(activeId)}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
+      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice,
+      isTouchDevice, editMode, groupByRoom, dashboardScenes]);
   // Same hook, same settings, a different reading of the image. Solids and
   // gradients ignore the argument, so those answer identically to the above and
   // need no special case.
@@ -7271,6 +7198,14 @@ const Dashboard = () => {
     });
   } else if (hasContentAccess) {
     overflowSections.push({ id: 'refresh', items: [refreshItem] });
+  }
+
+  if (selectedHomeId && !selectedCollectionId && hasContentAccess) {
+    const section = overflowSections.find(section => section.id === 'home' || section.id === 'room');
+    section?.items.unshift(
+      { id: 'home-automations', label: 'Automations', icon: Zap, symbol: 'bolt.badge.clock', onSelect: () => setAutomationsOpen(true) },
+      ...(!isViewOnly ? [{ id: 'home-scene', label: 'Create Scene', icon: Plus, symbol: 'plus', onSelect: dashboardScenes.createScene }] : []),
+    );
   }
 
   const generalItems: OverflowItem[] = [];
@@ -9080,7 +9015,7 @@ const Dashboard = () => {
                     bold — the same size the native bar draws, so the two
                     builds read alike. A room or group page keeps its path,
                     small, on a line above the big name. */}
-                <h2 ref={headingRef} className={`font-bold mb-4 ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                <h2 ref={headingRef} className={`font-bold mb-[4px] ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
@@ -9251,135 +9186,15 @@ const Dashboard = () => {
                     renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home')
                   )}
                 </h2>
-                {/* Summary row: scenes/automations/status pills, or — on a room
-                    or room group — the sensor bubbles inline. A whole home's
-                    bubbles aggregate every room, so there they sit behind the
-                    Status pill with the other collapsible sections. */}
-                {/* Animated, because entering Edit Layout can rewrap this row:
-                    its pills each gain a control, and it reveals sections that
-                    are hidden the rest of the time. On a narrow phone that is a
-                    second line — a 32px step, landing while a tile is being
-                    dragged. Measured, not guessed: see AutoHeight.
-
-                    Keyed on the view, so a change of page is not animated: a
-                    room's row and the home's are different things, and sliding
-                    from one's height to the other's clipped the pills out of
-                    sight for the length of the slide — visible as the Scenes,
-                    Automations and Status pills vanishing for a beat after
-                    coming back to the home, with the tiles jumping up and down
-                    around the gap. A fresh row measures once and stands still. */}
-                <AutoHeight key={`${selectedHomeId ?? ''}/${selectedRoomId ?? ''}/${selectedRoomGroupId ?? ''}/${selectedCollectionId ?? ''}`}>
-                {/* One line that scrolls, rather than wrapping to two.
-                    Wrapping was what made this row change height at all — the
-                    edit variant is wider, so on a narrow phone it took a second
-                    line and pushed the grid down. Scrolling sideways keeps it one
-                    line whatever it holds, so the height stops depending on the
-                    viewport.
-
-                    `w-max` on the row inside: in a scroller the children would
-                    otherwise shrink to fit rather than overflow, and the pills
-                    would squash instead of scrolling.
-
-                    `overflow-x: auto` forces `overflow-y` to compute to `auto`
-                    as well, so anything overhanging the row would be clipped
-                    rather than drawn over the edge — the trap MobileTabBar
-                    documents. Nothing here overhangs: the edit badge is tucked
-                    2px into the pill's line box (`-my-0.5`), and the pill's own
-                    `py-1` is 4px, so the badge stays inside the pill. */}
-                <div className="overflow-x-auto scrollbar-hidden">
-                {/* The row's spacing is padding, not margin, so it is inside the
-                    measured height: a margin would sit outside the animated box
-                    and, on a home with every section hidden, `empty:hidden`
-                    would collapse the row while leaving its gap behind. */}
-                <div className="flex w-max items-center gap-2 pb-3 empty:hidden">
-                  {isWholeHomeView && editingSummaryRow ? (
-                    /* Editing: a stand-in row that can show a hidden section as
-                       well as hide a shown one, and that opens nothing. */
-                    <SummarySectionEditPills
-                      layout={homeLayout}
-                      isDarkBackground={isDarkBackground}
-                      openSection={openSummarySection}
-                      onToggleOpen={handleToggleSummaryOpen}
-                      onToggleHidden={handleToggleSummarySection}
-                    />
-                  ) : isWholeHomeView ? (
-                    <>
-                      {showScenes && <ScenesPill
-                        homeId={selectedHomeId!}
-                        accessories={actionAccessories}
-                        homeLayout={homeLayout}
-                        open={scenesOpen}
-                        onToggle={() => { setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
-                        hideAccessoryCounts={hideAccessoryCounts}
-                      />}
-                      {showAutomations && <AutomationsPill
-                        homeId={selectedHomeId!}
-                        open={automationsOpen}
-                        onToggle={() => { setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
-                        hideAccessoryCounts={hideAccessoryCounts}
-                        demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
-                      />}
-                      {showStatus && <StatusPill
-                        accessories={summaryAccessories}
-                        open={statusOpen}
-                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
-                      />}
-                    </>
-                  ) : (
-                    <AreaSummary
-                      accessories={summaryAccessories}
-                      isDarkBackground={isDarkBackground}
-                      analyticsScope={statusAnalyticsScope}
-                      areaName={statusAreaName}
-                    />
-                  )}
-                </div>
-                </div>
-                </AutoHeight>
-                {/* Bodies are gated on the same flags as their pills: leaving a
-                    section mounted behind a hidden pill would keep its queries
-                    live and could strand it open with no way to close it. */}
-                {isWholeHomeView && (
-                  <>
-                    {showScenes && <ScenesSection
-                      homeId={selectedHomeId!}
-                      accessories={actionAccessories}
-                      homeLayout={homeLayout}
-                      compact={compactMode}
-                      isDarkBackground={isDarkBackground}
-                      open={scenesOpen}
-                      isViewOnly={isViewOnly}
-                      dndEnabled
-                      onRunAction={runHomeAction}
-                      onToggleActionHidden={selectedHomeId && !isViewOnly ? handleToggleHomeActionHidden : undefined}
-                      onReorderCards={selectedHomeId && !isViewOnly ? handleReorderSceneCards : undefined}
-                      onToggleSceneHidden={selectedHomeId && !isViewOnly ? handleToggleSceneHidden : undefined}
-                      showHidden={showHiddenItems}
-                    />}
-                    {showAutomations && <AutomationsSection
-                      homeId={selectedHomeId!}
-                      compact={compactMode}
-                      isDarkBackground={isDarkBackground}
-                      open={automationsOpen}
-                      demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
-                      homeLayout={homeLayout}
-                      onReorderCards={selectedHomeId && !isViewOnly ? handleReorderAutomationCards : undefined}
-                      onToggleAutomationHidden={selectedHomeId && !isViewOnly ? handleToggleAutomationHidden : undefined}
-                      showHidden={showHiddenItems}
-                    />}
-                    {showStatus && <AnimatedCollapse open={statusOpen}>
-                      <AreaSummary
-                        accessories={summaryAccessories}
-                        isDarkBackground={isDarkBackground}
-                        className={compactMode ? 'mb-3' : 'mb-6'}
-                        areaName={statusAreaName}
-                      />
-                    </AnimatedCollapse>}
-                  </>
-                )}
+                {(!isWholeHomeView || showStatus) && <AreaSummary
+                  accessories={summaryAccessories}
+                  isDarkBackground={isDarkBackground}
+                  analyticsScope={statusAnalyticsScope}
+                  areaName={statusAreaName}
+                  appearance="inline"
+                  className="mb-[8px]"
+                />}
+                <SceneGridSizing>
                 <DndContext
                   sensors={activeSensors}
                   collisionDetection={closestCenter}
@@ -9407,6 +9222,11 @@ const Dashboard = () => {
                       .filter(group => !selectedHomeId || !isGroupHidden(selectedHomeId, group.id, contextId));
                     const ungrouped = roomAccessories.filter(accessory => !groupedAccessoryIds.has(accessory.id));
                     const displayAccessories = filterAccessories(ungrouped, contextId);
+                    const roomSceneCards = dashboardScenes.cards.filter(card => {
+                      if (!groupByRoom) return filteredRooms.some(([name]) => card.roomId
+                        ? rooms.find(r => r.id === card.roomId)?.name === name : name === HOME_LEVEL_ROOM);
+                      return card.roomId ? card.roomId === room?.id : roomName === HOME_LEVEL_ROOM;
+                    });
 
                     // Hide room if it has no visible items (unless showHiddenItems is on)
                     // Helper accessories hide exactly like real ones: the id goes in
@@ -9418,7 +9238,7 @@ const Dashboard = () => {
                     // again the moment you went looking for it.
                     const roomRevealed = revealHiddenRooms && !!room && !!selectedHomeId
                       && isRoomHiddenState(selectedHomeId, room.id, 'home');
-                    if (!showHiddenItems && !roomRevealed && roomGroups.length === 0 && displayAccessories.length === 0) return null;
+                    if (!showHiddenItems && !roomRevealed && roomGroups.length === 0 && displayAccessories.length === 0 && roomSceneCards.length === 0) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
                     visibleRoomIdx++;
@@ -9432,7 +9252,7 @@ const Dashboard = () => {
                        either. See `[data-hidden-exiting]` in index.css. */
                     <div key={roomName} data-room-container data-room-name={roomName} {...(roomRevealed ? { 'data-hidden-item': 'true' } : {})} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
                       {/* Only show room name header when viewing all rooms (not a specific room) */}
-                      {groupByRoom && !selectedRoomId && roomName !== HOME_LEVEL_ROOM && (() => {
+                      {groupByRoom && !selectedRoomId && (() => {
                         // A hidden room only reaches here while hidden things are
                         // being shown, and it comes last — see filteredRooms.
                         const roomHidden = !!(room && selectedHomeId && isRoomHiddenState(selectedHomeId, room.id, 'home'));
@@ -9469,10 +9289,10 @@ const Dashboard = () => {
                               // the same trap for grid items.
                               className={`min-w-0 truncate text-sm font-semibold selectable text-left transition-opacity hover:opacity-100 ${roomHidden ? 'opacity-40' : ''} ${isDarkBackground ? 'text-white/70 hover:text-white' : 'text-muted-foreground/70 hover:text-muted-foreground'}`}
                             >
-                              {roomName}
+                              {roomName === HOME_LEVEL_ROOM ? 'Scenes' : roomName}
                               {/* Helper accessories are tiles in this room too, so a
                                   count that excluded them read as wrong beside them. */}
-                              {!hideAccessoryCounts && ` (${roomAccessories.length})`}
+                              {!hideAccessoryCounts && ` (${roomAccessories.length + roomSceneCards.length})`}
                             </button>
                             {/* Says it in a word rather than by the dimming alone,
                                 which on a photographic wallpaper is not a reliable
@@ -9528,15 +9348,16 @@ const Dashboard = () => {
 
                         // Get unified ordered items (groups and accessories interleaved)
                         const orderedItems = selectedHomeId
-                          ? getOrderedItems(selectedHomeId, contextId, roomGroups, displayAccessories, null as any)
+                          ? getOrderedItems(selectedHomeId, contextId, roomGroups, displayAccessories, null, roomSceneCards)
                           : [
                               ...roomGroups.map(g => ({ type: 'group' as const, data: g })),
                               ...displayAccessories.map(a => ({ type: 'accessory' as const, data: a })),
+                              ...roomSceneCards.map(card => ({ type: 'scene' as const, data: card })),
                             ];
 
                         // IDs for SortableContext (unified list)
                         const allItemIds = orderedItems.map(item =>
-                          item.type === 'group' ? `group-${item.data.id}` : item.data.id
+                          item.type === 'group' ? `group-${item.data.id}` : item.type === 'scene' ? cardKey(item.data) : item.data.id
                         );
 
                         const useLazyWidgets = orderedItems.length > 30;
@@ -9559,6 +9380,11 @@ const Dashboard = () => {
                       >
                         {/* Unified rendering of groups and accessories - interleaved based on order */}
                         {orderedItems.map((item) => {
+                          if (item.type === 'scene') return (
+                            <SortableItem key={cardKey(item.data)} id={cardKey(item.data)} disabled={isViewOnly}>
+                              <DragHandleArea>{dashboardScenes.renderCard(item.data)}</DragHandleArea>
+                            </SortableItem>
+                          );
                           if (item.type === 'group') {
                             const group = item.data;
                             const groupAccessories = getAccessoriesInGroup(group);
@@ -9785,7 +9611,18 @@ const Dashboard = () => {
                           if (!selectedHomeId) return;
                           // contextId is the roomId - save to room entity layout
                           const roomId = contextId;
-                          if (!roomId || roomId === 'all') return;
+                          if (!roomId) return;
+                          if (roomId === HOME_LEVEL_CONTEXT_ID || roomId === 'all') {
+                            void updateHomeLayout(prev => ({
+                              ...prev,
+                              dashboardItemOrder: {
+                                ...prev?.dashboardItemOrder,
+                                [roomId]: mergeVisibleOrder(prev?.dashboardItemOrder?.[roomId]
+                                  ?? readRoomLayout(roomId)?.itemOrder, newOrder),
+                              },
+                            })).catch(() => toast.error('Failed to save order'));
+                            return;
+                          }
 
                           // Read current room layout from cache
                           let currentLayout: RoomLayoutData = {};
@@ -9803,7 +9640,7 @@ const Dashboard = () => {
 
                           const newLayout: RoomLayoutData = {
                             ...currentLayout,
-                            itemOrder: newOrder,
+                            itemOrder: mergeVisibleOrder(currentLayout?.itemOrder, newOrder),
                           };
 
                           // Save to room entity layout (updates cache immediately, then persists)
@@ -9868,6 +9705,7 @@ const Dashboard = () => {
                   document.body,
                 )}
                 </DndContext>
+                </SceneGridSizing>
                 </div>
               )}
             </div>
@@ -9877,6 +9715,24 @@ const Dashboard = () => {
         {showAdsenseBanner && <AdBanner onUpgrade={handleUpgrade} />}
         </div>
       </div>
+
+      {dashboardScenes.dialogs}
+      <Dialog open={automationsOpen} onOpenChange={setAutomationsOpen}>
+        <DialogContent className="max-w-3xl max-h-[85dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Automations</DialogTitle>
+            <DialogDescription>{homes.find(home => home.id === selectedHomeId)?.name}</DialogDescription>
+          </DialogHeader>
+          {selectedHomeId && <AutomationsSection
+            homeId={selectedHomeId} compact open={automationsOpen}
+            demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
+            homeLayout={homeLayout}
+            onReorderCards={!isViewOnly ? handleReorderAutomationCards : undefined}
+            onToggleAutomationHidden={!isViewOnly ? handleToggleAutomationHidden : undefined}
+            showHidden={showHiddenItems}
+          />}
+        </DialogContent>
+      </Dialog>
 
       {/* Price & Deals — reachable from the widget context menu and the
           deal popover, whether or not the product is currently on offer */}

@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 // ============================================================================
 
 interface AreaSummaryProps {
+  appearance?: 'bubbles' | 'inline';
   accessories: HomeKitAccessory[];
   isDarkBackground?: boolean;
   className?: string;
@@ -53,6 +54,7 @@ interface AreaSummaryProps {
 // ============================================================================
 
 interface SummaryItemProps {
+  appearance?: 'bubbles' | 'inline';
   icon: React.ReactNode;
   label: string;
   tooltip: React.ReactNode;
@@ -67,7 +69,7 @@ interface SummaryItemProps {
 // immediately dismisses the tooltip the user was trying to open.
 const CLICK_CLOSE_GRACE_MS = 1000;
 
-function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackground, onAnalytics }: SummaryItemProps) {
+function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackground, onAnalytics, appearance = 'bubbles' }: SummaryItemProps) {
   const [open, setOpen] = useState(false);
   const openedAtRef = useRef(0);
   // Radix closes an open tooltip on pointerdown, before click fires — so the
@@ -88,7 +90,14 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
       : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200',
   };
 
-  const tooltipStyles = isDarkBackground
+  const inlineStyles = {
+    default: isDarkBackground ? 'text-white/90 hover:text-white' : 'text-muted-foreground hover:text-foreground',
+    warning: isDarkBackground ? 'text-amber-200' : 'text-amber-700 dark:text-amber-300',
+    success: isDarkBackground ? 'text-emerald-200' : 'text-emerald-700 dark:text-emerald-300',
+  };
+  const tooltipStyles = appearance === 'inline'
+    ? (isDarkBackground ? 'bg-slate-900 text-white border-slate-700' : 'bg-popover text-popover-foreground border-border')
+    : isDarkBackground
     ? 'bg-black/35 backdrop-blur-md text-white border-none'
     : 'bg-white/60 backdrop-blur-md text-foreground shadow-[0_0_15px_rgba(0,0,0,0.6)] border border-gray-200';
 
@@ -104,6 +113,7 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
         <TooltipTrigger asChild>
           <button
             type="button"
+            aria-expanded={open}
             // preventDefault suppresses Radix's internal close-on-press where
             // the event is cancelable, avoiding a closed flicker mid-press
             onPointerDown={(e) => {
@@ -126,8 +136,10 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
               }
             }}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors cursor-default',
-              variantStyles[variant]
+              appearance === 'inline'
+                ? 'inline-flex min-h-[24px] items-center gap-[6px] rounded-md py-[2px] text-[13px] font-medium transition-colors cursor-pointer'
+                : 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors cursor-default',
+              appearance === 'inline' ? inlineStyles[variant] : variantStyles[variant]
             )}
           >
             {icon}
@@ -279,26 +291,6 @@ function formatHumidity(value: number): string {
   return `${Math.round(value)}%`;
 }
 
-function formatTemperatureRange(min: number, max: number, avg: number, count: number): string {
-  if (count === 1) {
-    return formatTemperature(avg);
-  }
-  if (Math.abs(max - min) < 0.5) {
-    return formatTemperature(avg);
-  }
-  return `${formatTemperature(min)} – ${formatTemperature(max)}`;
-}
-
-function formatHumidityRange(min: number, max: number, avg: number, count: number): string {
-  if (count === 1) {
-    return formatHumidity(avg);
-  }
-  if (Math.abs(max - min) < 3) {
-    return formatHumidity(avg);
-  }
-  return `${formatHumidity(min)} – ${formatHumidity(max)}`;
-}
-
 function formatLockState(value: number | boolean): string {
   if (typeof value === 'boolean') return value ? 'Locked' : 'Unlocked';
   switch (value) {
@@ -326,7 +318,7 @@ function formatMotionState(value: number | boolean): string {
 // Main Component
 // ============================================================================
 
-export function AreaSummary({
+export function AreaSummary({ appearance = 'bubbles',
   accessories,
   isDarkBackground = false,
   className,
@@ -382,10 +374,11 @@ export function AreaSummary({
 
     // Temperature
     if (sensorData.temperature) {
-      const { avg, min, max, readings } = sensorData.temperature;
-      const label = formatTemperatureRange(min, max, avg, readings.length);
+      const { avg, readings } = sensorData.temperature;
+      const label = formatTemperature(avg);
       result.push(
         <SummaryItem
+          appearance={appearance}
           key="temperature"
           onAnalytics={analyticsFor('temperature')}
           icon={<Thermometer className="h-3.5 w-3.5" />}
@@ -405,10 +398,11 @@ export function AreaSummary({
 
     // Humidity
     if (sensorData.humidity) {
-      const { avg, min, max, readings } = sensorData.humidity;
-      const label = formatHumidityRange(min, max, avg, readings.length);
+      const { avg, readings } = sensorData.humidity;
+      const label = formatHumidity(avg);
       result.push(
         <SummaryItem
+          appearance={appearance}
           key="humidity"
           onAnalytics={analyticsFor('humidity')}
           icon={<Droplets className="h-3.5 w-3.5" />}
@@ -433,6 +427,7 @@ export function AreaSummary({
       const label = hasMotion ? `${activeCount} active` : 'No motion';
       result.push(
         <SummaryItem
+          appearance={appearance}
           key="motion"
           onAnalytics={analyticsFor('motion')}
           icon={<Activity className="h-3.5 w-3.5" />}
@@ -474,6 +469,7 @@ export function AreaSummary({
 
       result.push(
         <SummaryItem
+          appearance={appearance}
           key="locks"
           onAnalytics={analyticsFor('locks')}
           icon={<LockIcon className="h-3.5 w-3.5" />}
@@ -506,6 +502,7 @@ export function AreaSummary({
 
       result.push(
         <SummaryItem
+          appearance={appearance}
           key="contacts"
           onAnalytics={analyticsFor('contacts')}
           icon={<DoorOpen className="h-3.5 w-3.5" />}
@@ -531,6 +528,7 @@ export function AreaSummary({
       const { count, readings } = sensorData.lowBattery;
       result.push(
         <SummaryItem
+          appearance={appearance}
           key="battery"
           onAnalytics={analyticsFor('battery')}
           icon={<BatteryWarning className="h-3.5 w-3.5" />}
@@ -552,7 +550,7 @@ export function AreaSummary({
     }
 
     return result;
-  }, [sensorData, isDarkBackground, analyticsFor]);
+  }, [sensorData, isDarkBackground, analyticsFor, appearance]);
 
   // Don't render if no sensor data
   if (!sensorData.hasData) {
@@ -560,7 +558,7 @@ export function AreaSummary({
   }
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+    <div aria-label="Status" className={cn(appearance === 'inline' ? 'flex flex-wrap items-center gap-x-[14px] gap-y-0' : 'flex flex-wrap items-center gap-2', className)}>
       {items}
       {chartable.size > 0 && (
         // Last in the row, and round rather than labelled: the bubbles are
@@ -572,7 +570,9 @@ export function AreaSummary({
           onClick={() => openAnalytics()}
           className={cn(
             'inline-flex items-center justify-center rounded-full p-1.5 transition-colors',
-            isDarkBackground
+            appearance === 'inline'
+              ? (isDarkBackground ? 'text-white/80 hover:text-white' : 'text-muted-foreground hover:text-foreground')
+              : isDarkBackground
               ? 'bg-black/25 text-white/90 hover:bg-black/35'
               : 'bg-muted text-muted-foreground hover:bg-muted/80'
           )}

@@ -21,19 +21,18 @@ function subtitleOf(scene: HomeKitScene): string {
 /**
  * One scene card in the Scenes section.
  *
- * Sized to match ActionCard, which sits beside it in the same grid — the
- * reasoning for these measurements is written down there and applies here
- * unchanged: on the 180px compact grid a 32px chip left the name about 65px,
- * which wrapped to two lines and then clipped.
+ * Tile spacing, icon sizing and control placement match WidgetCard's compact
+ * header. The title wraps while SceneGridSizing keeps scene heights equal.
  *
  * The play button stays a real button, unlike the shortcut card's decorative
  * one. Pressing a scene card opens its editor, so running it needs a control of
  * its own — same look, different job.
  */
 export function SceneCard({
-  scene, homeId, isDarkBackground, editMode, touchMode, running, isHidden, onRun, onEdit, onToggleHidden,
+  scene, homeId, tile = false, isDarkBackground, editMode, touchMode, running, isHidden, onRun, onEdit, onToggleHidden,
 }: {
   scene: HomeKitScene;
+  tile?: boolean;
   homeId?: string | null;
   isDarkBackground?: boolean;
   editMode: boolean;
@@ -64,35 +63,38 @@ export function SceneCard({
       // Marks it for the exit transition that plays when the reveal ends — the
       // dimming above says it is hidden, this is what takes it away. index.css.
       {...(isHidden ? { 'data-hidden-item': 'true' } : {})}
-      style={{ contain: 'layout style paint' }}
+      style={{ contain: 'layout style paint', minHeight: tile ? 'var(--scene-tile-height, 96px)' : undefined }}
     >
       {/* Blur layer — matches WidgetWrapper */}
       <div className={cn(
         'absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 transform-gpu',
         isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80',
       )} />
-      <div className="relative z-[1] flex items-center gap-2 p-2.5">
-        <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full shadow-sm', sceneColors.bg, sceneColors.text)}>
-          <Zap className="h-3 w-3" />
+      <div data-scene-tile-content={tile ? '' : undefined} className={tile ? 'relative z-[1] grid grid-cols-[1fr_auto] items-start gap-x-2 gap-y-2 p-3' : 'relative z-[1] flex items-center gap-2 p-2.5'}>
+        <div className={cn('flex shrink-0 items-center justify-center rounded-full shadow-sm', tile ? 'h-8 w-8' : 'h-6 w-6', sceneColors.bg, sceneColors.text)}>
+          <Zap className={tile ? "h-4 w-4" : "h-3 w-3"} />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0 flex-1", tile && "order-3 col-span-2")}>
           <p
             title={scene.name}
-            className={cn('text-[13px] font-medium leading-tight truncate transition-colors duration-300', isDarkBackground && 'text-white')}
+            className={cn('font-medium break-words transition-colors duration-300', tile ? 'text-xs leading-tight tracking-tight' : 'text-[13px] leading-snug', isDarkBackground && 'text-white')}
           >
             {scene.name}
           </p>
-          <p className={cn('text-[10px] truncate transition-colors duration-300', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}>
-            {subtitleOf(scene)}
+          <p className={cn('text-xs break-words transition-colors duration-300', tile && 'sr-only', isDarkBackground ? 'text-white/60' : 'text-muted-foreground/60')}>
+            {tile ? `Scene · ${subtitleOf(scene)}` : subtitleOf(scene)}
           </p>
         </div>
         {!editMode && (
           <button
             onClick={(e) => { e.stopPropagation(); onRun(scene); }}
+            onPointerDown={tile ? e => e.stopPropagation() : undefined}
             disabled={running}
             title="Run scene"
+            aria-label={`Run ${scene.name}`}
             className={cn(
-              'shrink-0 rounded-lg p-1.5 transition-colors',
+              'shrink-0 rounded-lg transition-colors',
+              tile ? 'order-2 relative h-6 w-6 flex items-center justify-center scale-90 origin-top-right' : 'p-1.5',
               isDarkBackground ? 'hover:bg-white/10 text-white/70' : 'hover:bg-muted text-muted-foreground',
             )}
           >
