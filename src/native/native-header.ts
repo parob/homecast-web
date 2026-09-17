@@ -533,6 +533,9 @@ export function installNativeHeaderBridge(handlers: {
   post({ action: 'header.ready' });
 
   return () => {
+    // Sign-in, setup and other routes without AppHeader have no controls for
+    // the native bar to operate. The next header's cover observer reveals it.
+    publishHeaderState({ covered: true });
     delete w.__homecastNativeHeader;
   };
 }

@@ -255,12 +255,18 @@ describe('a native tap reaching the real web control', () => {
     expect(seen).toEqual(['status']);
   });
 
-  it('removes its global on teardown', () => {
-    installNativeBuild();
+  it('hides the native controls when leaving a page that owns a header', () => {
+    const sent = installNativeBuild();
     const teardown = installNativeHeaderBridge({ onTap: () => {} });
     expect(w().__homecastNativeHeader).toBeDefined();
     teardown();
     expect(w().__homecastNativeHeader).toBeUndefined();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true });
+
+    // Returning from sign-in mounts a fresh header, which can reveal the bar.
+    const stopWatching = watchNativeHeaderCover();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: false, dimmed: false });
+    stopWatching();
   });
 });
 
