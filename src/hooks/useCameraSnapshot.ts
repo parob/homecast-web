@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { serverConnection } from '@/server/connection';
 import {
+  isBatteryPowered,
   isPermanentCameraFailure,
   nextSnapshotDelayMs,
+  previewMaxAgeSec,
+  previewRefreshMs,
   shouldPollSnapshots,
   snapshotDataUrl,
   type CameraFailure,
@@ -38,6 +41,11 @@ function toFailure(err: unknown): CameraFailure {
  */
 export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean, preview = false) {
   const supported = accessory.camera?.snapshot === true;
+  // A collapsed tile nobody is looking at paces itself by the camera's power
+  // source. Every capture wakes a battery camera, so its background cadence is
+  // minutes, not seconds; an opened viewer is unaffected either way.
+  const batteryPowered = isBatteryPowered(accessory);
+  const previewIntervalMs = previewRefreshMs(batteryPowered);
   const key = cameraSnapshotCacheKey(accessory.homeId, accessory.id);
   const generation = useSyncExternalStore(subscribeCameraSnapshots, cameraSnapshotCacheGeneration);
   const cached = useSyncExternalStore(subscribeCameraSnapshots, () => getCameraSnapshot(key));
@@ -87,9 +95,10 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
           return serverConnection.request<CameraSnapshotResult>('camera.snapshot', {
             accessoryId: accessory.id,
             homeId: accessory.homeId,
-            // Opened viewers always ask for fresh pixels. A small tile can reuse
-            // a recent still; the relay still coalesces and paces camera wakes.
-            maxAgeSec: preview ? 55 : 0,
+            // Opened viewers always ask for fresh pixels. A small tile takes
+            // anything no older than its own cadence, so the relay's cache can
+            // actually answer and a still someone else just paid for is reused.
+            maxAgeSec: preview ? previewMaxAgeSec(batteryPowered) : 0,
             allowStaleOnError: true,
             ...(preview ? { maxWidth: 480 } : {}),
           });
@@ -122,7 +131,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
       } finally {
         if (!stale()) setRefreshingKey(null);
       }
-      timer = setTimeout(tick, preview ? Math.max(60_000, nextSnapshotDelayMs(failures.current)) : nextSnapshotDelayMs(failures.current));
+      timer = setTimeout(tick, preview ? Math.max(previewIntervalMs, nextSnapshotDelayMs(failures.current)) : nextSnapshotDelayMs(failures.current));
     };
 
     void tick();
@@ -130,7 +139,7 @@ export function useCameraSnapshot(accessory: HomeKitAccessory, expanded: boolean
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [accessory.id, accessory.homeId, key, supported, expanded, pageVisible, refreshToken, preview, generation]);
+  }, [accessory.id, accessory.homeId, key, supported, expanded, pageVisible, refreshToken, preview, batteryPowered, previewIntervalMs, generation]);
 
   return {
     status,

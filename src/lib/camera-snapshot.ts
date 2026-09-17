@@ -10,11 +10,23 @@
  * the feature.
  */
 
+import type { HomeKitAccessory } from '@/lib/graphql/types';
+
 /** How often an expanded tile refreshes its still. */
 export const SNAPSHOT_REFRESH_MS = 10_000;
 
 /** Ceiling on the back-off after repeated failures. */
 export const SNAPSHOT_BACKOFF_MAX_MS = 60_000;
+
+/** How often a collapsed tile on the dashboard refreshes, on mains power. */
+export const PREVIEW_REFRESH_MS = 60_000;
+
+/**
+ * ... and on a battery. A capture is not a cheap read: the relay prefers a
+ * short stream over `takeSnapshot`, so every one wakes the camera's radio and
+ * encoder. A tile nobody is looking at is not worth that once a minute.
+ */
+export const PREVIEW_BATTERY_REFRESH_MS = 10 * 60_000;
 
 export interface CameraCapability {
   snapshot: boolean;
@@ -49,6 +61,46 @@ export type SnapshotStatus =
   | { kind: 'loading' }
   | ({ kind: 'ready' } & SnapshotImage)
   | ({ kind: 'error'; failure: CameraFailure } & Partial<SnapshotImage>);
+
+/** HomeKit's Battery service, as a relay may report it either way. */
+const BATTERY_SERVICE_TYPES = new Set(['battery', '00000096-0000-1000-8000-0026bb765291']);
+const BATTERY_CHARACTERISTIC_TYPES = new Set(['battery_level', 'status_low_battery']);
+
+/**
+ * Whether this accessory runs on a battery.
+ *
+ * The same three signals every battery-aware widget already uses. A mains
+ * accessory that reports a backup cell is read as battery-powered, which only
+ * costs it a slower background still — the safe direction to be wrong in.
+ */
+export function isBatteryPowered(accessory: Pick<HomeKitAccessory, 'services'>): boolean {
+  for (const service of accessory.services || []) {
+    if (BATTERY_SERVICE_TYPES.has((service.serviceType || '').toLowerCase())) return true;
+    for (const characteristic of service.characteristics || []) {
+      if (BATTERY_CHARACTERISTIC_TYPES.has((characteristic.characteristicType || '').toLowerCase())) return true;
+    }
+  }
+  return false;
+}
+
+/** How often a collapsed tile asks, which is also how often it can wake the camera. */
+export function previewRefreshMs(batteryPowered: boolean): number {
+  return batteryPowered ? PREVIEW_BATTERY_REFRESH_MS : PREVIEW_REFRESH_MS;
+}
+
+/**
+ * How old a still a collapsed tile will accept.
+ *
+ * This must never be shorter than the tile's own cadence. `canReuse` on the
+ * relay wants `age <= maxAge`, and the tile re-arms its timer after the answer
+ * lands — so a window narrower than the interval misses its own cached still
+ * every single time and turns each poll into a camera wake. Matching the two
+ * also lets a tile reuse a capture another viewer or another device just paid
+ * for, which is the coalescing this path always claimed to do.
+ */
+export function previewMaxAgeSec(batteryPowered: boolean): number {
+  return previewRefreshMs(batteryPowered) / 1000;
+}
 
 /** Whether a tile should be asking for stills at all right now. */
 export function shouldPollSnapshots(input: {

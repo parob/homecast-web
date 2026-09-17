@@ -14,6 +14,14 @@ const camera = (): HomeKitAccessory => ({
   id: `freshness-${++id}`, homeId: `home-${id}`, name: 'Camera', isReachable: true,
   services: [], camera: { snapshot: true, stream: true },
 });
+const batteryCamera = (): HomeKitAccessory => ({
+  ...camera(),
+  services: [
+    { id: 'b1', name: 'Battery', serviceType: 'battery', characteristics: [
+      { id: 'b1c1', characteristicType: 'battery_level', value: 87, isReadable: true, isWritable: false },
+    ] },
+  ],
+});
 const snapshot = (jpeg = 'QUJD') => ({
   jpeg, mimeType: 'image/jpeg', capturedAt: '2026-09-16T00:00:00Z',
   width: 1280, height: 720, cached: false,
@@ -64,13 +72,40 @@ describe('camera freshness', () => {
     const accessory = camera();
     const { rerender } = renderHook(({ visible }) => useCameraSnapshot(accessory, visible, true), { initialProps: { visible: true } });
     await flush();
-    expect(request).toHaveBeenLastCalledWith('camera.snapshot', expect.objectContaining({ maxWidth: 480, maxAgeSec: 55 }));
+    // maxAgeSec matches the cadence rather than undercutting it: a window
+    // narrower than the interval can never be hit, so every poll became a wake.
+    expect(request).toHaveBeenLastCalledWith('camera.snapshot', expect.objectContaining({ maxWidth: 480, maxAgeSec: 60 }));
     await act(async () => { await vi.advanceTimersByTimeAsync(59_000); });
     expect(request).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(request).toHaveBeenCalledTimes(2);
     rerender({ visible: false });
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('backs a battery camera off to a ten-minute background cadence', async () => {
+    // A eufy battery doorbell, as #152 reported it: a camera profile plus
+    // HomeKit's Battery service. A capture wakes the camera, so a collapsed
+    // tile nobody is looking at asks once every ten minutes, not every minute.
+    const accessory = batteryCamera();
+    renderHook(() => useCameraSnapshot(accessory, true, true));
+    await flush();
+    expect(request).toHaveBeenLastCalledWith('camera.snapshot', expect.objectContaining({ maxAgeSec: 600 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(9 * 60_000); });
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves an opened battery camera on the ten-second viewer cadence', async () => {
+    // The complaint was background stills. Someone with the viewer open is
+    // looking at it, and pays for it knowingly.
+    const accessory = batteryCamera();
+    renderHook(() => useCameraSnapshot(accessory, true));
+    await flush();
+    expect(request).toHaveBeenLastCalledWith('camera.snapshot', expect.objectContaining({ maxAgeSec: 0 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(request).toHaveBeenCalledTimes(2);
   });
 
