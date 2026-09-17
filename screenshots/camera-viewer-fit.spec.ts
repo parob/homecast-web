@@ -166,3 +166,106 @@ test('a narrow portrait feed keeps status and controls on one line without spill
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   await expectFitted(page, 500);
 });
+
+// #153: a phone held sideways. The frame takes its width from the leftover
+// height, and the card's chrome had eaten most of it, so the live view came out
+// 212x119 inside a 944px card — a stamp in an empty band. The card now lays its
+// chrome ON the image and gives the image the whole card.
+for (const [route, inset] of [['from the tab bar', 141], ['from a dashboard tile', 0]] as const) {
+  test(`a phone held sideways gives the camera the whole card, ${route}`, async ({ page }) => {
+    await page.setViewportSize({ width: 956, height: 440 });
+    await page.goto(`/screenshots/fixtures/camera-live.html?overlay&landscape&inset=${inset}`);
+    await page.getByRole('button', { name: 'Open camera' }).click();
+    await expect(page.getByAltText('Front Door live view')).toBeVisible();
+    await expectFitted(page, 440, inset);
+
+    // The image IS the card — no band of card around it in either direction.
+    await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(card => {
+      const frame = card.querySelector('[data-camera-frame]')!.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      return Math.round(Math.max(c.width - frame.width, c.height - frame.height));
+    })).toBeLessThanOrEqual(2);
+
+    // ...and it is worth looking at. Before this it was 119px tall.
+    await expect.poll(() => page.locator('[data-camera-frame]').evaluate(frame =>
+      Math.round(frame.getBoundingClientRect().height))).toBeGreaterThan(240);
+
+    // The chrome rides on the image rather than above it, and the name does not
+    // land on the status line at the bottom.
+    const chrome = await page.locator('[data-expanded-overlay-scroll]').evaluate(card => {
+      const frame = card.querySelector('[data-camera-frame]')!.getBoundingClientRect();
+      const name = card.querySelector('h3')!.getBoundingClientRect();
+      const close = card.querySelector('[aria-label="Close camera"]')!.getBoundingClientRect();
+      const status = card.querySelector('[data-camera-status-row]')!.getBoundingClientRect();
+      const inside = (r: DOMRect) => r.top >= frame.top - 1 && r.bottom <= frame.bottom + 1
+        && r.left >= frame.left - 1 && r.right <= frame.right + 1;
+      return { nameInside: inside(name), closeInside: inside(close), clear: status.top - name.bottom };
+    });
+    expect(chrome.nameInside).toBe(true);
+    expect(chrome.closeInside).toBe(true);
+    expect(chrome.clear).toBeGreaterThan(0);
+
+    // The accessory's type disc is not drawn on top of its own live picture.
+    await expect(page.locator('[data-expanded-overlay-scroll] svg.lucide-video')).toHaveCount(0);
+  });
+}
+
+test('turning the phone back upright returns the stacked card', async ({ page }) => {
+  await page.setViewportSize({ width: 956, height: 440 });
+  await page.goto('/screenshots/fixtures/camera-live.html?overlay&landscape');
+  await page.getByRole('button', { name: 'Open camera' }).click();
+  await expect(page.getByAltText('Front Door live view')).toBeVisible();
+  // Immersive: no type disc, image is the card.
+  await expect(page.locator('[data-expanded-overlay-scroll] svg.lucide-video')).toHaveCount(0);
+  await page.setViewportSize({ width: 440, height: 956 });
+  // Upright there is height to spend, so the header comes back above the image
+  // rather than sitting on it.
+  await expect(page.locator('[data-expanded-overlay-scroll] svg.lucide-video')).toHaveCount(1);
+  await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(card => {
+    const frame = card.querySelector('[data-camera-frame]')!.getBoundingClientRect();
+    return Math.round(card.getBoundingClientRect().height - frame.height);
+  })).toBeGreaterThan(80);
+  await expectFitted(page, 956);
+});
+
+test('a long name settles rather than hunting, and keeps the close control in its corner', async ({ page }) => {
+  // The stacked card sizes itself to the image, so a wrapped name could shrink
+  // the height budget, which narrows the card, which wraps the name further.
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto('/screenshots/fixtures/camera-live.html?overlay&landscape');
+  await page.getByRole('button', { name: 'Open camera' }).click();
+  await expect(page.getByAltText('Front Door live view')).toBeVisible();
+  await page.evaluate(() => {
+    const name = [...document.querySelectorAll('[data-expanded-overlay-scroll] *')]
+      .find(node => node.textContent?.trim() === 'Front Door' && node.children.length === 0);
+    if (name) name.textContent = 'Back Garden Side Entrance Doorbell Camera Number Four';
+  });
+  const widths: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(150);
+    widths.push(await page.locator('[data-expanded-overlay-scroll]').evaluate(card => Math.round(card.getBoundingClientRect().width)));
+  }
+  expect(new Set(widths.slice(-4)).size).toBe(1);
+  await expect.poll(() => page.getByRole('button', { name: 'Close camera' }).evaluate(button =>
+    button.getBoundingClientRect().top - button.closest('[data-expanded-overlay-scroll]')!.getBoundingClientRect().top
+  )).toBeLessThanOrEqual(30);
+  // Still no band: the stacked card is sized to the image it can show.
+  await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(card => {
+    const frame = card.querySelector('[data-camera-frame]')!.getBoundingClientRect();
+    return Math.round(card.getBoundingClientRect().width - frame.width);
+  })).toBeLessThanOrEqual(42);
+});
+
+test('a tall window still gives the camera the full-width card', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/screenshots/fixtures/camera-live.html?overlay&landscape');
+  await page.getByRole('button', { name: 'Open camera' }).click();
+  await expect(page.getByAltText('Front Door live view')).toBeVisible();
+  // Height is no longer the binding constraint, so the card keeps its preferred
+  // 960 and the image fills it — neither shrinking nor going immersive.
+  await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(card =>
+    Math.round(card.getBoundingClientRect().width))).toBe(960);
+  await expect.poll(() => page.locator('[data-camera-frame]').evaluate(frame =>
+    Math.round(frame.getBoundingClientRect().width))).toBe(920);
+  await expect(page.locator('[data-expanded-overlay-scroll] svg.lucide-video')).toHaveCount(1);
+});

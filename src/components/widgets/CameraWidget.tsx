@@ -9,6 +9,8 @@ import { describeLiveView } from '@/lib/camera-live';
 import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { useExpandedOverlayClose, useExpandedOverlayWidth } from '@/components/shared/ExpandedOverlay';
+import { useOverlayViewport } from '@/hooks/useOverlayViewport';
+import { prefersImmersiveCamera } from '@/lib/camera-viewer';
 import { CameraTileFrame } from './CameraTileFrame';
 import { CameraTilePreview } from './CameraTilePreview';
 import { describeCameraFailure, describeCaptureAge } from '@/lib/camera-snapshot';
@@ -16,15 +18,31 @@ import { isCommunity } from '@/lib/config';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import './camera-feed.css';
 
-/** Header-only dismissal; camera controls stay with the preview below. */
-export function CameraCloseButton() {
+// The expanded card's own horizontal padding (px-5, both sides), which the
+// image does not get to use.
+const CAMERA_PANEL_PADDING_REM = 2.5;
+// Narrower than this and the header wraps, pushing the close control away from
+// the corner it is looked for in. Measured, not guessed: the name and subtitle
+// stop wrapping at 300px with 16px text and at 380px with 20px, so the floor is
+// rem and a reader with text turned up gets the wider card they need.
+const CAMERA_PANEL_MIN_REM = 19;
+
+/**
+ * Header-only dismissal; camera controls stay with the preview below.
+ *
+ * `onImage` is the immersive layout, where the control sits on the live view
+ * rather than on the card: the tile's own palette answers for a card and would
+ * hand this a near-black glyph over a night-time doorway.
+ */
+export function CameraCloseButton({ onImage }: { onImage?: boolean } = {}) {
   const close = useExpandedOverlayClose();
   const { onDark } = useWidgetColors();
   if (!close) return null;
+  const light = onImage || onDark;
 
   return <button type="button" aria-label="Close camera" title="Close" data-camera-close
     onClick={(e) => { e.stopPropagation(); close(); }}
-    className={`flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${onDark ? 'text-white/90 hover:bg-white/10 focus-visible:outline-white' : 'text-slate-900/80 hover:bg-black/5 focus-visible:outline-current'}`}>
+    className={`flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${light ? 'text-white/90 hover:bg-white/10 focus-visible:outline-white' : 'text-slate-900/80 hover:bg-black/5 focus-visible:outline-current'}`}>
     <X className="h-5 w-5" aria-hidden="true" />
   </button>;
 }
@@ -37,10 +55,10 @@ export function CameraCloseButton() {
  * which Community mode and iOS do not have. A camera that arrives without the
  * `camera` capability (an older relay) simply has no hero.
  */
-export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: boolean }> = ({ accessory, expanded }) => {
+export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: boolean; immersive?: boolean }> = ({ accessory, expanded, immersive }) => {
   const live = useCameraLive(accessory, expanded);
   const { status, refresh, refreshing } = useCameraSnapshot(accessory, expanded && !live.usesLive);
-  const { frameRef, maxHeight } = useCameraFrameHeight(expanded);
+  const { frameRef, maxHeight, rem } = useCameraFrameHeight(expanded);
   const snapshot = status.kind === 'ready' || status.kind === 'error' ? status : undefined;
   const latest = live.image && (!snapshot?.capturedAt || Date.parse(live.image.capturedAt) >= Date.parse(snapshot.capturedAt)) ? live.image : snapshot;
   const { dataUrl: image, capturedAt, source, width, height } = latest ?? {};
@@ -49,7 +67,21 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
   const canRefresh = !live.usesLive && !canResume;
   const portrait = !!width && !!height && height > width;
   const aspect = width && height && width > 0 && height > 0 ? width / height : 16 / 9;
-  useExpandedOverlayWidth(expanded ? (portrait ? 560 : 960) : undefined);
+  // The frame is only ever as wide as the height budget allows (see the style
+  // below), so asking the panel for more than that strands the image in an
+  // empty band — a 212px video centred in a 944px card on a phone held
+  // sideways. Ask for what the image can actually fill, floored so the header
+  // and the action row still have somewhere to live.
+  const frameWidth = maxHeight === undefined ? undefined : maxHeight * aspect;
+  const preferredWidth = portrait ? 560 : 960;
+  // Immersive: the card IS the image, so it asks for exactly the image's width
+  // — no padding to add, and no floor, because there is no header sitting in
+  // the flow to be squeezed. The chrome floats on top and rides whatever width
+  // the image takes.
+  const requestedWidth = immersive
+    ? Math.min(preferredWidth, frameWidth ?? preferredWidth)
+    : Math.min(preferredWidth, Math.max(CAMERA_PANEL_MIN_REM * rem, (frameWidth ?? preferredWidth) + CAMERA_PANEL_PADDING_REM * rem));
+  useExpandedOverlayWidth(expanded ? Math.round(requestedWidth) : undefined);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!expanded) return;
@@ -147,6 +179,12 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   const cameraAvailable = !isCommunity && camerasEnabled && (accessory.camera?.snapshot === true || accessory.camera?.stream === true);
   const showHero = !compact && cameraAvailable;
   const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
+  // Subscribed only while the viewer is open, and it follows the visible
+  // viewport rather than `innerHeight`, so rotating the phone — or the URL bar
+  // sliding away — re-decides this rather than leaving a stacked card on a
+  // screen that no longer has room for one.
+  const viewport = useOverlayViewport(preview.expanded);
+  const immersive = preview.expanded && prefersImmersiveCamera(viewport);
 
   return (
     <CameraTileFrame preview={preview}>
@@ -162,12 +200,13 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
       compact={compact}
       expanded={preview.expanded}
-      headerAction={showHero && preview.expanded ? <CameraCloseButton /> : undefined}
+      headerAction={showHero && preview.expanded ? <CameraCloseButton onImage={immersive} /> : undefined}
       onExpandToggle={preview.onExpandToggle}
       onDebug={onDebug}
       heroShape="block"
       heroStack
-      hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={preview.expanded} /> : undefined}
+      heroImmersive={immersive}
+      hero={showHero ? <CameraSnapshotHero accessory={accessory} expanded={preview.expanded} immersive={immersive} /> : undefined}
 
 
 
