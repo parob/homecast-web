@@ -310,7 +310,7 @@ function getRelayTelemetry(): Record<string, string | undefined> {
   };
   return {
     // "1" when this build has the camera engine window; whether it may
-    // actually capture (Screen Recording) is a live question, asked with
+    // actually capture its engine window is a live question, asked with
     // camera.capabilities.
     cameras: win.homecastCameraEngine ? '1' : undefined,
     app_version: win.homecastAppVersion,

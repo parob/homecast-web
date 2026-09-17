@@ -212,7 +212,6 @@ import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AutoHeight } from '@/components/ui/auto-height';
 import { RemeasureDuringLift } from '@/components/shared/RemeasureDuringLift';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Switch } from '@/components/ui/switch';
