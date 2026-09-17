@@ -136,6 +136,10 @@ export interface HomeLayoutData {
    * than pruned, because a shortcut comes and goes with the home's contents.
    */
   sceneCardOrder?: string[];
+  /** Display placement only; absent infers from scene targets, null means whole home. */
+  sceneRooms?: Record<string, string | null>;
+  /** Mixed device/scene order for the Whole home shelf and ungrouped view. */
+  dashboardItemOrder?: Record<string, string[]>;
   /**
    * Arrangement of the Automations section's cards, as prefixed keys
    * (`hk:<uuid>`, `hc:<id>`). See lib/automation-cards.ts — HomeKit's engine

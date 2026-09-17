@@ -322,16 +322,13 @@ describe('shortcut cards', () => {
     expect(within(card('lights')).queryByText(/Turning off/)).toBeNull();
   });
 
-  it('keeps a long name on one line, and offers the whole of it on hover', () => {
-    // The point of the compact row. "All switches & outlets" used to wrap into
-    // the two-line clamp and then clip, losing its second line entirely; it now
-    // trails off on one line, with the full name in the tooltip.
+  it('shows the full shortcut name without clipping', () => {
     renderSection([
       acc('s1', 'switch', [['power_state', true]]),
       acc('o1', 'outlet', [['power_state', false]]),
     ]);
     const name = within(card('switches')).getByText('All switches & outlets');
-    expect(name.className).toContain('truncate');
+    expect(name.className).not.toContain('truncate');
     expect(name.className).not.toContain('line-clamp-2');
     expect(name.getAttribute('title')).toBe('All switches & outlets');
   });

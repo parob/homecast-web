@@ -157,7 +157,7 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               >
                 {name}
               </div>
-              <div className={`${compact ? 'text-[10px]' : 'text-xs'} truncate ${subtextClass}`}>
+              <div className={`${compact ? 'text-[10px]' : 'text-xs'} break-words ${subtextClass}`}>
                 {isHomeKit && automation.trigger ? (
                   <AutomationTriggerSummary trigger={automation.trigger} compact automationName={automation.name} />
                 ) : (
