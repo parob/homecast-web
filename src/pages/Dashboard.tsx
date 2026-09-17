@@ -44,7 +44,7 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { useDebugDockHeight } from '@/lib/debug-dock';
-import { activateHeaderControl, isNativeHomeSwipeEnabled, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
+import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
@@ -3606,9 +3606,7 @@ const Dashboard = () => {
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
 
   // Swipe in from the left edge to go back, the way an iOS navigation stack
-  // does: a room, room group or collection returns to the whole home, and the
-  // whole home steps to the previous home in the title menu's order, round and
-  // round through all of them. It used
+  // does: a room, room group or collection returns to the whole home. It used
   // to open the navigation drawer; the home name's own menu now covers what
   // the drawer offered, and the drawer's own swipe-to-close still lives in
   // SheetContent. Gated the same way the menu button was: on md and up the
@@ -3616,22 +3614,24 @@ const Dashboard = () => {
   // go back to. The gesture stands down whenever a dialog is over the page —
   // including the admin panel, which runs its own scoped swipe below.
   //
-  // Through a ref because what "back" means depends on selections and the
-  // homes list that are computed further down this component, and the
-  // gesture only fires long after render.
+  // The whole home has nothing to go back to. It once stepped to the previous
+  // home from here (and the iOS shell animated the same, from either edge);
+  // both are parked for now, so the listener is off on the home rather than
+  // catching a gesture that does nothing.
+  //
+  // Through a ref because what "back" means depends on selections that are
+  // computed further down this component, and the gesture only fires long
+  // after render.
   const edgeSwipeBackRef = useRef<() => void>(() => {});
   // The iOS native header has the screen (parob/homecast-cloud#120): the web
   // header row is hidden and the document, not an inner container, scrolls.
   const nativeHeaderActive = useNativeHeaderActive();
   useEdgeSwipeOpen({
-    // On a room, group or collection under the native header the swipe is
-    // UIKit's own interactive pop (the bar has a real back button there),
-    // so the page's listener stands down rather than racing it. On the
-    // whole home newer shells animate home cycling too; older ones still
-    // need this listener.
-    enabled: isMobile && hasContentAccess && !sidebarOpen
-      && !isNativeHomeSwipeEnabled()
-      && !(nativeHeaderActive && !!(selectedRoomId || selectedRoomGroupId || selectedCollectionId)),
+    // Under the native header the swipe is UIKit's own interactive pop (the
+    // bar has a real back button there), so the page's listener stands down
+    // rather than racing it.
+    enabled: isMobile && hasContentAccess && !sidebarOpen && !nativeHeaderActive
+      && !!(selectedRoomId || selectedRoomGroupId || selectedCollectionId),
     onOpen: () => edgeSwipeBackRef.current(),
   });
   useEdgeSwipeOpen({
@@ -4189,19 +4189,13 @@ const Dashboard = () => {
   );
 
   // What the left-edge swipe does (see `useEdgeSwipeOpen` above): out of a
-  // room, group or collection to the whole home; from the whole home to the
-  // previous home in the menu's order, wrapping from the first to the last so
-  // the gesture cycles through every home.
+  // room, group or collection to the whole home.
   useEffect(() => {
     edgeSwipeBackRef.current = () => {
       if (!selectedHomeId) return;
       if (selectedRoomId || selectedRoomGroupId || selectedCollectionId) {
         handleSelectHome(selectedHomeId);
-        return;
       }
-      const index = nativeHomes.findIndex((home) => home.id === selectedHomeId);
-      if (index < 0 || nativeHomes.length < 2) return;
-      handleSelectHome(nativeHomes[(index - 1 + nativeHomes.length) % nativeHomes.length].id);
     };
   });
 
