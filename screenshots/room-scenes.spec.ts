@@ -3,7 +3,8 @@ import { setupMocks, overrideSettings } from './mocks';
 import { HOME_ID } from './fixtures';
 
 const sceneName = 'Relax with warm evening lighting throughout the living room';
-async function openHome(page: Page, groupByRoom = true) {
+const hiddenSceneName = 'A hidden scene with a longer name for turning off every light and accessory throughout the whole home at the end of the evening';
+async function openHome(page: Page, groupByRoom = true, revealLongHiddenScene = false) {
   overrideSettings({ compactMode: true, groupByRoom });
   await setupMocks(page);
   const saves: any[] = [];
@@ -11,7 +12,12 @@ async function openHome(page: Page, groupByRoom = true) {
     const request = route.request();
     if (request.method() !== 'POST') return route.fallback();
     const body = request.postDataJSON();
+    if (revealLongHiddenScene && body.operationName === 'GetStoredEntityLayout' && body.variables.entityId === HOME_ID) return route.fulfill({ json: { data: { storedEntityLayout: {
+      id: `layout-${HOME_ID}`, entityType: 'home', entityId: HOME_ID, parentId: null, dataJson: null,
+      layoutJson: JSON.stringify({ visibility: { hiddenScenes: ['hidden-scene'] } }), updatedAt: new Date().toISOString(),
+    } } } });
     if (body.operationName === 'GetScenes') return route.fulfill({ json: { data: { scenes: [
+      ...(revealLongHiddenScene ? [{ id: 'hidden-scene', name: hiddenSceneName, actionCount: 1, actionSetType: 'HMActionSetTypeUserDefined', automationName: null, actions: JSON.stringify([{ accessoryId: 'acc-lr-lamp' }]) }] : []),
       { id: 'room-scene', name: sceneName, actionCount: 1, actionSetType: 'HMActionSetTypeUserDefined', automationName: null, actions: JSON.stringify([{ accessoryId: 'acc-lr-lamp', accessoryName: 'Floor Lamp', characteristicType: 'power_state', targetValue: true }]) },
       { id: 'home-scene', name: 'Good night everywhere', actionCount: 2, actionSetType: 'HMActionSetTypeUserDefined', automationName: null, actions: JSON.stringify([{ accessoryId: 'acc-lr-lamp' }, { accessoryId: 'acc-br-light' }]) },
     ] } } });
@@ -72,8 +78,16 @@ test('scene location changes the grid without changing its targets', async ({ pa
 test('touch editing can hide and restore an in-room scene', async ({ page }, info) => {
   test.skip(info.project.name !== 'iphone', 'Touch editing');
   const { saves } = await openHome(page);
+  const sizes = () => page.locator('[data-scene-tile-content]').evaluateAll(nodes => nodes.map(node => ({
+    name: node.querySelector('p')!.textContent,
+    height: (node.parentElement as HTMLElement).offsetHeight,
+    width: (node.parentElement as HTMLElement).offsetWidth,
+  })));
+  const before = await sizes();
   await page.locator('[data-tour="header-menu"]').click();
   await page.getByRole('menuitem', { name: 'Edit Layout', exact: true }).click();
+  await expect(page.getByRole('button', { name: `Hide ${sceneName}`, exact: true })).toBeVisible();
+  await expect.poll(sizes).toEqual(before);
   await page.getByRole('button', { name: `Hide ${sceneName}`, exact: true }).click();
   await expect(page.getByRole('button', { name: `Unhide ${sceneName}`, exact: true })).toBeVisible();
   await page.getByRole('button', { name: `Unhide ${sceneName}`, exact: true }).click();
@@ -100,4 +114,22 @@ for (const grouped of [true, false]) test(`desktop scenes reorder in ${grouped ?
   const layout = JSON.parse(saves.find(s => s.variables.entityId === (grouped ? 'room-living-room' : HOME_ID)).variables.layoutJson);
   const order = grouped ? layout.itemOrder : layout.dashboardItemOrder.all;
   expect(order.indexOf('scene:room-scene')).toBeLessThan(order.indexOf('acc-lr-ceiling'));
+});
+
+
+test('revealing hidden scenes keeps visible scene heights unchanged', async ({ page }, info) => {
+  test.skip(info.project.name !== 'iphone', 'Touch editing');
+  await openHome(page, true, true);
+  const card = page.getByText(sceneName, { exact: true });
+  const height = () => card.evaluate(el => (el.closest('[data-scene-tile-content]')!.parentElement as HTMLElement).offsetHeight);
+  const before = await height();
+  await page.locator('[data-tour="header-menu"]').click();
+  await page.getByRole('menuitem', { name: 'Edit Layout', exact: true }).click();
+  await expect(page.getByText(hiddenSceneName, { exact: true })).toBeVisible();
+  await expect.poll(height).toBe(before);
+  const hiddenText = page.getByText(hiddenSceneName, { exact: true });
+  expect(await hiddenText.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(hiddenText).toHaveCount(0);
+  await expect.poll(height).toBe(before);
 });
