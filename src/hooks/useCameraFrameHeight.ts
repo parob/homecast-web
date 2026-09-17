@@ -5,11 +5,16 @@ import { useLayoutEffect, useRef, useState } from 'react';
 export function useCameraFrameHeight(expanded: boolean) {
   const frameRef = useRef<HTMLDivElement>(null);
   const [maxHeight, setMaxHeight] = useState<number>();
+  // The card's padding and the width its header needs are both rem, so a
+  // reader with text turned up needs a wider card for the same layout.
+  const [rem, setRem] = useState(16);
   useLayoutEffect(() => {
     const frame = frameRef.current;
     const scroller = frame?.closest<HTMLElement>('[data-expanded-overlay-scroll]');
     if (!expanded || !frame || !scroller) return;
     const measure = () => {
+      const root = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      if (Number.isFinite(root) && root > 0) setRem(root);
       const budget = parseFloat(getComputedStyle(scroller).maxHeight);
       if (!Number.isFinite(budget)) return;
       const chrome = scroller.scrollHeight - frame.offsetHeight;
@@ -27,5 +32,5 @@ export function useCameraFrameHeight(expanded: boolean) {
     constraints.observe(scroller, { attributes: true, attributeFilter: ['style'] });
     return () => { observer.disconnect(); constraints.disconnect(); };
   }, [expanded]);
-  return { frameRef, maxHeight };
+  return { frameRef, maxHeight, rem };
 }

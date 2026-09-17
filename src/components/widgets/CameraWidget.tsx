@@ -16,6 +16,15 @@ import { isCommunity } from '@/lib/config';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 import './camera-feed.css';
 
+// The expanded card's own horizontal padding (px-5, both sides), which the
+// image does not get to use.
+const CAMERA_PANEL_PADDING_REM = 2.5;
+// Narrower than this and the header wraps, pushing the close control away from
+// the corner it is looked for in. Measured, not guessed: the name and subtitle
+// stop wrapping at 300px with 16px text and at 380px with 20px, so the floor is
+// rem and a reader with text turned up gets the wider card they need.
+const CAMERA_PANEL_MIN_REM = 19;
+
 /** Header-only dismissal; camera controls stay with the preview below. */
 export function CameraCloseButton() {
   const close = useExpandedOverlayClose();
@@ -40,7 +49,7 @@ export function CameraCloseButton() {
 export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expanded: boolean }> = ({ accessory, expanded }) => {
   const live = useCameraLive(accessory, expanded);
   const { status, refresh, refreshing } = useCameraSnapshot(accessory, expanded && !live.usesLive);
-  const { frameRef, maxHeight } = useCameraFrameHeight(expanded);
+  const { frameRef, maxHeight, rem } = useCameraFrameHeight(expanded);
   const snapshot = status.kind === 'ready' || status.kind === 'error' ? status : undefined;
   const latest = live.image && (!snapshot?.capturedAt || Date.parse(live.image.capturedAt) >= Date.parse(snapshot.capturedAt)) ? live.image : snapshot;
   const { dataUrl: image, capturedAt, source, width, height } = latest ?? {};
@@ -49,7 +58,16 @@ export const CameraSnapshotHero: React.FC<{ accessory: HomeKitAccessory; expande
   const canRefresh = !live.usesLive && !canResume;
   const portrait = !!width && !!height && height > width;
   const aspect = width && height && width > 0 && height > 0 ? width / height : 16 / 9;
-  useExpandedOverlayWidth(expanded ? (portrait ? 560 : 960) : undefined);
+  // The frame is only ever as wide as the height budget allows (see the style
+  // below), so asking the panel for more than that strands the image in an
+  // empty band — a 212px video centred in a 944px card on a phone held
+  // sideways. Ask for what the image can actually fill, floored so the header
+  // and the action row still have somewhere to live.
+  const frameWidth = maxHeight === undefined ? undefined : maxHeight * aspect;
+  const preferredWidth = portrait ? 560 : 960;
+  useExpandedOverlayWidth(expanded
+    ? Math.round(Math.min(preferredWidth, Math.max(CAMERA_PANEL_MIN_REM * rem, (frameWidth ?? preferredWidth) + CAMERA_PANEL_PADDING_REM * rem)))
+    : undefined);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!expanded) return;

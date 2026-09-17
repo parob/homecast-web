@@ -166,3 +166,54 @@ test('a narrow portrait feed keeps status and controls on one line without spill
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   await expectFitted(page, 500);
 });
+
+// #153: the frame is only ever as wide as the leftover height allows, but the
+// card asked for a flat 960 regardless. On a phone held sideways that left a
+// 212px image centred in a 944px card — "looks silly in landscape".
+test('a phone held sideways sizes the card to the camera, not the other way round', async ({ page }) => {
+  await page.setViewportSize({ width: 956, height: 440 });
+  // The inset the pinned tab bar reserves, which is what the report was opened from.
+  await page.goto('/screenshots/fixtures/camera-live.html?overlay&landscape&inset=141');
+  await page.getByRole('button', { name: 'Open camera' }).click();
+  await expect(page.getByAltText('Front Door live view')).toBeVisible();
+  await expectFitted(page, 440, 141);
+  await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(card => {
+    const frame = card.querySelector('[data-camera-frame]')!.getBoundingClientRect();
+    return frame.width / card.getBoundingClientRect().width;
+  })).toBeGreaterThan(0.5);
+  // The close control stays in the corner it is looked for in — the card must
+  // not shrink so far that the name wraps underneath it.
+  await expect.poll(() => page.getByRole('button', { name: 'Close camera' }).evaluate(button =>
+    button.getBoundingClientRect().top - button.closest('[data-expanded-overlay-scroll]')!.getBoundingClientRect().top
+  )).toBeLessThanOrEqual(30);
+
+  // A narrower card could wrap the name, shrinking the height budget, which
+  // would narrow the card again. It has to settle, not hunt.
+  await page.evaluate(() => {
+    const name = [...document.querySelectorAll('[data-expanded-overlay-scroll] *')]
+      .find(node => node.textContent?.trim() === 'Front Door' && node.children.length === 0);
+    if (name) name.textContent = 'Back Garden Side Entrance Doorbell Camera Number Four';
+  });
+  const widths: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    await page.waitForTimeout(150);
+    widths.push(await page.locator('[data-expanded-overlay-scroll]').evaluate(card => Math.round(card.getBoundingClientRect().width)));
+  }
+  expect(new Set(widths.slice(-4)).size).toBe(1);
+  await expect.poll(() => page.getByRole('button', { name: 'Close camera' }).evaluate(button =>
+    button.getBoundingClientRect().top - button.closest('[data-expanded-overlay-scroll]')!.getBoundingClientRect().top
+  )).toBeLessThanOrEqual(30);
+});
+
+test('a tall window still gives the camera the full-width card', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/screenshots/fixtures/camera-live.html?overlay&landscape');
+  await page.getByRole('button', { name: 'Open camera' }).click();
+  await expect(page.getByAltText('Front Door live view')).toBeVisible();
+  // Height is no longer the binding constraint, so the card keeps its
+  // preferred 960 and the image fills it — shrinking to fit is landscape-only.
+  await expect.poll(() => page.locator('[data-expanded-overlay-scroll]').evaluate(card =>
+    Math.round(card.getBoundingClientRect().width))).toBe(960);
+  await expect.poll(() => page.locator('[data-camera-frame]').evaluate(frame =>
+    Math.round(frame.getBoundingClientRect().width))).toBe(920);
+});
