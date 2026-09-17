@@ -233,7 +233,7 @@ describe('CameraWidget hero', () => {
     expect(request).not.toHaveBeenCalled();
     revealTiles();
     await waitFor(() => expect(container.querySelector('[data-camera-tile-preview] img')).not.toBeNull());
-    expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ maxWidth: 480, maxAgeSec: 55 }));
+    expect(request).toHaveBeenCalledWith('camera.snapshot', expect.objectContaining({ maxWidth: 480, maxAgeSec: 60 }));
     const image = container.querySelector('[data-camera-tile-preview] img') as HTMLImageElement;
     expect(image.className).toContain('object-cover');
     expect(image.style.objectPosition).toBe('center 23%');

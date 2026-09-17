@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   SNAPSHOT_REFRESH_MS,
   SNAPSHOT_BACKOFF_MAX_MS,
+  PREVIEW_REFRESH_MS,
+  PREVIEW_BATTERY_REFRESH_MS,
+  isBatteryPowered,
+  previewMaxAgeSec,
+  previewRefreshMs,
   describeCameraFailure,
   describeCaptureAge,
   isPermanentCameraFailure,
@@ -77,5 +82,42 @@ describe('describeCaptureAge', () => {
     expect(describeCaptureAge('2026-09-15T11:55:00Z', now)).toBe('5m ago');
     expect(describeCaptureAge('2026-09-15T09:00:00Z', now)).toBe('3h ago');
     expect(describeCaptureAge('not a date', now)).toBe('');
+  });
+});
+
+describe('background tile pacing', () => {
+  const service = (serviceType: string, characteristicTypes: string[] = []) => ({
+    id: serviceType, name: serviceType, serviceType,
+    characteristics: characteristicTypes.map((characteristicType, i) => ({
+      id: `${serviceType}-${i}`, characteristicType, isReadable: true, isWritable: false,
+    })),
+  });
+
+  it('reads a battery from the service or either characteristic, however the relay names it', () => {
+    expect(isBatteryPowered({ services: [service('battery')] })).toBe(true);
+    expect(isBatteryPowered({ services: [service('00000096-0000-1000-8000-0026BB765291')] })).toBe(true);
+    expect(isBatteryPowered({ services: [service('camera_rtp_stream_management', ['battery_level'])] })).toBe(true);
+    expect(isBatteryPowered({ services: [service('camera_rtp_stream_management', ['status_low_battery'])] })).toBe(true);
+    expect(isBatteryPowered({ services: [service('camera_rtp_stream_management', ['on'])] })).toBe(false);
+    expect(isBatteryPowered({ services: [] })).toBe(false);
+  });
+
+  it('backs a battery camera off, and leaves a mains one alone', () => {
+    expect(previewRefreshMs(false)).toBe(PREVIEW_REFRESH_MS);
+    expect(previewRefreshMs(true)).toBe(PREVIEW_BATTERY_REFRESH_MS);
+    expect(previewRefreshMs(true)).toBeGreaterThan(previewRefreshMs(false));
+  });
+
+  it('never accepts a still narrower than its own cadence', () => {
+    // #152: maxAgeSec was 55 against a 60s interval, so the relay's cache was
+    // unreachable by construction and every poll woke the camera. The window
+    // has to be at least the interval, or there is no coalescing at all.
+    for (const battery of [false, true]) {
+      expect(previewMaxAgeSec(battery) * 1000).toBeGreaterThanOrEqual(previewRefreshMs(battery));
+    }
+  });
+
+  it('keeps the opened viewer faster than any background tile', () => {
+    expect(SNAPSHOT_REFRESH_MS).toBeLessThan(previewRefreshMs(false));
   });
 });
