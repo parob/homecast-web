@@ -45,7 +45,7 @@ test.describe('Tutorial Spotlight Tour', () => {
       ['Share homes, rooms, or accessories', phone ? 'header-menu' : 'widget-area'],
       ['Then choose Share', phone ? 'share-menu-item' : 'sidebar-home-share-item'],
       ['Collections', phone ? 'home-navigation-menu' : 'sidebar-collections'],
-      ['Automations', 'automations'],
+      ['Automations', 'header-menu'],
       ['Settings & More', 'header-menu'],
     ];
     for (const [title, target] of steps) {

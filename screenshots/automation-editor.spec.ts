@@ -6,8 +6,15 @@ const palette = (page: Page) => page.getByTestId('node-palette').filter({ visibl
 const config = (page: Page) => page.getByTestId('config-panel');
 const nodes = (page: Page) => page.locator('.react-flow__node');
 
+/** Automations lives behind the home's overflow menu now, not a summary pill. */
+async function openAutomations(page: Page) {
+  await page.locator('[data-tour="header-menu"]').click();
+  await page.getByRole('menuitem', { name: 'Automations', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Automations', exact: true })).toBeVisible();
+}
+
 async function openEditor(page: Page) {
-  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await openAutomations(page);
   await page.getByTestId('new-automation-button').click();
   await page.getByTestId('new-advanced-automation').click();
   await expect(page.getByTestId('automation-editor')).toBeVisible();
@@ -38,7 +45,7 @@ test.describe('Automation Editor', () => {
   });
 
   test('offers HomeKit and Homecast in the creation dialog', async ({ page }) => {
-    await page.getByRole('button', { name: 'Automations', exact: true }).click();
+    await openAutomations(page);
     await page.getByTestId('new-automation-button').click();
     await expect(page.getByRole('dialog', { name: 'Create Automation' })).toBeVisible();
     await expect(page.getByTestId('new-homekit-automation')).toBeVisible();
@@ -115,7 +122,7 @@ test.describe('Automation Editor', () => {
   });
 
   test('opens an existing automation with its name and nodes', async ({ page }) => {
-    await page.getByRole('button', { name: 'Automations', exact: true }).click();
+    await openAutomations(page);
     await page.getByText('Motion Light - Living Room', { exact: true }).click();
     await expect(page.getByTestId('automation-name-input')).toHaveValue('Motion Light - Living Room');
     await expect(nodes(page)).not.toHaveCount(0);
