@@ -77,6 +77,7 @@ export function useCanvasTint({ background, sampledTopColor, sampledBottomColor,
     };
   }, [tint, isNativeShell]);
 
+
   // Safari and Android Chrome paint their own bars — the status bar band and
   // the toolbar — in the page's `theme-color`. index.html ships a neutral
   // grey so the first paint is not white, and left there it drew two flat
@@ -125,6 +126,40 @@ export function useCanvasTint({ background, sampledTopColor, sampledBottomColor,
       document.documentElement.style.removeProperty('--canvas-tint');
     };
   }, [tint, isNativeShell]);
+
+  // iOS Safari: the canvas runs from the wallpaper's top colour to its bottom
+  // colour over the length of the document, and is the bottom colour past
+  // its end. Safari paints the document into the bands behind its bars, but
+  // a STUCK sticky layer is not "the document" — the wallpaper is painted
+  // there only at scroll 0, before it sticks. Everywhere else the bands show
+  // the tiles passing through and, between them, the canvas; at the end of
+  // the page there is nothing below the fold and the band under the URL bar
+  // is canvas alone. One flat colour was the wallpaper's TOP colour: teal
+  // under a sandy bottom, a solid bar. The gradient gives the two ends their
+  // own colour; the body's own paint has to go so it does not cover it.
+  // Declared after the theme-colour effect above on purpose: that one reads
+  // the PAINTED root colour to resolve `--canvas-tint`, and this one changes
+  // the painted root colour.
+  useEffect(() => {
+    if (isNativeShell || !isIOSBrowser()) return;
+    // On BODY, whose box is the document, not on the root: a background
+    // image on the root is one more thing that stops Safari painting the
+    // page into its bands (measured — the top band went to the root's plain
+    // colour). The root keeps a plain colour, the bottom tint, which is what
+    // shows past the document's end.
+    const root = document.documentElement;
+    const body = document.body;
+    root.style.backgroundColor = 'var(--canvas-tint-bottom, var(--canvas-tint))';
+    body.style.backgroundImage = 'linear-gradient(to bottom, var(--canvas-tint), var(--canvas-tint-bottom, var(--canvas-tint)))';
+    body.style.backgroundRepeat = 'no-repeat';
+    body.style.backgroundSize = '100% 100%';
+    body.style.backgroundColor = 'transparent';
+    return () => {
+      body.style.removeProperty('background-image');
+      body.style.removeProperty('background-repeat');
+      body.style.removeProperty('background-size');
+    };
+  }, [tint, bottomTint, isNativeShell]);
 
   return tint;
 }

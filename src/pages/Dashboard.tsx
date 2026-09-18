@@ -8332,11 +8332,13 @@ const Dashboard = () => {
           // different kind of surface pasted on top of them.
           // A phone browser's bar sits where its header does — 10px down, a
           // 40px row — so Done stays on the header's centre-line, where the
-          // toasts are centred, and the bar's box keeps out of Safari's top
-          // 8px (see AppHeader). It is a cover while it is up, so the bands go
-          // flat regardless; this is about the geometry matching.
+          // toasts are centred. It is a cover while it is up, so the bands go
+          // flat regardless; this is about the geometry matching. PARKED, it
+          // has to clear Safari's top ~8px too: translated up by its own
+          // height alone it sat at -30..+10 and the bands were flat on every
+          // page (see AppHeader for the rule), so it parks 12px further up.
           className={`fixed ${phoneBrowser ? 'top-[10px]' : 'top-0'} left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
-            editMode ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
+            editMode ? 'translate-y-0 opacity-100' : `${phoneBrowser ? 'translate-y-[calc(-100%-12px)]' : '-translate-y-full'} opacity-0 pointer-events-none`
           } ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
           // Out of the tree for anyone not looking at it, and unreachable by
           // pointer or keyboard — it is off-screen but still rendered, and an
