@@ -127,26 +127,25 @@ export function useCanvasTint({ background, sampledTopColor, sampledBottomColor,
     };
   }, [tint, isNativeShell]);
 
-  // iOS Safari: the canvas runs from the wallpaper's top colour to its bottom
-  // colour over the length of the document, and is the bottom colour past
-  // its end. Safari paints the document into the bands behind its bars, but
-  // a STUCK sticky layer is not "the document" — the wallpaper is painted
-  // there only at scroll 0, before it sticks. Everywhere else the bands show
-  // the tiles passing through and, between them, the canvas; at the end of
-  // the page there is nothing below the fold and the band under the URL bar
-  // is canvas alone. One flat colour was the wallpaper's TOP colour: teal
-  // under a sandy bottom, a solid bar. The gradient gives the two ends their
-  // own colour; the body's own paint has to go so it does not cover it.
-  // Declared after the theme-colour effect above on purpose: that one reads
-  // the PAINTED root colour to resolve `--canvas-tint`, and this one changes
-  // the painted root colour.
+  // iOS Safari: the canvas is the wallpaper's BOTTOM colour, in the root's
+  // own background-color. Safari draws its glass over the page itself under
+  // the URL bar while there is document below the fold; at the end of a page
+  // there is none, and the band is WebKit's "extended background colour" —
+  // the root's plain colour, images ignored. That was one flat colour for
+  // both ends, the wallpaper's TOP colour: teal under a sandy bottom, a solid
+  // bar under the URL bar at the end of every short room page. The top edge
+  // does not depend on it: the status bar band takes its colour from the
+  // `.sticky-edge-colour` strip (see index.css), read live from its style.
+  //
+  // The body carries a top-to-bottom gradient of the two tints for what
+  // little of the document the wallpaper does not cover; a background IMAGE
+  // on the root would be one more thing Safari treats differently, so it is
+  // on body, whose box is the document, and body's opaque theme colour has
+  // to go so it does not cover it. Declared after the theme-colour effect
+  // above on purpose: that one reads the PAINTED root colour to resolve
+  // `--canvas-tint`, and this one sets the painted root colour.
   useEffect(() => {
     if (isNativeShell || !isIOSBrowser()) return;
-    // On BODY, whose box is the document, not on the root: a background
-    // image on the root is one more thing that stops Safari painting the
-    // page into its bands (measured — the top band went to the root's plain
-    // colour). The root keeps a plain colour, the bottom tint, which is what
-    // shows past the document's end.
     const root = document.documentElement;
     const body = document.body;
     root.style.backgroundColor = 'var(--canvas-tint-bottom, var(--canvas-tint))';
