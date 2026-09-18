@@ -76,6 +76,15 @@ describe('resolveCanvasTint', () => {
     expect(sampled).not.toBe(pending);
   });
 
+  it('lifts a sampled colour a little towards white', () => {
+    // The sample is the wallpaper's outermost rows, its darkest on most
+    // photographs; used raw it sat a shade too dark against the wallpaper.
+    const tint = resolveCanvasTint({ background: bg({ type: 'custom', customUrl: 'https://example.test/a.jpg' }), sampledTopColor: '#025260', isDark: true });
+    const channel = (hex: string, i: number) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16);
+    for (let i = 0; i < 3; i++) expect(channel(tint, i)).toBeGreaterThan(channel('#025260', i));
+    expect(channel(tint, 0)).toBeLessThan(0x02 + 255 * 0.2); // a lift, not a wash
+  });
+
   it('resolves solid and gradient presets without waiting for a sample', () => {
     for (const presetId of [firstKey(PRESET_SOLID_COLORS), firstKey(PRESET_GRADIENTS)]) {
       const withSample = resolveCanvasTint({ background: bg({ type: 'preset', presetId }), sampledTopColor: '#abcdef', isDark: false });
