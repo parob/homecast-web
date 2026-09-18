@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useR
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
-import { checkIsInMacApp, isIOSBrowser } from '@/lib/platform';
+import { checkIsInMacApp } from '@/lib/platform';
 import { headerControlClass, headerHaloNeedsReinforcing, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
@@ -39,7 +39,7 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
 import { GET_SESSIONS, SET_SERVICE_GROUP, GET_SETTINGS, UPDATE_SETTINGS, GET_COLLECTIONS, GET_CONNECTION_DEBUG_INFO, GET_ROOM_GROUPS, GET_STORED_ENTITY_LAYOUT, GET_STORED_ENTITIES, GET_ACCOUNT, GET_PENDING_INVITATIONS, GET_VERSION, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_GROUP, UPDATE_ROOM_GROUP, CREATE_CHECKOUT_SESSION, CREATE_PORTAL_SESSION, DOWNGRADE_TO_STANDARD, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION, DISMISS_HOME, EXECUTE_SCENE } from '@/lib/graphql/mutations';
-import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
+import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitAutomation, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
@@ -6089,6 +6089,15 @@ const Dashboard = () => {
    * three places need to agree on it.
    */
   const editBarHeight = 80;
+  /**
+   * A phone browser's header is a 40px row in a box 10px down (see
+   * AppHeader), so its controls end 50px under the viewport top.
+   * The body's own `pt-2` and the title's line-height supply the gap below
+   * them, so the page starts right there — the iOS large-title spacing. The
+   * Edit Layout bar keeps its 80 and, for the duration of the mode, overlaps
+   * the title's margin, which is empty.
+   */
+  const phoneBrowserPageTop = 10 + 40 - 10; // less the container's own 10px margin (`--band-gap`)
 
   /**
    * The band the scroller keeps clear at the bottom: room for the floating tab
@@ -6184,6 +6193,7 @@ const Dashboard = () => {
   const [bgHeaderLuminance, setBgHeaderLuminance] = useState<number | null>(null);
   // Average top-row color from image backgrounds (for iOS 26 Liquid Glass tinting)
   const [bgImageTopColor, setBgImageTopColor] = useState<string | null>(null);
+  const [bgImageBottomColor, setBgImageBottomColor] = useState<string | null>(null);
 
   // Compute effective background: collectionGroup > collection > room > home (with inheritance)
   // NOTE: This hook MUST be before early returns to satisfy React's Rules of Hooks
@@ -6410,6 +6420,7 @@ const Dashboard = () => {
   useCanvasTint({
     background: displayedBackground,
     sampledTopColor: bgImageTopColor,
+    sampledBottomColor: bgImageBottomColor,
     isDark: isDarkBackground,
     isNativeShell: isInMacApp || isInMobileApp,
   });
@@ -7678,7 +7689,21 @@ const Dashboard = () => {
               ? `fixed inset-0${hasBackground || isInMobileApp || isInMacApp ? '' : ' bg-background'}`
               : hasBackground ? 'relative' : 'relative bg-background'
           }
-          style={isInMobileApp || isInMacApp || shellScrolls ? undefined : { minHeight: '100dvh' }}
+          // A phone browser's page starts 10px down, as a MARGIN. iOS 26
+          // Safari paints the document into the bands behind its status bar
+          // and URL bar only while nothing is laid out in the document's top
+          // ~8px — any box flush at y=0 (this one, or a header; positioned or
+          // not, painted or not) switches it to flat sampled bands. Hacker
+          // News has the gap by accident, from body's default 8px margin;
+          // Tailwind's preflight zeroes ours. The sticky wallpaper sticks at
+          // the same 10px (`--band-gap`) so the first scroll does not move
+          // it, and its box reaches up past the gap regardless. Measured on
+          // the iPhone 17 Pro simulator, 2026-09-18.
+          style={isInMobileApp || isInMacApp || shellScrolls
+            ? undefined
+            : phoneBrowser
+              ? { minHeight: '100dvh', marginTop: 'var(--band-gap)', '--band-gap': '10px' } as React.CSSProperties
+              : { minHeight: '100dvh' }}
         >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
               stops at them, leaving bars in landscape — while the container
@@ -7688,21 +7713,74 @@ const Dashboard = () => {
               there is what showed as white above and below the wallpaper.
               Matches MainLayout: over a dark wallpaper the backdrop has to be
               black, not the theme's white. */}
-          <div
-            aria-hidden
-            className={cn(
-              "fixed-full-screen pointer-events-none -z-10",
-              hasBackground && isDarkBackground ? "bg-black" : "bg-background",
-            )}
-          />
-          <BackgroundImage
-            settings={activeBackground}
-            entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
-            autoBackgroundsEnabled={autoBackgrounds}
-            onLuminanceChange={setBgImageLuminance}
-            onHeaderLuminanceChange={setBgHeaderLuminance}
-            onTopColorChange={setBgImageTopColor}
-          />
+          {/* A phone browser's wallpaper is a sticky layer, not a fixed one, so
+              it paints into iOS 26 Safari's bar bands and the page runs under
+              the bars over an unbroken wallpaper — see `.sticky-wallpaper` in
+              index.css for the mechanism and the measurements. The reach past
+              the viewport covers the bands: the status bar alone above (~62pt),
+              or status bar plus URL bar for a Safari set to keep its bar at
+              the top (~140pt) — the page cannot tell which, so it covers the
+              deeper one; the URL bar's tallest state below. Each end fades
+              out over its last 70px so an edge that does come into view meets
+              the canvas softly. The cost is framing: `object-fit: cover` on
+              the taller box scales a landscape wallpaper up by the added
+              height. Everything else keeps the fixed layer. */}
+          {phoneBrowser ? (
+            <div
+              aria-hidden
+              className="sticky-wallpaper -z-10"
+              style={{
+                '--band-reach-top': '160px',
+                '--band-reach-bottom': '120px',
+                '--band-fade-top': '40px',
+                // How far below the status bar band the canvas-coloured top
+                // gradient runs into the screen before the wallpaper is clear.
+                '--top-scrim-run': '90px',
+              } as React.CSSProperties}
+            >
+              {/* The backdrop under the image, in the canvas colours rather
+                  than black: while any overlay has Safari in its flat-band
+                  mode, this is the topmost PLAIN paint at the band (the image
+                  above it is composited and skipped by the sampler), so it is
+                  what the bands become. Black gave a black bar under the URL
+                  bar whenever a menu was open. Top tint to bottom tint, read
+                  at each edge. */}
+              <div
+                className="sticky-full-screen pointer-events-none"
+                style={{ background: 'linear-gradient(to bottom, var(--canvas-tint, #000), var(--canvas-tint-bottom, var(--canvas-tint, #000)))' }}
+              />
+              <BackgroundImage
+                placement="sticky"
+                settings={activeBackground}
+                entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
+                autoBackgroundsEnabled={autoBackgrounds}
+                onLuminanceChange={setBgImageLuminance}
+                onHeaderLuminanceChange={setBgHeaderLuminance}
+                onTopColorChange={setBgImageTopColor}
+                onBottomColorChange={setBgImageBottomColor}
+              />
+              {hasBackground && <div className="sticky-top-scrim" />}
+            </div>
+          ) : (
+            <>
+              <div
+                aria-hidden
+                className={cn(
+                  "fixed-full-screen pointer-events-none -z-10",
+                  hasBackground && isDarkBackground ? "bg-black" : "bg-background",
+                )}
+              />
+              <BackgroundImage
+                settings={activeBackground}
+                entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
+                autoBackgroundsEnabled={autoBackgrounds}
+                onLuminanceChange={setBgImageLuminance}
+                onHeaderLuminanceChange={setBgHeaderLuminance}
+                onTopColorChange={setBgImageTopColor}
+                onBottomColorChange={setBgImageBottomColor}
+              />
+            </>
+          )}
 
           {/* Tiles used to be sliced flat at both physical screen edges, with
               the floating header buttons landing on top of whatever tile text
@@ -7723,42 +7801,32 @@ const Dashboard = () => {
               the note where they are declared for what each one trades. */}
           {/* The iOS native header draws its own scroll-edge effect, so the
               page's top scrim would double it (parob/homecast-cloud#120).
-              A phone browser gets the strips too: there the content runs
-              edge to edge under Safari's own bars and was cut off hard at
-              both; the strips fade it into the bars' colour first, and the
-              plain wash layer is what Safari samples to colour those bars
-              (see .scroll-scrim-wash). */}
-          {(isInMobileApp || isMobile) && !nativeHeaderActive && (() => {
-            // The bottom strip exists for a bar at the bottom of the screen:
-            // the app's tab bar and home indicator, or iOS Safari's toolbar.
-            // A desktop browser narrowed to a phone's width has neither, and
-            // Android Chrome keeps its chrome at the top, so in a browser
-            // the strip is for iOS only.
-            const bottomBar = isInMobileApp || isIOSBrowser();
-            const topSize = `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))`;
-            const bottomSize = `calc(${isInMobileApp ? scrimBottomHeight : Math.max(scrimBottomHeight, 80)}px + var(--safe-area-bottom, 0px))`;
-            // In a browser the band under the bars themselves (the safe-area
-            // inset) is painted solid; in the app shells the status bar and
-            // home indicator are the page's own to fade under.
-            const topStyle = { '--scroll-scrim-size': topSize, '--scroll-scrim-solid': isInMobileApp ? '0px' : 'var(--safe-area-top, 0px)' } as React.CSSProperties;
-            const bottomStyle = { '--scroll-scrim-size': bottomSize, '--scroll-scrim-solid': isInMobileApp ? '0px' : 'var(--safe-area-bottom, 0px)' } as React.CSSProperties;
+
+              App shells only — never a phone browser. iOS 26 Safari keeps its
+              bars OUTSIDE the viewport and paints the document into the bands
+              behind their glass, the way it does for any page, but stops the
+              moment a fixed element sits in its top few pixels: the bands
+              turn into one flat sampled colour and the content is cut off at
+              the viewport edge. These strips (and the sampling slivers they
+              needed) were exactly that, so the page read as clipped between
+              two flat bars. Without them the tiles and the title run under
+              the status bar and the URL bar like every other site. The header
+              is the other fixed thing at the top; see AppHeader for its
+              10px offset. Measured on the iPhone 17 Pro simulator, 2026-09-17. */}
+          {isInMobileApp && !nativeHeaderActive && (() => {
+            // The bottom strip is for the app's tab bar and home indicator.
+            // The status bar and home indicator are the page's own to fade
+            // under, so nothing is painted solid (`--scroll-scrim-solid` 0).
+            const topStyle = { '--scroll-scrim-size': `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))`, '--scroll-scrim-solid': '0px' } as React.CSSProperties;
+            const bottomStyle = { '--scroll-scrim-size': `calc(${scrimBottomHeight}px + var(--safe-area-bottom, 0px))`, '--scroll-scrim-solid': '0px' } as React.CSSProperties;
             return (
               <>
                 <div aria-hidden className="scroll-scrim scroll-scrim-top z-[10000]" style={topStyle} />
-                {bottomBar && <div aria-hidden className="scroll-scrim scroll-scrim-bottom z-[10000]" style={bottomStyle} />}
+                <div aria-hidden className="scroll-scrim scroll-scrim-bottom z-[10000]" style={bottomStyle} />
                 {/* The tint wash, on its own plain layer — see .scroll-scrim-wash
                     for why it is not part of the blur strip. */}
                 <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-top z-[10000]" style={topStyle} />
-                {bottomBar && <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-bottom z-[10000]" style={bottomStyle} />}
-                {/* Browser only: the sliver Safari samples for its bar colour,
-                    above the header (which is what it would otherwise find
-                    there, and read as nothing) — see .scroll-scrim-edge. */}
-                {!isInMobileApp && (
-                  <>
-                    <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-top" style={topStyle} />
-                    {bottomBar && <div aria-hidden className="scroll-scrim-edge scroll-scrim-edge-bottom" style={bottomStyle} />}
-                  </>
-                )}
+                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-bottom z-[10000]" style={bottomStyle} />
               </>
             );
           })()}
@@ -8262,7 +8330,12 @@ const Dashboard = () => {
           // The same glass the tab bar and the header bubbles use, rather than a
           // flat panel — it sits directly over the widgets and looked like a
           // different kind of surface pasted on top of them.
-          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
+          // A phone browser's bar sits where its header does — 10px down, a
+          // 40px row — so Done stays on the header's centre-line, where the
+          // toasts are centred, and the bar's box keeps out of Safari's top
+          // 8px (see AppHeader). It is a cover while it is up, so the bands go
+          // flat regardless; this is about the geometry matching.
+          className={`fixed ${phoneBrowser ? 'top-[10px]' : 'top-0'} left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
             editMode ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
           } ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
           // Out of the tree for anyone not looking at it, and unreachable by
@@ -8281,7 +8354,7 @@ const Dashboard = () => {
           {...{ [NATIVE_HEADER_COVER_ATTR]: editMode ? 'true' : 'false' }}
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
-            <div className="flex items-center justify-between gap-2 h-[80px]">
+            <div className={`flex items-center justify-between gap-2 ${phoneBrowser ? 'h-10' : 'h-[80px]'}`}>
               {/* No burger. The sidebar used to be half of what you came here
                   to arrange, but the home name's own menu now covers homes
                   and rooms and the drawer is still an edge swipe away — and
@@ -8739,7 +8812,7 @@ const Dashboard = () => {
               // Island and the rounded corner on the right, as the sidebar
               // now is on the left.
               paddingRight: 'var(--safe-area-right, 0px)'
-            } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
+            } : { paddingTop: isInMacApp ? undefined : phoneBrowser ? phoneBrowserPageTop : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
           >
             <PullToRefresh
               isPullable={!(isTouchDevice && editMode) && !nativeHeaderActive}

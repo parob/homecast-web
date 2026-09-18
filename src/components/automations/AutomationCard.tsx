@@ -5,7 +5,7 @@ import type React from 'react';
 import { useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, EyeOff, Eye } from 'lucide-react';
+import { Trash2, EyeOff, Eye, ChevronRight } from 'lucide-react';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
   ContextMenuSeparator, ContextMenuTrigger,
@@ -178,7 +178,12 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               icon centres it against the card in that case and keeps it beside
               the icon when a long name wraps, which is what `items-start` is
               there to protect. */}
-          <div className={`flex items-center gap-1 shrink-0 ${compact ? 'h-8' : 'h-9'}`} onClick={(e) => e.stopPropagation()}>
+          {/* One trailing group, so `justify-between` pins it to the right edge
+              whatever the name's length — a third flex child would float in the
+              leftover space instead. The switch and the delete button stop
+              propagation themselves; the group does not, so a tap on the
+              chevron still reaches the card's onClick. */}
+          <div className={`flex items-center gap-1 shrink-0 ${compact ? 'h-8' : 'h-9'}`}>
             {!editMode && (
               // `flex`, not a bare div: `Switch` is `inline-flex`, so a block
               // wrapper gives it a text line box and drops it onto the baseline
@@ -195,6 +200,17 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
+            )}
+            {/* On touch nothing else says the card opens: the pointer cursor is
+                a hover cue, and a switch on the right makes it read as a
+                settings row. A disclosure chevron is what iOS uses for "this
+                opens". A desktop has the cursor and the right-click menu; there
+                it would only be clutter. */}
+            {touchMode && !editMode && (
+              <ChevronRight
+                aria-hidden
+                className={`h-4 w-4 shrink-0 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}
+              />
             )}
           </div>
         </div>

@@ -14,21 +14,36 @@
 
 import { useEffect, useMemo } from 'react';
 import { resolveCanvasTint } from '@/lib/canvas-tint';
+import { isIOSBrowser } from '@/lib/platform';
 import type { BackgroundSettings } from '@/lib/graphql/types';
 
 interface Options {
   background: BackgroundSettings | null | undefined;
   sampledTopColor: string | null | undefined;
+  /** The wallpaper's visible bottom edge, for iOS Safari's URL bar band. */
+  sampledBottomColor?: string | null | undefined;
   isDark: boolean;
   /** Mac or iOS shell: the backdrop is the WKWebView's, not the document's. */
   isNativeShell: boolean;
 }
 
-export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShell }: Options): string {
+export function useCanvasTint({ background, sampledTopColor, sampledBottomColor, isDark, isNativeShell }: Options): string {
   const tint = useMemo(
     () => resolveCanvasTint({ background, sampledTopColor, isDark }),
     [background, sampledTopColor, isDark],
   );
+  // The same decision for the bottom edge: what an iOS Safari sampler should
+  // read under the URL bar while a scrim is up (see EdgeSampleSlivers). A
+  // wallpaper that runs sky-to-sand has nothing in common at its two ends.
+  const bottomTint = useMemo(
+    () => resolveCanvasTint({ background, sampledTopColor: sampledBottomColor ?? sampledTopColor, isDark }),
+    [background, sampledBottomColor, sampledTopColor, isDark],
+  );
+  useEffect(() => {
+    if (isNativeShell) return;
+    document.documentElement.style.setProperty('--canvas-tint-bottom', bottomTint);
+    return () => { document.documentElement.style.removeProperty('--canvas-tint-bottom'); };
+  }, [bottomTint, isNativeShell]);
 
 
   useEffect(() => {
@@ -74,15 +89,37 @@ export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShe
   // effect below has applied it gives a plain rgb() every time.
   useEffect(() => {
     if (isNativeShell) return;
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (!meta) return;
-    const previous = meta.content;
     const painted = getComputedStyle(document.documentElement).backgroundColor;
     const colour = painted && painted !== 'rgba(0, 0, 0, 0)' ? painted : tint;
-    meta.content = colour;
-    // The same colour for the edge strips (`.scroll-scrim` in index.css),
-    // so content fades into the bars' colour rather than being cut by them.
+    // The same colour for the app shells' edge strips (`.scroll-scrim`) and
+    // the phone browser's wallpaper-top scrim (`.sticky-top-scrim`), so
+    // content fades into the bars' colour rather than being cut by them.
     document.documentElement.style.setProperty('--canvas-tint', colour);
+
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      return () => document.documentElement.style.removeProperty('--canvas-tint');
+    }
+    const previous = meta.content;
+    // iOS Safari gets NO theme-color. Its bars are glass over the page
+    // (iOS 26), and a theme-color is what it tints that glass with — a dark
+    // canvas colour laid a dark gradient over the wallpaper's bottom edge
+    // under the URL bar, the one thing there that was not the wallpaper.
+    // With none it draws neutral glass, as for a page that never declared
+    // one, and takes the status bar's ink from the page's own top — the
+    // canvas-coloured scrim over the wallpaper. Android Chrome keeps it: its
+    // toolbar is opaque and this is its colour.
+    if (isIOSBrowser()) {
+      meta.remove();
+      return () => {
+        const back = document.createElement('meta');
+        back.name = 'theme-color';
+        back.content = previous;
+        document.head.appendChild(back);
+        document.documentElement.style.removeProperty('--canvas-tint');
+      };
+    }
+    meta.content = colour;
     return () => {
       meta.content = previous;
       document.documentElement.style.removeProperty('--canvas-tint');

@@ -9,6 +9,7 @@ const BACKGROUND_SCROLL_DISMISS_PX = 40;
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { overlayScrim } from '@/lib/overlay-scrim';
+import { EdgeSampleSlivers } from '@/components/shared/EdgeSampleSlivers';
 import { registerPanelElevation } from '@/lib/overlay-elevation';
 import { useOverlayViewport } from '@/hooks/useOverlayViewport';
 
@@ -708,6 +709,8 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               isClosing ? 'opacity-0' : 'opacity-100'
             } ${ready && !isClosing ? 'pointer-events-auto' : 'pointer-events-none'}`}
           />
+          {/* iOS Safari's bar bands, matched to the scrim — see the component. */}
+          {!isClosing && <EdgeSampleSlivers dim={isDarkBackground ? 0.4 : 0.2} zIndex={baseZ} />}
           {/* RemoveScroll for one thing only: a wheel or a finger inside the
               panel that reaches the panel's edge stops there instead of
               chaining into the page. `noIsolation` leaves the page and any

@@ -480,6 +480,71 @@ All colors MUST be HSL.
   height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom));
 }
 
+/* The same box, for a wallpaper that has to reach into iOS 26 Safari's bar
+   bands. Safari paints the document into the bands behind its status bar
+   and URL bar but clips every `position: fixed` layer to the viewport, so a
+   fixed wallpaper stops dead at the viewport edge and the band shows the
+   canvas colour. A `position: sticky` layer is document content — painted
+   into the bands like any tile — yet is placed by the scrolling thread like
+   a fixed one, so it never lags a scroll. Hence: a zero-height sticky
+   wrapper (`.sticky-wallpaper`) at the very start of the scroller, and this
+   box absolutely positioned inside it, extended past the viewport by
+   `--band-reach-top` / `--band-reach-bottom` so the bands are covered
+   through the URL bar's collapse. Measured on the iPhone 17 Pro simulator,
+   iOS 26.4, 2026-09-17: fills both bands, stays put across a fling. */
+.sticky-wallpaper {
+  position: sticky;
+  /* Where it sticks — the same offset its normal position has (see
+     `--band-gap` in Dashboard), so the first 10px of scroll do not move it. */
+  top: var(--band-gap, 0px);
+  height: 0;
+  pointer-events: none;
+}
+.sticky-full-screen {
+  position: absolute;
+  top: calc((var(--safe-area-top) + var(--band-reach-top, 0px)) * -1);
+  left: calc(var(--safe-area-left) * -1);
+  width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
+  height: calc(100vh + var(--safe-area-top) + var(--safe-area-bottom) + var(--band-reach-top, 0px) + var(--band-reach-bottom, 0px));
+  height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom) + var(--band-reach-top, 0px) + var(--band-reach-bottom, 0px));
+  /* The box ends somewhere above the screen; should that edge ever come into
+     view (a Safari whose bar is at the top, a pull) it must not arrive as a
+     hard line against the canvas. The top few px fade out, into the canvas —
+     which is the wallpaper's own sampled edge colour (useCanvasTint), so
+     into a near-match. Only the top: the bottom edge is under the URL bar's
+     glass and never shows. Applied to every layer in the box — the solid
+     backdrop as well as the image — because a line would be the pair of them
+     ending together. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--band-fade-top, 0px));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--band-fade-top, 0px));
+}
+
+/* The top of the wallpaper, in the page's own background colour: solid from
+   the very top of the box down through the status bar band, then falling
+   away over a short run into the top of the screen — so the band reads as
+   the canvas, the way it did, and the wallpaper begins just under it with no
+   edge between the two. `--canvas-tint` is the colour useCanvasTint samples
+   from the wallpaper's visible top rows (a plain rgb), the same colour the
+   canvas behind everything is painted. Plain paint, no backdrop. Positioned
+   like the box it sits in (`.sticky-full-screen`), but only as tall as the
+   gradient; `--top-scrim-run` is how far below the band it reaches. */
+.sticky-top-scrim {
+  position: absolute;
+  top: calc((var(--safe-area-top) + var(--band-reach-top, 0px)) * -1);
+  left: calc(var(--safe-area-left) * -1);
+  width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
+  height: calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px));
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--canvas-tint, transparent) 0,
+    var(--canvas-tint, transparent) var(--band-reach-top, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 70%, transparent) calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px) * 0.3),
+    color-mix(in srgb, var(--canvas-tint, transparent) 25%, transparent) calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px) * 0.7),
+    transparent 100%
+  );
+}
+
 /* Corners are plain circular border-radius on purpose.
 
    corner-shape: squircle used to be applied here. It is Chromium-only, so it
@@ -777,30 +842,4 @@ html.ios-app .selectable {
     color-mix(in srgb, var(--canvas-tint, transparent) 3%, transparent) 94%,
     transparent 100%
   );
-}
-
-/* The few pixels at each edge that iOS 26 Safari samples to colour its bars,
-   painted solid tint and stacked ABOVE the header (z 10001). The header is a
-   transparent fixed box spanning the top of the page; as the topmost thing at
-   the edge it is what the sampler finds, and a transparent hit makes Safari
-   fall back to its own grey. This sliver sits inside the band the wash already
-   holds at full strength, so it changes nothing visible; it only gives the
-   sampler an opaque answer. Browser only — the app shells paint their own
-   backdrop and have no bars to colour. */
-.scroll-scrim-edge {
-  position: fixed;
-  left: 0;
-  right: 0;
-  height: calc(var(--scroll-scrim-solid, 0px) + 12px);
-  background: var(--canvas-tint, transparent);
-  pointer-events: none;
-  z-index: 10002;
-}
-
-.scroll-scrim-edge-top {
-  top: 0;
-}
-
-.scroll-scrim-edge-bottom {
-  bottom: 0;
 }

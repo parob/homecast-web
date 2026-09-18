@@ -102,6 +102,13 @@ export interface NativeHeaderState {
    * while one is open, the way a presented sheet covers the Home app's bar.
    */
   covered?: boolean;
+  /**
+   * What the status bar sits over while the page is covered: "light" for a
+   * full-height cover painted light (the automation editor, a sheet over a
+   * light wallpaper), "dark" for the scrim or a dark cover. The shell keys
+   * the status bar's ink on this instead of `appearance` while `covered`.
+   */
+  coverAppearance?: 'dark' | 'light';
   /** A widget is expanded over the page: the bar stays, dimmed behind it. */
   dimmed?: boolean;
   /**
@@ -340,6 +347,7 @@ export function publishHeaderState(state: NativeHeaderState): boolean {
   if (state.menu !== undefined) message.menu = state.menu;
   if (state.appearance !== undefined) message.appearance = state.appearance;
   if (state.covered !== undefined) message.covered = state.covered;
+  if (state.coverAppearance !== undefined) message.coverAppearance = state.coverAppearance;
   if (state.dimmed !== undefined) message.dimmed = state.dimmed;
   if (state.navigation !== undefined) message.navigation = state.navigation;
 
@@ -553,6 +561,43 @@ export function isPageCovered(root: HTMLElement | Document = document): boolean 
     .some((el) => !el.closest(POPPER_WRAPPER));
 }
 
+/**
+ * What the status bar sits over while the page is covered.
+ *
+ * The bar hides behind a cover, but the status bar stays, and its ink kept
+ * following the page underneath: white over a dark wallpaper, which is
+ * white over the automation editor's white — the clock vanished. The scrim is
+ * black at 80%, so a cover that does not reach the top of the screen (a
+ * centred dialog) leaves the status bar over something dark whatever the
+ * wallpaper; only a cover as tall as the viewport paints under it, and then
+ * its own background decides. Measured as `offsetHeight`, which a Radix
+ * open animation's scale does not touch — the rect during zoom-in would
+ * read a full-screen dialog as a few points short of the top.
+ */
+export function coverAppearance(root: HTMLElement | Document = document): 'dark' | 'light' {
+  const covers = Array.from(root.querySelectorAll<HTMLElement>(NATIVE_HEADER_COVER_SELECTOR))
+    .filter((el) => !el.closest(POPPER_WRAPPER))
+    .filter((el) => el.offsetHeight >= window.innerHeight * 0.95);
+  const top = covers[covers.length - 1];
+  if (!top) return 'dark';
+  return isLightPaint(getComputedStyle(top).backgroundColor) ? 'light' : 'dark';
+}
+
+/**
+ * Whether a CSS colour reads as light once painted over the scrim. A
+ * translucent material (`rgb(0 0 0 / 0.4)`, `rgb(255 255 255 / 0.7)`) is
+ * composited over black, which is what sits behind every cover.
+ */
+export function isLightPaint(color: string): boolean {
+  const parts = color.match(/[\d.]+%?/g);
+  if (!parts || parts.length < 3) return false;
+  const [r, g, b] = parts.slice(0, 3).map(Number);
+  const raw = parts[3];
+  const alpha = raw === undefined ? 1 : raw.endsWith('%') ? Number(raw.slice(0, -1)) / 100 : Number(raw);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) * alpha;
+  return luminance > 127.5;
+}
+
 /** An expanded widget's panel, while open (see `ExpandedOverlay`). */
 export const NATIVE_HEADER_DIM_SELECTOR = '[data-expanded-overlay="open"]';
 
@@ -578,12 +623,18 @@ export function isPageDimmed(root: HTMLElement | Document = document): boolean {
 export function watchNativeHeaderCover(root: HTMLElement = document.body): () => void {
   if (!isNativeHeaderAvailable()) return () => {};
   let lastCovered: boolean | null = null;
+  let lastCoverAppearance: 'dark' | 'light' | null = null;
   let lastDimmed: boolean | null = null;
   const check = () => {
     const covered = isPageCovered(root);
     const dimmed = isPageDimmed(root);
     const state: NativeHeaderState = {};
     if (covered !== lastCovered) { lastCovered = covered; state.covered = covered; }
+    // Re-read on every mutation while covered, not only when `covered` flips:
+    // a second, taller dialog can open over the first.
+    const paint = covered ? coverAppearance(root) : null;
+    if (paint !== null && paint !== lastCoverAppearance) { lastCoverAppearance = paint; state.coverAppearance = paint; }
+    if (!covered) lastCoverAppearance = null;
     if (dimmed !== lastDimmed) { lastDimmed = dimmed; state.dimmed = dimmed; }
     if (Object.keys(state).length > 0) publishHeaderState(state);
   };

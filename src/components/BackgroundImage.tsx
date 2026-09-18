@@ -1,6 +1,16 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { PRESET_SOLID_COLORS, PRESET_GRADIENTS, PRESET_IMAGES, getAutoPresetId, analyzeLoadedImage, analyzeLoadedImageBand, getImageTopColor } from '@/lib/colorUtils';
+import { PRESET_SOLID_COLORS, PRESET_GRADIENTS, PRESET_IMAGES, getAutoPresetId, analyzeLoadedImage, analyzeLoadedImageBand, getImageTopColor, getImageEdgeColor } from '@/lib/colorUtils';
+
+/**
+ * The box the wallpaper fills, for sampling what is on screen rather than
+ * the whole image. The layer is the large viewport plus the safe areas (see
+ * `.fixed-full-screen`), which the window's inner size approximates well
+ * enough for a colour; a blurred layer is also drawn at 1.1×.
+ */
+function visibleBox(blur: number): { width: number; height: number; scale: number } {
+  return { width: window.innerWidth, height: window.innerHeight, scale: blur > 0 ? 1.1 : 1 };
+}
 import type { BackgroundSettings } from '@/lib/graphql/types';
 
 import { config } from '@/lib/config';
@@ -24,6 +34,9 @@ function toAbsoluteUrl(url: string | undefined): string | undefined {
 interface BackgroundImageProps {
   settings?: BackgroundSettings | null;
   className?: string;
+  /** `fixed` (default) pins the box to the viewport; `sticky` is for the
+   *  phone browser, inside a `.sticky-wallpaper` wrapper — see index.css. */
+  placement?: 'fixed' | 'sticky';
   entityId?: string;
   autoBackgroundsEnabled?: boolean;
   onReady?: () => void;
@@ -37,6 +50,8 @@ interface BackgroundImageProps {
   onHeaderLuminanceChange?: (luminance: number | null) => void;
   /** Reports average color of the top row of the loaded image (hex string). null for non-image backgrounds. */
   onTopColorChange?: (color: string | null) => void;
+  /** The same for the wallpaper's visible bottom edge — what meets Safari's URL bar band. */
+  onBottomColorChange?: (color: string | null) => void;
 }
 
 // Get a unique key for background image/gradient (excludes brightness/blur since those don't need crossfade)
@@ -53,7 +68,7 @@ function getBackgroundKey(settings?: BackgroundSettings | null): string {
  * Brightness: 50 = no change, <50 = darker, >50 = brighter
  * Uses crossfade technique to smoothly transition between backgrounds.
  */
-export function BackgroundImage({ settings, className, entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange }: BackgroundImageProps) {
+export function BackgroundImage({ settings, className, placement = 'fixed', entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange, onBottomColorChange }: BackgroundImageProps) {
   // Compute effective settings: explicit > auto > none
   // solid-white is special: it means "no background" and overrides auto-backgrounds
   const effectiveSettings = useMemo((): BackgroundSettings | null => {
@@ -92,6 +107,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
   const pendingLuminanceRef = useRef<number | null>(null);
   const pendingHeaderLuminanceRef = useRef<number | null>(null);
   const pendingTopColorRef = useRef<string | null>(null);
+  const pendingBottomColorRef = useRef<string | null>(null);
 
   // Helper to call onReady only once per background change
   const callOnReady = () => {
@@ -110,6 +126,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       onLuminanceChange?.(null);
       onHeaderLuminanceChange?.(null);
       onTopColorChange?.(null);
+onBottomColorChange?.(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -129,6 +146,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       pendingLuminanceRef.current = null;
       pendingHeaderLuminanceRef.current = null;
       pendingTopColorRef.current = null;
+      pendingBottomColorRef.current = null;
 
       // Settings changed - start crossfade
       const isSolid = effectiveSettings?.presetId?.startsWith('solid-');
@@ -147,6 +165,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
         onLuminanceChange?.(null);
         onHeaderLuminanceChange?.(null);
         onTopColorChange?.(null);
+onBottomColorChange?.(null);
 
         // Clear previous after transition
         transitionTimeoutRef.current = setTimeout(() => {
@@ -168,6 +187,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
           onLuminanceChange?.(pendingLuminanceRef.current);
           onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
           onTopColorChange?.(pendingTopColorRef.current);
+    onBottomColorChange?.(pendingBottomColorRef.current);
           transitionTimeoutRef.current = setTimeout(() => {
             setPrevBg(null);
             setIsTransitioning(false);
@@ -196,6 +216,9 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     pendingHeaderLuminanceRef.current = luminance;
   };
 
+  const handleImageBottomColor = (color: string) => {
+    pendingBottomColorRef.current = color;
+  };
   const handleImageTopColor = (color: string) => {
     pendingTopColorRef.current = color;
   };
@@ -210,6 +233,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     onLuminanceChange?.(pendingLuminanceRef.current);
     onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
     onTopColorChange?.(pendingTopColorRef.current);
+    onBottomColorChange?.(pendingBottomColorRef.current);
     transitionTimeoutRef.current = setTimeout(() => {
       setPrevBg(null);
       setIsTransitioning(false);
@@ -235,7 +259,10 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
         // fixed-full-screen (not inset-0): fixed elements stop at the safe
         // area boundaries on iOS, which left unpainted strips beside the
         // wallpaper in landscape. Negative insets extend it to the true edges.
-        'fixed-full-screen overflow-hidden pointer-events-none',
+        // `sticky`: the same box as an absolute child of a `.sticky-wallpaper`
+        // wrapper, reaching into Safari's bar bands — see index.css.
+        placement === 'sticky' ? 'sticky-full-screen' : 'fixed-full-screen',
+        'overflow-hidden pointer-events-none',
         className
       )}
       aria-hidden="true"
@@ -264,6 +291,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
           onImageLuminance={handleImageLuminance}
           onImageHeaderLuminance={handleImageHeaderLuminance}
           onImageTopColor={handleImageTopColor}
+          onImageBottomColor={handleImageBottomColor}
         />
       )}
     </div>
@@ -281,9 +309,10 @@ interface BackgroundLayerProps {
   onImageLuminance?: (luminance: number) => void;
   onImageHeaderLuminance?: (luminance: number) => void;
   onImageTopColor?: (color: string) => void;
+  onImageBottomColor?: (color: string) => void;
 }
 
-function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageHeaderLuminance, onImageTopColor }: BackgroundLayerProps) {
+function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageHeaderLuminance, onImageTopColor, onImageBottomColor }: BackgroundLayerProps) {
   const isSolid = settings.type === 'preset' && settings.presetId?.startsWith('solid-');
   const isGradient = settings.type === 'preset' && settings.presetId?.startsWith('gradient-');
 
@@ -314,6 +343,7 @@ function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImage
           onLuminanceReady={onImageLuminance}
           onHeaderLuminanceReady={onImageHeaderLuminance}
           onTopColorReady={onImageTopColor}
+          onBottomColorReady={onImageBottomColor}
         />
       )}
     </div>
@@ -387,6 +417,7 @@ interface ImageBackgroundProps {
   onLuminanceReady?: (luminance: number) => void;
   onHeaderLuminanceReady?: (luminance: number) => void;
   onTopColorReady?: (color: string) => void;
+  onBottomColorReady?: (color: string) => void;
 }
 
 function ImageBackground({
@@ -399,6 +430,7 @@ function ImageBackground({
   onLuminanceReady,
   onHeaderLuminanceReady,
   onTopColorReady,
+  onBottomColorReady,
 }: ImageBackgroundProps) {
   // Determine the image URL (ensure custom URLs are absolute)
   const imageUrl = toAbsoluteUrl(url) || (presetId ? PRESET_IMAGES[presetId] : null);
@@ -437,7 +469,8 @@ function ImageBackground({
       setIsLoaded(true);
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
       onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
-      onTopColorReady?.(getImageTopColor(imgRef.current));
+      onTopColorReady?.(getImageTopColor(imgRef.current, 50, visibleBox(blur)));
+      onBottomColorReady?.(getImageEdgeColor(imgRef.current, 'bottom', 50, visibleBox(blur)));
       onLoad?.();
     }
   });
@@ -471,7 +504,8 @@ function ImageBackground({
     if (imgRef.current) {
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
       onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
-      onTopColorReady?.(getImageTopColor(imgRef.current));
+      onTopColorReady?.(getImageTopColor(imgRef.current, 50, visibleBox(blur)));
+      onBottomColorReady?.(getImageEdgeColor(imgRef.current, 'bottom', 50, visibleBox(blur)));
     }
     onLoad?.();
   };

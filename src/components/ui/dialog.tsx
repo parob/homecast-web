@@ -2,7 +2,8 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { EdgeSampleSlivers } from "@/components/shared/EdgeSampleSlivers";
 import { DIALOG_Z, dialogElevation, topPanelElevation } from "@/lib/overlay-elevation";
 
 /**
@@ -68,6 +69,9 @@ const DialogContent = React.forwardRef<
   return (
   <DialogPortal>
     <DialogOverlay className={overlayClassName} style={{ zIndex }} />
+    {/* iOS Safari's bar bands, matched to the scrim: black at 80% by default,
+        30% for a caller that passes OVERLAY_SCRIM (lib/overlay-scrim). */}
+    <EdgeSampleSlivers dim={overlayClassName?.includes('bg-black/30') ? 0.3 : 0.8} zIndex={zIndex} />
     <DialogPrimitive.Content
       ref={ref}
       aria-describedby={undefined}

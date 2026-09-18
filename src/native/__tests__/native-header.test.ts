@@ -31,6 +31,8 @@ import {
   statusDotHex,
   nativeHeaderInsets,
   watchNativeHeaderCover,
+  coverAppearance,
+  isLightPaint,
   NATIVE_HEADER_COVER_ATTR,
   publishRefreshDone,
   nativeHeaderRowCenter,
@@ -372,7 +374,7 @@ describe('stepping aside for web overlays', () => {
     sheet.setAttribute('data-state', 'open');
     document.body.appendChild(sheet);
     await Promise.resolve(); // MutationObserver delivers as a microtask
-    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true });
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true, coverAppearance: 'dark' });
 
     sheet.setAttribute('data-state', 'closed');
     await Promise.resolve();
@@ -391,7 +393,7 @@ describe('stepping aside for web overlays', () => {
 
     bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'true');
     await Promise.resolve();
-    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true });
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true, coverAppearance: 'dark' });
 
     bar.setAttribute(NATIVE_HEADER_COVER_ATTR, 'false');
     await Promise.resolve();
@@ -413,6 +415,59 @@ describe('stepping aside for web overlays', () => {
     expect(sent.at(-1)).toEqual({ action: 'header.setState', dimmed: false });
     panel.remove();
     stop();
+  });
+
+  // The status bar keeps drawing over a cover, so the shell needs to know
+  // what it is over: the scrim (black) unless a cover reaches the top.
+  function cover(height: number, background: string) {
+    const el = document.createElement('div');
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('data-state', 'open');
+    el.style.backgroundColor = background;
+    Object.defineProperty(el, 'offsetHeight', { value: height });
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it('a centred dialog leaves the status bar over the scrim — dark', () => {
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+    cover(680, 'rgb(255, 255, 255)'); // 85dvh: the Automations list
+    expect(coverAppearance(document.body)).toBe('dark');
+  });
+
+  it('a full-screen light cover puts the status bar over white — light', () => {
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+    cover(800, 'rgb(255, 255, 255)'); // the automation editor
+    expect(coverAppearance(document.body)).toBe('light');
+  });
+
+  it('a full-height dark material stays dark, and the topmost tall cover wins', () => {
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+    cover(800, 'rgb(255, 255, 255)');
+    cover(800, 'rgba(0, 0, 0, 0.4)'); // material-regular-dark, opened over it
+    expect(coverAppearance(document.body)).toBe('dark');
+  });
+
+  it('publishes the paint with covered, and again when a taller cover opens', async () => {
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+    const sent = installNativeBuild();
+    const stop = watchNativeHeaderCover(document.body);
+    cover(680, 'rgb(255, 255, 255)');
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', covered: true, coverAppearance: 'dark' });
+    cover(800, 'rgb(255, 255, 255)');
+    await Promise.resolve();
+    expect(sent.at(-1)).toEqual({ action: 'header.setState', coverAppearance: 'light' });
+    stop();
+  });
+
+  it('reads a translucent material as what it paints over black', () => {
+    expect(isLightPaint('rgb(255, 255, 255)')).toBe(true);
+    expect(isLightPaint('rgba(255, 255, 255, 0.7)')).toBe(true);  // material-regular
+    expect(isLightPaint('rgba(0, 0, 0, 0.4)')).toBe(false);       // material-regular-dark
+    expect(isLightPaint('rgb(255 255 255 / 0.3)')).toBe(false);   // too thin to lighten the scrim
+    expect(isLightPaint('rgba(0, 0, 0, 0)')).toBe(false);
+    expect(isLightPaint('transparent')).toBe(false);
   });
 
   it('does nothing at all on a build without the bar', () => {

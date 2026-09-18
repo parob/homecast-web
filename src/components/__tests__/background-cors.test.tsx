@@ -10,6 +10,7 @@ vi.mock('@/lib/colorUtils', () => ({
   analyzeLoadedImage: () => 0.5,
   analyzeLoadedImageBand: () => 0.5,
   getImageTopColor: () => '#888888',
+  getImageEdgeColor: () => '#888888',
 }));
 
 afterEach(cleanup);
