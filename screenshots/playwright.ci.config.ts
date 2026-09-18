@@ -25,6 +25,7 @@ export default defineConfig({
     'toast-alignment.spec.ts',
     'tab-bar-label-centring.spec.ts',
     'request-log-minimised.spec.ts',
+    'status-bar-under-fullscreen-dialog.spec.ts',
     'room-visibility-surfaces.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
