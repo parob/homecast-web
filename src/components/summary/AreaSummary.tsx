@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Thermometer,
   Droplets,
@@ -26,6 +27,9 @@ import {
 } from '@/history/status-series';
 import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { cn } from '@/lib/utils';
+import { resolveWidgetTint, STANDARD_TINT } from '@/lib/widget-tint';
+import { overlayScrim } from '@/lib/overlay-scrim';
+import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 // ============================================================================
 // Types
@@ -95,11 +99,26 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
     warning: isDarkBackground ? 'text-amber-200' : 'text-amber-700 dark:text-amber-300',
     success: isDarkBackground ? 'text-emerald-200' : 'text-emerald-700 dark:text-emerald-300',
   };
+  // The inline panel is a tile: the same glass an off accessory widget paints
+  // (WidgetWrapper's resolveWidgetTint at the standard tint), so it belongs to
+  // the grid it opens over rather than reading as a system tooltip. `isOn`
+  // false is the resting look of nearly every tile on the page.
+  const { effectiveLuminance } = useBackgroundContext();
+  const glass = resolveWidgetTint({
+    tint: STANDARD_TINT,
+    intensity: null,
+    isOn: false,
+    isDarkWallpaper: !!isDarkBackground,
+    wallpaperLuminance: effectiveLuminance,
+  });
   const tooltipStyles = appearance === 'inline'
-    ? (isDarkBackground ? 'bg-slate-900 text-white border-slate-700' : 'bg-popover text-popover-foreground border-border')
+    ? cn('rounded-2xl border-none ring-1 ring-inset backdrop-blur-xl', glass.tone === 'light' ? 'text-white' : 'text-foreground')
     : isDarkBackground
     ? 'bg-black/35 backdrop-blur-md text-white border-none'
     : 'bg-white/60 backdrop-blur-md text-foreground shadow-[0_0_15px_rgba(0,0,0,0.6)] border border-gray-200';
+  const tooltipStyle = appearance === 'inline'
+    ? { backgroundColor: glass.backgroundColor, ['--tw-ring-color' as string]: glass.ringColor } as React.CSSProperties
+    : undefined;
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -146,8 +165,18 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
             <span>{label}</span>
           </button>
         </TooltipTrigger>
+        {/* Tapped open on the dashboard, the panel pushes the page back the way
+            an expanded widget does — the one scrim every overlay shares. Under
+            the tooltip (z 10005), over everything else; Radix treats a press on
+            it as outside and closes. Portalled so the summary row's own
+            stacking cannot trap it. */}
+        {appearance === 'inline' && open && createPortal(
+          <div aria-hidden className={cn('fixed-full-screen z-[10004]', overlayScrim(isDarkBackground))} />,
+          document.body,
+        )}
         <TooltipContent
           side="bottom"
+          style={tooltipStyle}
           className={cn(
             // Roomier than a one-line tooltip: this one lists rooms and their
             // sensors, so it reads as a panel and wants a panel's inset. Fixed
