@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   availableWidgetSizes,
   cameraSizeCapability,
+  gridHasSizedWidget,
+  gridRowUnitStyle,
   offersWidgetSizeChoice,
   resolveWidgetSize,
   storedWidgetSize,
@@ -150,26 +152,64 @@ describe('widgetSizeStyle', () => {
   });
 
   it('spans the cells the size claims', () => {
-    expect(widgetSizeStyle('large')).toMatchObject({ gridColumn: 'span 2', gridRow: 'span 2' });
-    expect(widgetSizeStyle('tall')).toMatchObject({ gridColumn: 'span 1', gridRow: 'span 2' });
+    expect(widgetSizeStyle('large')).toEqual({ gridColumn: 'span 2', gridRow: 'span 2', alignSelf: 'stretch' });
+    expect(widgetSizeStyle('tall')).toEqual({ gridColumn: 'span 1', gridRow: 'span 2', alignSelf: 'stretch' });
   });
 
-  it('carries an aspect ratio, which is what actually gives it height', () => {
-    // Measured, not assumed: `align-self: stretch` was tried first and did
-    // nothing. Both grids size rows from content, and a tile spanning both
-    // columns of a two-column grid is alone in its rows — so the tracks
-    // collapse to its own height and there is nothing to stretch into. The
-    // tile went 175px → 358px wide and stayed 97px tall.
-    expect(widgetSizeStyle('large')?.aspectRatio).toBe('16 / 9');
-    expect(widgetSizeStyle('tall')?.aspectRatio).toBe('3 / 4');
+  it('stretches, because both grids are items-start', () => {
+    // Necessary but not sufficient: without an explicit row track from
+    // `gridRowUnitStyle` there is nothing to stretch into. The two go together.
+    expect(widgetSizeStyle('large')?.alignSelf).toBe('stretch');
+    expect(widgetSizeStyle('tall')?.alignSelf).toBe('stretch');
   });
 
-  it('gives Large a landscape shape and Tall a portrait one', () => {
-    const ratio = (s: string) => {
-      const [w, h] = s.split('/').map(n => Number(n.trim()));
-      return w / h;
-    };
-    expect(ratio(widgetSizeStyle('large')!.aspectRatio)).toBeGreaterThan(1);
-    expect(ratio(widgetSizeStyle('tall')!.aspectRatio)).toBeLessThan(1);
+  it('carries no aspect ratio', () => {
+    // It used to. 16/9 of a 358px phone column is 201px and two rows plus the
+    // gap is 202px, so it matched at the width it was checked at and was wrong
+    // everywhere else — on a 648px desktop span, 364px against 288px. A tile
+    // twice the height of the other widgets has to be defined by those widgets.
+    expect(widgetSizeStyle('large')).not.toHaveProperty('aspectRatio');
+    expect(widgetSizeStyle('tall')).not.toHaveProperty('aspectRatio');
+  });
+});
+
+describe('gridRowUnitStyle', () => {
+  it('sets the track to the measured height of an ordinary tile', () => {
+    // 2 × 97 + an 8px gap = 202, which is exactly twice a 97px tile.
+    expect(gridRowUnitStyle(true, 97)).toEqual({ gridAutoRows: '97px' });
+  });
+
+  it('leaves a grid with nothing resized completely alone', () => {
+    // Setting a row track changes how every tile in the grid is laid out.
+    expect(gridRowUnitStyle(false, 97)).toBeUndefined();
+  });
+
+  it('leaves the grid alone when there is nothing to measure', () => {
+    // A grid of only sized tiles has no ordinary tile to be twice the height
+    // of, and guessing a track would be worse than not acting.
+    expect(gridRowUnitStyle(true, null)).toBeUndefined();
+    expect(gridRowUnitStyle(true, 0)).toBeUndefined();
+    expect(gridRowUnitStyle(true, -5)).toBeUndefined();
+  });
+});
+
+describe('gridHasSizedWidget', () => {
+  it('is false for a home that has never resized anything', () => {
+    expect(gridHasSizedWidget(undefined, ['a', 'b'])).toBe(false);
+    expect(gridHasSizedWidget({}, ['a', 'b'])).toBe(false);
+  });
+
+  it('is false when the sized widget is not in this grid', () => {
+    expect(gridHasSizedWidget({ elsewhere: 'large' }, ['a', 'b'])).toBe(false);
+  });
+
+  it('is true when one of this grid\u2019s tiles is sized', () => {
+    expect(gridHasSizedWidget({ b: 'large' }, ['a', 'b'])).toBe(true);
+    expect(gridHasSizedWidget({ b: 'tall' }, ['a', 'b'])).toBe(true);
+  });
+
+  it('ignores a value it does not understand, like storedWidgetSize does', () => {
+    const fromTheFuture = { b: 'enormous' } as unknown as WidgetSizeMap;
+    expect(gridHasSizedWidget(fromTheFuture, ['a', 'b'])).toBe(false);
   });
 });

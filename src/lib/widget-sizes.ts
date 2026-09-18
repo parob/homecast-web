@@ -164,51 +164,66 @@ export function withWidgetSize(
 }
 
 /**
- * The shape a sized tile holds itself to.
+ * The grid placement for a size, or `undefined` for `regular` — which must stay
+ * undefined rather than `span 1`, so a grid with no resized tile in it renders
+ * byte-identically to how it did before this feature existed.
  *
- * **This, not `align-self: stretch`, is what makes the picture bigger**, and
- * the difference is worth writing down because the stretch version looked
- * right and shipped nothing. Both grids size their rows from content. A tile
- * that spans two columns of a two-column phone grid is *alone* in the rows it
- * spans, so there is no other content to size them: the tracks collapse to the
- * tile's own height and stretching it to fill them is a no-op. Measured, not
- * reasoned about — the tile went from 175px wide to 358px and stayed 97px
- * tall, which is a wide tile, not a big picture.
+ * **The span and the stretch are only half of it.** Both dashboard grids size
+ * their rows from content and are `items-start`, so this alone gives a tile that
+ * claims a 2×2 area and keeps its old height inside it. The grid must also be
+ * given an explicit row track — see `gridRowUnitStyle` — and the two go
+ * together: neither does the job without the other.
  *
- * An aspect ratio needs no cooperation from the tracks. It also happens to be
- * the honest answer for the widget that asked for this: a tile showing a
- * picture should be the shape of the picture.
- *
- * 16:9 for Large because that is what a landscape camera sends, and a 2×2 cell
- * at that ratio shows it nearly uncropped — which is the entire reason to
- * spend four cells on it. 3:4 for Tall, which is the portrait case, and comes
- * out close to two stacked rows at every column width we use.
- */
-const ASPECT: Record<WidgetSize, string | undefined> = {
-  regular: undefined,
-  large: '16 / 9',
-  tall: '3 / 4',
-};
-
-/**
- * The grid placement for a size, or `undefined` for `regular` — which must
- * stay undefined rather than `span 1`, so a grid with no resized tile in it
- * renders byte-identically to how it did before this feature existed.
- *
- * The row span is still emitted even though the aspect ratio is what sets the
- * height: it *reserves* the rows, so the tiles after it flow below rather than
- * being overlapped by a tile that is taller than the single track it was given.
+ * This replaced a fixed `aspect-ratio`, which was wrong in a way worth
+ * recording because it *looked* right. 16/9 of a 358px phone column is 201px
+ * and two rows plus the gap is 202px, so it matched at the one width it was
+ * checked at; on a 648px desktop span the same ratio is 364px against two rows
+ * of 288px. A tile that is "twice the height of the other widgets" has to be
+ * defined in terms of the other widgets, not in terms of its own width.
  */
 export function widgetSizeStyle(size: WidgetSize): {
   gridColumn: string;
   gridRow: string;
-  aspectRatio: string;
+  alignSelf: 'stretch';
 } | undefined {
   if (size === 'regular') return undefined;
   const span = widgetSpan(size);
   return {
     gridColumn: `span ${span.columns}`,
     gridRow: `span ${span.rows}`,
-    aspectRatio: ASPECT[size]!,
+    alignSelf: 'stretch',
   };
+}
+
+/**
+ * The explicit row track a grid needs before a spanning tile can have a height.
+ *
+ * `rowUnit` is the measured height of an ordinary tile in that grid (see
+ * `useGridRowUnit`). With it, a 2-row span works out to exactly `2 × unit + gap`
+ * — which is the definition of "twice the height of the other widgets", at any
+ * column width, in compact mode or not.
+ *
+ * `undefined` when there is no sized tile in the grid, or nothing to measure.
+ * Both mean *do not touch this grid*: setting a row track changes how every
+ * tile in it is laid out, and a grid with nothing resized has no reason to pay
+ * that. Returning undefined rather than a no-op value keeps the untouched case
+ * on exactly the code path it was on before.
+ */
+export function gridRowUnitStyle(
+  hasSizedWidget: boolean,
+  rowUnit: number | null,
+): { gridAutoRows: string } | undefined {
+  if (!hasSizedWidget || !rowUnit || rowUnit <= 0) return undefined;
+  return { gridAutoRows: `${rowUnit}px` };
+}
+
+/**
+ * Does this grid contain anything that is not 1×1?
+ *
+ * The gate for the row track above. Asked rather than assumed so a home that has
+ * never resized a tile is on exactly the code path it was on before.
+ */
+export function gridHasSizedWidget(sizes: WidgetSizeMap | undefined, keys: string[]): boolean {
+  if (!sizes) return false;
+  return keys.some(key => storedWidgetSize(sizes, key) !== 'regular');
 }

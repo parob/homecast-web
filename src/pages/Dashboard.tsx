@@ -149,6 +149,8 @@ import { appVersionLabel } from '@/lib/app-version';
 import { withAutomationVisibility } from '@/lib/automation-cards';
 import {
   availableWidgetSizes,
+  gridHasSizedWidget,
+  gridRowUnitStyle,
   offersWidgetSizeChoice,
   resolveWidgetSize,
   widgetSizeStyle,
@@ -156,6 +158,7 @@ import {
   type WidgetSize,
   type WidgetSizeCapability,
 } from '@/lib/widget-sizes';
+import { useGridRowUnit } from '@/hooks/useGridRowUnit';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
 import { captureHeights, collapseContainers, emptyingContainers, heightChanges, playHeightChanges, prefersReducedMotion, REFLOW_MS, type HeightMap } from '@/lib/reflow';
@@ -3333,6 +3336,14 @@ const Dashboard = () => {
    * on their own when a first snapshot lands.
    */
   const [widgetCapabilities, setWidgetCapabilities] = useState<Record<string, WidgetSizeCapability>>({});
+
+  /**
+   * The measured height of an ordinary tile in the device grid, which is what
+   * lets a Large tile be exactly two of them plus the gap. Only armed once
+   * something in the grid is actually sized — see `useGridRowUnit`.
+   */
+  const anyWidgetSized = Object.values(homeLayout?.widgetSizes ?? {}).some(size => size && size !== 'regular');
+  const [deviceGridRef, deviceGridRowUnit] = useGridRowUnit(anyWidgetSized);
 
   const reportWidgetCapability = useCallback((key: string, capability: WidgetSizeCapability) => {
     setWidgetCapabilities(prev => {
@@ -9502,6 +9513,17 @@ const Dashboard = () => {
                         enabled={layoutMode === 'masonry' && !compactMode && !isMobile}
                         compact={compactMode}
                         minColumnWidth={290}
+                        gridRef={deviceGridRef}
+                        // An explicit row track, and only when this grid holds a
+                        // resized tile. Without it a spanning tile has nothing
+                        // to stretch into; with it, two rows is exactly twice an
+                        // ordinary tile plus the gap, at any column width. A
+                        // grid with nothing resized gets `undefined` and is
+                        // laid out exactly as it was before this existed.
+                        style={gridRowUnitStyle(
+                          gridHasSizedWidget(homeLayout?.widgetSizes, allItemIds),
+                          deviceGridRowUnit,
+                        )}
                         // One set of column widths for every text size: the
                         // narrower set existed for the 14px setting, and the
                         // smallest is now 16px — which always took these.

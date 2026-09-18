@@ -22,6 +22,12 @@ async function measure(page: import('@playwright/test').Page) {
     };
     const tile = (name: string) => document.querySelector(`[data-tile="${name}"]`);
     const camera = tile('camera')!;
+    // The radius of the surface actually painted — the blur layer, which is
+    // what you see. The Card above it is `!bg-transparent`.
+    const radius = (el: Element) => {
+      const glass = el.querySelector('.backdrop-blur-xl') ?? el;
+      return getComputedStyle(glass).borderTopLeftRadius;
+    };
     return {
       camera: box(camera)!,
       // The picture itself, not the card: the thing the user asked to be bigger.
@@ -29,6 +35,9 @@ async function measure(page: import('@playwright/test').Page) {
       lights: box(tile('lights'))!,
       lock: box(tile('lock'))!,
       thermostat: box(tile('thermostat'))!,
+      cameraRadius: radius(camera),
+      lightsRadius: radius(tile('lights')!),
+      gap: parseFloat(getComputedStyle(document.querySelector('[data-size-grid]')!).rowGap),
     };
   });
 }
@@ -46,9 +55,10 @@ test.describe('camera tile sizes', () => {
     await page.locator('[data-size-grid]').screenshot({ path: evidence('widget-size-large.png') });
 
     // Two columns of a two-column grid, so full width plus the gap.
-    expect(after.camera.width).toBeGreaterThan(before.camera.width * 1.9);
-    // Taller, not merely wider — the whole point of 2×2 over 2×1.
-    expect(after.camera.height).toBeGreaterThan(before.camera.height * 1.5);
+    expect(after.camera.width).toBeCloseTo(before.camera.width * 2 + after.gap, 0);
+    // EXACTLY two ordinary tiles tall, gap included — not "bigger", and not an
+    // aspect ratio that happens to land near it at this one column width.
+    expect(after.camera.height).toBeCloseTo(after.lights.height * 2 + after.gap, 0);
 
     // The picture grew with the tile. This is the assertion that fails if the
     // card reserves the area and does not stretch into it.
@@ -75,8 +85,8 @@ test.describe('camera tile sizes', () => {
 
     // One column: the same width it always had.
     expect(after.camera.width).toBeCloseTo(before.camera.width, 0);
-    // Two rows: taller, and the neighbour beside it is not.
-    expect(after.camera.height).toBeGreaterThan(before.camera.height * 1.5);
+    // Exactly two ordinary tiles tall, gap included.
+    expect(after.camera.height).toBeCloseTo(after.lights.height * 2 + after.gap, 0);
     expect(after.lights.height).toBeCloseTo(before.lights.height, 0);
 
     expect(after.preview!.area).toBeGreaterThan(before.preview!.area * 1.5);
@@ -118,5 +128,20 @@ test.describe('camera tile sizes', () => {
     await expect(menu.getByText('Large', { exact: true })).toBeVisible();
     await expect(menu.getByText('Tall', { exact: true })).toBeVisible();
     await page.screenshot({ path: evidence('widget-size-menu.png'), clip: { x: 0, y: 0, width: 640, height: 560 } });
+  });
+
+  test('a sized tile keeps the same corner radius as every other widget', async ({ page }) => {
+    // Asked for on review, on the reading that the Large tile looked rounder.
+    // It measures identical — 28px on every painted layer of both — and the
+    // pixels agree: walking down the left edge of each tile's top-left corner
+    // gives the same inset curve to within one pixel of antialiasing. A dark
+    // tile's corners simply read rounder than a pale one's at the same radius.
+    // Guarding it so a future change to the sized path cannot drift it.
+    for (const q of ['size=regular', 'size=large', 'size=tall&portrait=1']) {
+      await page.goto(`/screenshots/fixtures/widget-sizes.html?${q}`);
+      await expect(page.locator('[data-camera-tile-preview] img')).toBeVisible();
+      const m = await measure(page);
+      expect(m.cameraRadius, q).toBe(m.lightsRadius);
+    }
   });
 });

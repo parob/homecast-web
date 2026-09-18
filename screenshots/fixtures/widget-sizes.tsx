@@ -9,7 +9,8 @@ import {
   setCameraSnapshot,
   setCameraSnapshotAccount,
 } from '../../src/lib/camera-snapshot-cache';
-import { widgetSizeStyle, type WidgetSize } from '../../src/lib/widget-sizes';
+import { gridRowUnitStyle, widgetSizeStyle, type WidgetSize } from '../../src/lib/widget-sizes';
+import { useGridRowUnit } from '../../src/hooks/useGridRowUnit';
 import '../../src/index.css';
 
 /**
@@ -83,10 +84,20 @@ const toggle = (label: string) => (
   <button aria-label={label} style={{ width: 36, height: 20, borderRadius: 20, background: '#64748b' }} />
 );
 
-// The dashboard's own compact phone grid: two columns, items-start, gap-2.
-createRoot(document.getElementById('root')!).render(
-  <main style={{ padding: 16, width: 390 }}>
-    <div className="grid items-start gap-2 grid-cols-2" data-size-grid>
+// The dashboard's own compact phone grid: two columns, items-start, gap-2 —
+// including the measured row track, which is half of what gives a sized tile
+// its height. Measuring it here rather than hard-coding one keeps the fixture
+// honest: if the hook stops working, the spec's height assertions fail.
+function Grid() {
+  const [gridRef, rowUnit] = useGridRowUnit(size !== 'regular');
+  return (
+    <div
+      ref={gridRef}
+      className="grid items-start gap-2 grid-cols-2"
+      data-size-grid
+      data-row-unit={rowUnit ?? ''}
+      style={gridRowUnitStyle(size !== 'regular', rowUnit)}
+    >
       <div data-tile="camera" style={widgetSizeStyle(size)}>
         <WidgetCard
           title="Front Door"
@@ -110,5 +121,11 @@ createRoot(document.getElementById('root')!).render(
         <WidgetCard title="Hallway" subtitle="19°C" icon={<Thermometer />} compact isReachable headerAction={toggle('Heating')} />
       </div>
     </div>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(
+  <main style={{ padding: 16, width: 390 }}>
+    <Grid />
   </main>,
 );
