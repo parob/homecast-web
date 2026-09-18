@@ -17,6 +17,15 @@ import { resolveCanvasTint } from '@/lib/canvas-tint';
 import { isIOSBrowser } from '@/lib/platform';
 import type { BackgroundSettings } from '@/lib/graphql/types';
 
+/**
+ * How far a phone browser's page scrolls before the canvas switches from the
+ * wallpaper's top colour to its bottom colour. The status bar band is ~62pt
+ * on every current iPhone (59 with a Dynamic Island, 47 with a notch); once
+ * the page has scrolled past it, nothing above the page is on screen any
+ * more. Dashboard gives its page at least this much scroll room.
+ */
+export const PHONE_BROWSER_BAND_TOP = 64;
+
 interface Options {
   background: BackgroundSettings | null | undefined;
   sampledTopColor: string | null | undefined;
@@ -127,33 +136,64 @@ export function useCanvasTint({ background, sampledTopColor, sampledBottomColor,
     };
   }, [tint, isNativeShell]);
 
-  // iOS Safari: the canvas is the wallpaper's BOTTOM colour, in the root's
-  // own background-color. Safari draws its glass over the page itself under
-  // the URL bar while there is document below the fold; at the end of a page
-  // there is none, and the band is WebKit's "extended background colour" —
-  // the root's plain colour, images ignored. That was one flat colour for
-  // both ends, the wallpaper's TOP colour: teal under a sandy bottom, a solid
-  // bar under the URL bar at the end of every short room page. The top edge
-  // does not depend on it: the status bar band takes its colour from the
-  // `.sticky-edge-colour` strip (see index.css), read live from its style.
+  // iOS Safari. Its bars are glass, and what shows through them past the
+  // viewport's edges is the DOCUMENT's own paint: tiles, and under them the
+  // body's background — never the wallpaper, which is a composited sticky
+  // layer (see `.sticky-wallpaper`). Above a page at rest and past its end
+  // there is no document either, and Safari fills with the root's plain
+  // background-color, images ignored.
   //
-  // The body carries a top-to-bottom gradient of the two tints for what
-  // little of the document the wallpaper does not cover; a background IMAGE
-  // on the root would be one more thing Safari treats differently, so it is
-  // on body, whose box is the document, and body's opaque theme colour has
-  // to go so it does not cover it. Declared after the theme-colour effect
-  // above on purpose: that one reads the PAINTED root colour to resolve
-  // `--canvas-tint`, and this one sets the painted root colour.
+  // The two edges of the wallpaper have different colours (a beach is sky
+  // at the top and sand at the bottom), and one document-positioned paint
+  // cannot be both at once. So the body carries a gradient over the first
+  // screen's worth of the page only — the TOP colour at the top, the BOTTOM
+  // colour from a little over halfway down — and is transparent below it,
+  // where the root shows through. The status bar band, where the tiles run
+  // under the clock, is right for the first few hundred pixels of a scroll;
+  // the URL bar band, which is the big one, is right everywhere.
+  // Deliberately on BODY: a background image on the root is one more thing
+  // Safari treats differently, and body's background-COLOUR has to be
+  // transparent, not the bottom tint — WebKit's fill colour is the root's
+  // colour with body's blended over it (LocalFrameView::
+  // documentBackgroundColor; images are ignored), so an opaque body colour
+  // would be the fill everywhere, top band included.
+  //
+  // The root is the top colour while the page sits at rest (the band above
+  // it shows the root, and meets the wallpaper's top scrim, which is this
+  // same tint, with no seam) and the bottom colour once the page has
+  // scrolled past the status bar band — from then on the root is only ever
+  // seen below the gradient and past the page's end, both under the URL
+  // bar, where a solid bar in the wallpaper's top colour was exactly the
+  // complaint. Dashboard guarantees every page can scroll that far.
+  // Declared after the theme-colour effect above on purpose: that one reads
+  // the PAINTED root colour to resolve `--canvas-tint`, and this one sets
+  // the painted root colour.
   useEffect(() => {
     if (isNativeShell || !isIOSBrowser()) return;
     const root = document.documentElement;
     const body = document.body;
-    root.style.backgroundColor = 'var(--canvas-tint-bottom, var(--canvas-tint))';
-    body.style.backgroundImage = 'linear-gradient(to bottom, var(--canvas-tint), var(--canvas-tint-bottom, var(--canvas-tint)))';
+    body.style.backgroundImage = 'linear-gradient(to bottom, var(--canvas-tint) 0, var(--canvas-tint-bottom, var(--canvas-tint)) 60%)';
     body.style.backgroundRepeat = 'no-repeat';
-    body.style.backgroundSize = '100% 100%';
+    // Past the tallest viewport by more than the URL bar band, so that at
+    // rest the whole band below the page's first screen is the bottom colour
+    // rather than the last of it being the (top-coloured) root.
+    body.style.backgroundSize = '100% calc(100lvh + 120px)';
     body.style.backgroundColor = 'transparent';
+    let past: boolean | null = null;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const next = window.scrollY >= PHONE_BROWSER_BAND_TOP;
+      if (next === past) return;
+      past = next;
+      root.style.backgroundColor = next ? 'var(--canvas-tint-bottom, var(--canvas-tint))' : 'var(--canvas-tint)';
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
       body.style.removeProperty('background-image');
       body.style.removeProperty('background-repeat');
       body.style.removeProperty('background-size');
