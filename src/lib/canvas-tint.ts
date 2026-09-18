@@ -23,12 +23,27 @@ import {
   PRESET_IMAGES,
   getDominantColor,
   applyBrightnessToHex,
+  lightenHex,
   luminanceToHex,
 } from './colorUtils';
 import type { BackgroundSettings } from './graphql/types';
 
 /** The theme's own background, for when there is no wallpaper to match. */
 export const THEME_CANVAS = 'hsl(var(--background))';
+
+/**
+ * How far a sampled wallpaper colour is lifted towards white before it is
+ * used as the canvas. The sample is an average of the wallpaper's outermost
+ * rows, which on a photograph are usually its darkest — the sky's deep edge,
+ * the ground's shadow — so taken as-is it read a shade too dark against the
+ * wallpaper it borders, at the bars and in the scrims that fade into it.
+ */
+export const SAMPLED_TINT_LIFT = 0.12;
+
+/** A sampled colour, made the canvas: the wallpaper's brightness applied, then lifted. */
+function sampledTint(sampled: string, brightness: number): string {
+  return lightenHex(applyBrightnessToHex(sampled, brightness), SAMPLED_TINT_LIFT);
+}
 
 export interface CanvasTintInput {
   /** The wallpaper currently on screen, if any. */
@@ -58,17 +73,17 @@ export function resolveCanvasTint({ background, sampledTopColor, isDark }: Canva
     }
     if (PRESET_IMAGES[bg.presetId]) {
       return sampledTopColor
-        ? applyBrightnessToHex(sampledTopColor, brightness)
+        ? sampledTint(sampledTopColor, brightness)
         : pendingTint(isDark);
     }
     // A preset id we do not recognise: treat it as an image awaiting its sample
     // rather than falling through to the theme colour, which would flash.
-    return sampledTopColor ? applyBrightnessToHex(sampledTopColor, brightness) : pendingTint(isDark);
+    return sampledTopColor ? sampledTint(sampledTopColor, brightness) : pendingTint(isDark);
   }
 
   if (bg.type === 'custom') {
     return sampledTopColor
-      ? applyBrightnessToHex(sampledTopColor, brightness)
+      ? sampledTint(sampledTopColor, brightness)
       : pendingTint(isDark);
   }
 

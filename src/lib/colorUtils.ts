@@ -346,6 +346,17 @@ export function applyBrightnessToHex(hex: string, brightness: number): string {
   return applyBrightness(rgb.r, rgb.g, rgb.b, brightness);
 }
 
+/** Mix a hex colour towards white by `amount` (0–1). Non-hex input is returned unchanged. */
+export function lightenHex(hex: string, amount: number): string {
+  const rgb = parseColor(hex);
+  if (!rgb) return hex;
+  const lift = Math.min(1, Math.max(0, amount));
+  const r = Math.round(rgb.r + (255 - rgb.r) * lift);
+  const g = Math.round(rgb.g + (255 - rgb.g) * lift);
+  const b = Math.round(rgb.b + (255 - rgb.b) * lift);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 function applyBrightness(r: number, g: number, b: number, brightness: number): string {
   if (brightness !== 50) {
     const amount = Math.abs(brightness - 50) / 50;

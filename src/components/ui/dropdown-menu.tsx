@@ -180,15 +180,6 @@ const DropdownMenuContent = React.forwardRef<
         One child each. It mounts and unmounts with the menu, so it needs no
         open state of its own; Radix already blocks outside interaction while a
         menu is up, leaving this with nothing to do but be seen. */}
-    {/* iOS Safari's bar bands, matched to the scrim (OVERLAY_SCRIM: black at
-        30%). Its own portal, and a plain wrapper for the Portal's one-child
-        rule: inside the scrim they would be part of its composited layer and
-        the sampler would skip them — see EdgeSampleSlivers. */}
-    {scrim && (
-      <DropdownMenuPrimitive.Portal>
-        <div><EdgeSampleSlivers dim={0.3} zIndex={10000} /></div>
-      </DropdownMenuPrimitive.Portal>
-    )}
     {scrim && (
       <DropdownMenuPrimitive.Portal>
         <MenuScrim
@@ -205,6 +196,20 @@ const DropdownMenuContent = React.forwardRef<
             OVERLAY_SCRIM,
           )}
         />
+      </DropdownMenuPrimitive.Portal>
+    )}
+    {/* iOS Safari's bar bands, matched to the scrim (OVERLAY_SCRIM: black at
+        30%). Its own portal, and a plain wrapper for the Portal's one-child
+        rule. AFTER the scrim's portal, at the scrim's z-index: Safari colours
+        each bar from the first fixed box it finds at that edge of the
+        viewport, and a viewport-sized dimming scrim found first is one it
+        keeps the previous colour for — the bands stayed undimmed while every
+        other overlay's went dark. Later in tree order the slivers are above
+        the scrim and are what it finds; below the header, so they never tint
+        its controls — see EdgeSampleSlivers. */}
+    {scrim && (
+      <DropdownMenuPrimitive.Portal>
+        <div><EdgeSampleSlivers dim={0.3} zIndex={10000} /></div>
       </DropdownMenuPrimitive.Portal>
     )}
     <DropdownMenuPrimitive.Portal>
