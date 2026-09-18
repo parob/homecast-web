@@ -198,7 +198,16 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       data-expanded-overlay-dismiss
       ref={headerRef}
       className={cn(
-        "fixed top-0 left-0 right-0 z-[10001]",
+        "fixed left-0 right-0 z-[10001]",
+        // In a phone browser the box starts 10px down, not at the edge. iOS 26
+        // Safari paints the page into the bands behind its status bar and URL
+        // bar — the way every site scrolls under them — but only while nothing
+        // `fixed` sits in its top ~8px; one that does turns the band into a
+        // flat sampled colour with the content cut off at the viewport edge.
+        // Glass or not: the box alone is enough. 10px clears it (9 did, 6 did
+        // not, measured on the iPhone 17 Pro simulator, 2026-09-17). The app
+        // shells draw no such bands and keep the row where it was.
+        inMobileApp || isInMacApp ? "top-0" : "max-md:top-[10px] md:top-0",
         "overscroll-none pointer-events-none",
         inMobileApp && "safe-area-top safe-area-x",
         isInMacApp && "window-drag"
@@ -215,7 +224,16 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
           resolving to the line the native bar is drawn on, which is where the
           toaster wants to sit anyway. */}
       <div ref={rowRef} className={cn("relative mx-auto w-full px-4 flex items-center justify-between",
-        isInMacApp ? "h-[max(3.5rem,56px)]" : "h-[80px]",
+        // A phone browser's row hugs the controls: with the box already 10px
+        // down (above) and Safari's status bar outside the viewport, the 80px
+        // row put 22px of air over the buttons and the page title a third of
+        // the way down the screen. A 40px row is the 40px controls' own
+        // height, so they sit flush at the box's top: 10pt under the status
+        // bar, centre at 30pt. UIKit's compact bar centres the native app's at
+        // 22pt; this is as close as Safari allows — it judges the painted
+        // extent, not the box, so a row pulled up into its top ~8px (tried at
+        // 7 and 12px) brings the flat bands back.
+        isInMacApp ? "h-[max(3.5rem,56px)]" : inMobileApp ? "h-[80px]" : "max-md:h-10 md:h-[80px]",
         !isInMacApp && !fullWidth && "max-w-7xl",
         nativeHeaderActive && NATIVE_HEADER_HIDDEN_CLASS)}>
         {/* Left content. The slab that used to sit behind it over a light

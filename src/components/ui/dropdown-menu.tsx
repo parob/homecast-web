@@ -2,7 +2,8 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { EdgeSampleSlivers } from "@/components/shared/EdgeSampleSlivers";
 import { OVERLAY_SCRIM, scrimCutout } from "@/lib/overlay-scrim";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
@@ -179,6 +180,15 @@ const DropdownMenuContent = React.forwardRef<
         One child each. It mounts and unmounts with the menu, so it needs no
         open state of its own; Radix already blocks outside interaction while a
         menu is up, leaving this with nothing to do but be seen. */}
+    {/* iOS Safari's bar bands, matched to the scrim (OVERLAY_SCRIM: black at
+        30%). Its own portal, and a plain wrapper for the Portal's one-child
+        rule: inside the scrim they would be part of its composited layer and
+        the sampler would skip them — see EdgeSampleSlivers. */}
+    {scrim && (
+      <DropdownMenuPrimitive.Portal>
+        <div><EdgeSampleSlivers dim={0.3} zIndex={10000} /></div>
+      </DropdownMenuPrimitive.Portal>
+    )}
     {scrim && (
       <DropdownMenuPrimitive.Portal>
         <MenuScrim

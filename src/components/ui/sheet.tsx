@@ -4,7 +4,8 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { useSwipeToClose } from "@/hooks/useDrawerSwipe";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { EdgeSampleSlivers } from "@/components/shared/EdgeSampleSlivers";
 import { OVERLAY_SCRIM } from "@/lib/overlay-scrim";
 
 const Sheet = SheetPrimitive.Root;
@@ -108,6 +109,8 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
     return (
       <SheetPortal>
         <SheetOverlay className={overlayClassName} />
+        {/* iOS Safari's bar bands, matched to the scrim (OVERLAY_SCRIM: black at 30%). */}
+        <EdgeSampleSlivers dim={0.3} zIndex={10010} />
         <SheetPrimitive.Content
           ref={setRefs}
           className={cn(sheetVariants({ side }), className)}

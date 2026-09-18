@@ -358,24 +358,80 @@ function applyBrightness(r: number, g: number, b: number, brightness: number): s
 }
 
 /**
- * Get the average color of the top row of pixels from a loaded image.
- * Used for iOS 26 Safari Liquid Glass tinting of image backgrounds.
+ * The part of an image that `object-fit: cover; object-position: center`
+ * shows in a box — in image pixels. Pure, so the sampler below can be checked
+ * without a canvas.
+ *
+ * `scale` is a uniform enlargement applied on top (the blurred wallpaper is
+ * drawn at 1.1× to hide its soft edges), which crops the same amount more.
+ */
+export function coverCropRect(
+  imgW: number, imgH: number, boxW: number, boxH: number, scale = 1,
+): { x: number; y: number; w: number; h: number } {
+  if (imgW <= 0 || imgH <= 0 || boxW <= 0 || boxH <= 0) return { x: 0, y: 0, w: imgW, h: imgH };
+  // Cover: the image is scaled by the larger of the two ratios, then centred.
+  const s = Math.max(boxW / imgW, boxH / imgH) * scale;
+  const w = Math.min(imgW, boxW / s);
+  const h = Math.min(imgH, boxH / s);
+  return { x: (imgW - w) / 2, y: (imgH - h) / 2, w, h };
+}
+
+/**
+ * Get the average color of the top rows of a loaded image AS DISPLAYED.
+ * Used for iOS 26 Safari Liquid Glass tinting of image backgrounds: the page
+ * canvas takes this colour, and it is what shows in the band behind the
+ * status bar, right against the wallpaper's own top edge.
+ *
+ * "As displayed" matters: the wallpaper is painted with `object-fit: cover`,
+ * so on a portrait phone a landscape photo shows a slice from its middle, and
+ * the source image's top 5% (sky, a ceiling, dark water) can be nothing like
+ * the row that actually meets the band. Pass the box the image fills to sample
+ * the visible crop; with no box the whole image is assumed visible.
  * Returns a hex color string.
  */
-export function getImageTopColor(img: HTMLImageElement, brightness: number = 50): string {
+export function getImageTopColor(
+  img: HTMLImageElement,
+  brightness: number = 50,
+  box?: { width: number; height: number; scale?: number },
+): string {
+  return getImageEdgeColor(img, 'top', brightness, box);
+}
+
+/**
+ * `getImageTopColor` for either edge. The bottom edge is what meets iOS
+ * Safari's URL bar band, and on a wallpaper that runs sky-to-sand it is
+ * nothing like the top.
+ */
+export function getImageEdgeColor(
+  img: HTMLImageElement,
+  edge: 'top' | 'bottom',
+  brightness: number = 50,
+  box?: { width: number; height: number; scale?: number },
+): string {
   try {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return '#888888';
 
-    // Sample the top 5% of the source image, scaled down to a small canvas
+    // Sample the outer 5% of the visible crop, scaled down to a small canvas
     const sampleWidth = 50;
     const sampleHeight = 5;
-    const sourceHeight = Math.ceil(img.naturalHeight * 0.05);
+    const crop = box
+      ? coverCropRect(img.naturalWidth, img.naturalHeight, box.width, box.height, box.scale ?? 1)
+      : { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+    // Whole pixels, clamped inside the image. The crop is computed in floats,
+    // and a source rectangle that runs a fraction past the bottom edge is
+    // clipped by Chrome but refused by Safari — which threw, fell through to
+    // the grey below, and painted a grey bar under the URL bar.
+    const sourceHeight = Math.max(1, Math.min(Math.floor(crop.h), Math.ceil(crop.h * 0.05)));
+    const sourceX = Math.max(0, Math.floor(crop.x));
+    const sourceWidth = Math.max(1, Math.min(img.naturalWidth - sourceX, Math.floor(crop.w)));
+    const rawY = edge === 'top' ? crop.y : crop.y + crop.h - sourceHeight;
+    const sourceY = Math.max(0, Math.min(img.naturalHeight - sourceHeight, Math.floor(rawY)));
     canvas.width = sampleWidth;
     canvas.height = sampleHeight;
 
-    ctx.drawImage(img, 0, 0, img.naturalWidth, sourceHeight, 0, 0, sampleWidth, sampleHeight);
+    ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sampleWidth, sampleHeight);
     const data = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
 
     let totalR = 0, totalG = 0, totalB = 0;
