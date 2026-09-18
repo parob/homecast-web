@@ -65,6 +65,16 @@ interface WidgetWrapperProps {
    * the blink this exists to remove, wearing a fade.
    */
   hiddenItem?: boolean;
+  /**
+   * Fill the grid area instead of hugging the content.
+   *
+   * The default `h-fit` is what keeps an ordinary tile the height of what is
+   * in it. A tile that has been given a 2×2 or 1×2 cell wants the opposite —
+   * without this it reserves the larger area and draws the same small card in
+   * the corner of it. Only ever set by a resized widget, so every other tile
+   * is on exactly the path it was on before.
+   */
+  fill?: boolean;
 }
 
 export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -77,6 +87,7 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   intensity,
   pressed = false,
   hiddenItem = false,
+  fill = false,
 }) => {
   const { isDarkBackground, effectiveLuminance } = useBackgroundContext();
 
@@ -129,7 +140,7 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   return (
     <div
-      className={`relative rounded-2xl h-fit ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`}
+      className={`relative rounded-2xl ${fill ? 'h-full' : 'h-fit'} ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`}
       style={{ contain: 'layout style paint', ['--tw-ring-color' as string]: ringColor }}
     >
       {/* Blur layer - separate from content so it doesn't break during height animation */}
@@ -139,7 +150,12 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         {...leavingMark}
       />
       {/* Content */}
-      <div className={`relative z-[1] transform-gpu ${pressClass}`} {...leavingMark}>
+      {/* `h-full` under `fill`, or the chain breaks here and nothing below it
+          knows the tile got bigger: the wrapper stretches to the grid area and
+          this layer keeps its content height, so the Card's own `h-full`
+          resolves against 97px and draws a regular tile inside a 2×2 cell.
+          Found by measuring the DOM, not by reading it. */}
+      <div className={`relative z-[1] transform-gpu ${fill ? 'h-full' : ''} ${pressClass}`} {...leavingMark}>
         {children}
       </div>
     </div>
