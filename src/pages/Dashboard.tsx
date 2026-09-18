@@ -7750,7 +7750,7 @@ const Dashboard = () => {
                 // bar, a longer one above the URL bar, where the wallpaper's
                 // own bottom colour has furthest to travel to meet the canvas.
                 '--top-scrim-run': '70px',
-                '--bottom-scrim-run': '200px',
+                '--bottom-scrim-run': '120px',
               } as React.CSSProperties}
             >
               {/* The backdrop under the image, in the canvas colour rather

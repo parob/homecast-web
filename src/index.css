@@ -584,17 +584,17 @@ All colors MUST be HSL.
    subtraction. */
 .sticky-bottom-scrim {
   position: absolute;
-  top: calc(100svh - var(--band-gap, 0px) - var(--bottom-scrim-run, 200px));
+  top: calc(100svh - var(--band-gap, 0px) - var(--bottom-scrim-run, 120px));
   left: calc(var(--safe-area-left) * -1);
   width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
-  height: calc(var(--bottom-scrim-run, 200px) + var(--band-gap, 0px) + (100lvh - 100svh) + var(--safe-area-bottom) + var(--band-reach-bottom, 0px));
+  height: calc(var(--bottom-scrim-run, 120px) + var(--band-gap, 0px) + (100lvh - 100svh) + var(--safe-area-bottom) + var(--band-reach-bottom, 0px));
   pointer-events: none;
   background: linear-gradient(
     to bottom,
     transparent 0,
-    color-mix(in srgb, var(--canvas-tint, transparent) 35%, transparent) calc(var(--bottom-scrim-run, 200px) * 0.3),
-    color-mix(in srgb, var(--canvas-tint, transparent) 85%, transparent) calc(var(--bottom-scrim-run, 200px) * 0.6),
-    var(--canvas-tint, transparent) calc(var(--bottom-scrim-run, 200px) * 0.85),
+    color-mix(in srgb, var(--canvas-tint, transparent) 35%, transparent) calc(var(--bottom-scrim-run, 120px) * 0.3),
+    color-mix(in srgb, var(--canvas-tint, transparent) 85%, transparent) calc(var(--bottom-scrim-run, 120px) * 0.6),
+    var(--canvas-tint, transparent) calc(var(--bottom-scrim-run, 120px) * 0.85),
     var(--canvas-tint, transparent) 100%
   );
 }
