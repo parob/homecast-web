@@ -34,7 +34,13 @@ export function useCameraEngine(accountType: string | undefined | null): void {
     // Only a Mac can be a relay; iPhones and iPads have no engine to switch.
     if (!isRelayCapable() || !HomeKit.isAvailable()) return;
     const enabled = wantsCameraEngine(accountType);
-    HomeKit.setCameraEngine(enabled).catch((err: unknown) => {
+    HomeKit.setCameraEngine(enabled).then((result) => {
+      // The Mac injects `homecastCameraEngine` at page load from the answer it
+      // remembered last time. Bring it up to date now, so a page that reads it
+      // — the managed-relay dashboard's camera panel, connect telemetry —
+      // sees the new verdict without a reload.
+      (window as Window & { homecastCameraEngine?: boolean }).homecastCameraEngine = result?.enabled === true;
+    }).catch((err: unknown) => {
       // An older app has no such method: it opens the window as it always
       // did. Nothing to do here but say so.
       console.warn('[CameraEngine] could not report to the Mac app', err);

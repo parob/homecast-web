@@ -59,6 +59,21 @@ describe('useCameraEngine', () => {
     expect(bridge.setCameraEngine).toHaveBeenCalledWith(true);
   });
 
+  it('updates the page-load flag from the reply, so readers of it need no reload', async () => {
+    const w = window as Window & { homecastCameraEngine?: boolean };
+    w.homecastCameraEngine = false;
+    renderHook(() => useCameraEngine('managed'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(w.homecastCameraEngine).toBe(true);
+
+    bridge.setCameraEngine.mockResolvedValue({ enabled: false, engineWindow: false });
+    renderHook(() => useCameraEngine('cloud'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(w.homecastCameraEngine).toBe(false);
+  });
+
   it('reports once per account, not once per render', () => {
     const { rerender } = renderHook(({ t }: { t: string }) => useCameraEngine(t), { initialProps: { t: 'managed' } });
     rerender({ t: 'managed' });
