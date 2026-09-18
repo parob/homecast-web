@@ -34,13 +34,13 @@ interface EdgeSampleSliversProps {
 export function EdgeSampleSlivers({ dim, zIndex, className }: EdgeSampleSliversProps) {
   if (!isIOSBrowser()) return null;
   const black = `${Math.round(Math.min(1, Math.max(0, dim)) * 100)}%`;
-  // Each edge in its own colour: the wallpaper's top under the status bar,
-  // its bottom under the URL bar (useCanvasTint samples both). A gradient,
-  // not a strip: Safari reads a gradient at its edge value, so the sampler
-  // still gets the solid colour, while to the eye the sliver runs out into
-  // the scrimmed page instead of meeting it as a line.
+  // Both edges in the one canvas colour the wallpaper fades into at its top
+  // and its bottom (useCanvasTint). A gradient, not a strip: Safari reads a
+  // gradient at its edge value, so the sampler still gets the solid colour,
+  // while to the eye the sliver runs out into the scrimmed page instead of
+  // meeting it as a line.
   const top = `color-mix(in srgb, #000 ${black}, var(--canvas-tint, #000))`;
-  const bottom = `color-mix(in srgb, #000 ${black}, var(--canvas-tint-bottom, var(--canvas-tint, #000)))`;
+  const bottom = top;
   return (
     <>
       <div

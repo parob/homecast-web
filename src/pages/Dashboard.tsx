@@ -279,7 +279,7 @@ import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog'
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import PullToRefresh from 'react-simple-pull-to-refresh';
-import { useCanvasTint, PHONE_BROWSER_BAND_TOP } from '@/hooks/useCanvasTint';
+import { useCanvasTint } from '@/hooks/useCanvasTint';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
 import { getAutoPresetId } from '@/lib/colorUtils';
 // Cloud admin components — resolved at render time (not module-load time)
@@ -6193,7 +6193,6 @@ const Dashboard = () => {
   const [bgHeaderLuminance, setBgHeaderLuminance] = useState<number | null>(null);
   // Average top-row color from image backgrounds (for iOS 26 Liquid Glass tinting)
   const [bgImageTopColor, setBgImageTopColor] = useState<string | null>(null);
-  const [bgImageBottomColor, setBgImageBottomColor] = useState<string | null>(null);
 
   // Compute effective background: collectionGroup > collection > room > home (with inheritance)
   // NOTE: This hook MUST be before early returns to satisfy React's Rules of Hooks
@@ -6420,7 +6419,6 @@ const Dashboard = () => {
   useCanvasTint({
     background: displayedBackground,
     sampledTopColor: bgImageTopColor,
-    sampledBottomColor: bgImageBottomColor,
     isDark: isDarkBackground,
     isNativeShell: isInMacApp || isInMobileApp,
   });
@@ -7698,20 +7696,12 @@ const Dashboard = () => {
           // News has the gap by accident, from body's default 8px margin;
           // Tailwind's preflight zeroes ours. The sticky wallpaper sticks at
           // the same 10px (`--band-gap`) so the first scroll does not move
-          // it, and its box reaches up past the gap regardless.
-          //
-          // And at least a status bar band taller than the viewport, so that
-          // every page — a room with two tiles included — can scroll past
-          // `PHONE_BROWSER_BAND_TOP`. useCanvasTint paints the canvas in the
-          // wallpaper's top colour until then and its bottom colour after:
-          // the canvas is what shows above a page at rest and past its end,
-          // and a page that could reach its end before that switch showed
-          // the top colour under the URL bar. Measured on the iPhone 17 Pro
-          // simulator, 2026-09-18.
+          // it, and its box reaches up past the gap regardless. Measured on
+          // the iPhone 17 Pro simulator, 2026-09-18.
           style={isInMobileApp || isInMacApp || shellScrolls
             ? undefined
             : phoneBrowser
-              ? { minHeight: 'calc(100dvh + var(--band-top))', marginTop: 'var(--band-gap)', '--band-gap': '10px', '--band-top': `${PHONE_BROWSER_BAND_TOP}px` } as React.CSSProperties
+              ? { minHeight: '100dvh', marginTop: 'var(--band-gap)', '--band-gap': '10px' } as React.CSSProperties
               : { minHeight: '100dvh' }}
         >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
@@ -7755,23 +7745,22 @@ const Dashboard = () => {
                 '--band-reach-top': '160px',
                 '--band-reach-bottom': '120px',
                 '--band-fade-top': '40px',
-                // How far below the status bar band the canvas-coloured top
-                // gradient runs into the screen before the wallpaper is clear.
-                '--top-scrim-run': '90px',
+                // How far into the screen each canvas-coloured scrim runs
+                // before the wallpaper is clear: a short one under the status
+                // bar, a longer one above the URL bar, where the wallpaper's
+                // own bottom colour has furthest to travel to meet the canvas.
+                '--top-scrim-run': '70px',
+                '--bottom-scrim-run': '200px',
               } as React.CSSProperties}
             >
-              {/* The backdrop under the image, in the canvas colours rather
+              {/* The backdrop under the image, in the canvas colour rather
                   than black: it is what shows until the image has decoded,
                   and what an overlay's flat bands read (see EdgeSampleSlivers
                   — black here gave a black bar under the URL bar whenever a
-                  menu was open). Top tint to bottom tint, but the bottom tint
-                  is reached by 55% of the box, not at its end: the viewport's
-                  bottom edge sits around 85% of it, and a gradient still
-                  mixing there read as a teal-tinged sand against the canvas
-                  past the page's end, which is the bottom tint exactly. */}
+                  menu was open). */}
               <div
                 className="sticky-full-screen pointer-events-none"
-                style={{ background: 'linear-gradient(to bottom, var(--canvas-tint, #000) 0, var(--canvas-tint, #000) var(--band-reach-top, 0px), var(--canvas-tint-bottom, var(--canvas-tint, #000)) 55%)' }}
+                style={{ background: 'var(--canvas-tint, #000)' }}
               />
               <BackgroundImage
                 placement="sticky"
@@ -7781,9 +7770,15 @@ const Dashboard = () => {
                 onLuminanceChange={setBgImageLuminance}
                 onHeaderLuminanceChange={setBgHeaderLuminance}
                 onTopColorChange={setBgImageTopColor}
-                onBottomColorChange={setBgImageBottomColor}
               />
+              {/* The wallpaper meets the canvas colour at both of its edges —
+                  see index.css. What iOS 26 Safari shows through its bars is
+                  the document behind this layer (the tiles over the canvas),
+                  and the canvas past the page's ends, so every band is this
+                  one colour: the scrims are what let the wallpaper arrive at
+                  it softly rather than being cut by it. */}
               {hasBackground && <div className="sticky-top-scrim" />}
+              {hasBackground && <div className="sticky-bottom-scrim" />}
             </div>
           ) : (
             <>
@@ -7801,7 +7796,6 @@ const Dashboard = () => {
                 onLuminanceChange={setBgImageLuminance}
                 onHeaderLuminanceChange={setBgHeaderLuminance}
                 onTopColorChange={setBgImageTopColor}
-                onBottomColorChange={setBgImageBottomColor}
               />
             </>
           )}
