@@ -26,6 +26,10 @@ export default defineConfig({
     'tab-bar-label-centring.spec.ts',
     'request-log-minimised.spec.ts',
     'room-visibility-surfaces.spec.ts',
+    // New guard for a new feature, so it runs from day one. #193 is what a
+    // spec that no check runs turns into: red on main since the commit that
+    // created it, found only by a hand-run months later.
+    'widget-sizes.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,
