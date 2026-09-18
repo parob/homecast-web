@@ -499,6 +499,47 @@ All colors MUST be HSL.
   top: var(--band-gap, 0px);
   height: 0;
   pointer-events: none;
+  /* Hidden itself, every child visible again below. iOS 26 Safari colours
+     each of its bars from the first fixed or sticky ancestor of whatever
+     lies 4px inside that edge of the viewport (WebKit's
+     LocalFrameView::fixedContainerEdges): a colour read from its style, or
+     failing that one sampled once and then kept for as long as the same
+     element is there. This wrapper was that ancestor at both edges, so both
+     bars were flat fills — the wallpaper's tints when they were right, a
+     placeholder's when the first paint beat the image, the old value after
+     any change — and the page never showed through. A hidden container with
+     pointer-events: none is one WebKit deliberately looks past (its
+     color-sampling-ignores-transparent-pointer-events-none-container test),
+     the hit test is retried honouring pointer-events, nothing fixed or sticky
+     is left under the point, and with no container Safari draws its glass
+     over the page itself: the tiles run under the clock and the URL bar over
+     this layer's overhang, and at the end of a page the overhang is still
+     there under the bar instead of a bar of one colour. Measured on the
+     iPhone 17 Pro simulator, 2026-09-18. */
+  visibility: hidden;
+}
+.sticky-wallpaper > * {
+  visibility: visible;
+}
+
+/* The status bar's colour — see the note where this is rendered in
+   Dashboard. Fixed at the very top so it is the fixed container Safari finds
+   there; 12px because a box of 10px or less is "a thin border" and is
+   skipped; opacity 0.12 because below 0.1 it is "nearly transparent" and
+   skipped too, and the colour is read from style at full strength either
+   way. Above the content (z-index) so the hit lands on it rather than on a
+   tile scrolling under the clock. Solid `background-color`, not a gradient:
+   gradients and images are invisible to this. */
+.sticky-edge-colour {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  z-index: 1;
+  opacity: 0.12;
+  pointer-events: none;
+  background-color: var(--canvas-tint, transparent);
 }
 .sticky-full-screen {
   position: absolute;

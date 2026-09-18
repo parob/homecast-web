@@ -7690,15 +7690,18 @@ const Dashboard = () => {
               : hasBackground ? 'relative' : 'relative bg-background'
           }
           // A phone browser's page starts 10px down, as a MARGIN. iOS 26
-          // Safari paints the document into the bands behind its status bar
-          // and URL bar only while nothing is laid out in the document's top
-          // ~8px — any box flush at y=0 (this one, or a header; positioned or
-          // not, painted or not) switches it to flat sampled bands. Hacker
-          // News has the gap by accident, from body's default 8px margin;
-          // Tailwind's preflight zeroes ours. The sticky wallpaper sticks at
-          // the same 10px (`--band-gap`) so the first scroll does not move
-          // it, and its box reaches up past the gap regardless. Measured on
-          // the iPhone 17 Pro simulator, 2026-09-18.
+          // Safari decides what its status bar band shows by hit-testing a
+          // point 8px inside the top of the viewport (WebKit's
+          // LocalFrameView::fixedContainerEdges — a 4px inset, then 4px in)
+          // and walking up to the first fixed or sticky ancestor. Content
+          // flush at y=0 put this container's tree under that point; the
+          // gap keeps it clear, so the only thing there is the
+          // `.sticky-edge-colour` strip whose colour the band is meant to
+          // take. Hacker News has the gap by accident, from body's default
+          // 8px margin; Tailwind's preflight zeroes ours. The sticky
+          // wallpaper sticks at the same 10px (`--band-gap`) so the first
+          // scroll does not move it, and its box reaches up past the gap
+          // regardless. Measured on the iPhone 17 Pro simulator, 2026-09-18.
           style={isInMobileApp || isInMacApp || shellScrolls
             ? undefined
             : phoneBrowser
@@ -7725,10 +7728,40 @@ const Dashboard = () => {
               the canvas softly. The cost is framing: `object-fit: cover` on
               the taller box scales a landscape wallpaper up by the added
               height. Everything else keeps the fixed layer. */}
+          {/* No negative z-index on this one, unlike the fixed layer below.
+              Safari's bars are glass over the page, and what shows through
+              them past the viewport's edges is the layer tree there — this
+              layer's overhang under the tiles. A negative z-index here
+              resolves in the ROOT stacking context (this container is
+              `relative`, not a stacking context), and a negative-z layer of
+              the root is not drawn past the viewport: the bands showed the
+              flat canvas colour instead of the wallpaper. At z auto it is.
+              The content still covers it on screen because it comes later
+              in tree order inside a positioned wrapper (`relative`, below),
+              and the header, the edit bar and every portal carry z-indices
+              of their own. Measured on the iPhone 17 Pro simulator,
+              2026-09-18. */}
+          {phoneBrowser && (
+            /* What iOS 26 Safari colours its status bar band with. Not a sample
+               of the pixels: WebKit hit-tests a point 4px inside the top of
+               the viewport, walks up to the first fixed or sticky ancestor,
+               and takes the first plain `background-color` it meets on the
+               way, read straight from style, on every re-evaluation
+               (LocalFrameView::fixedContainerEdges). This strip is that
+               ancestor: fixed, full width, taller than WebKit's 10px "thin
+               border" floor, above the content (so it is the hit), and at
+               12% opacity — WebKit reads the colour, the wallpaper shows
+               through. The canvas tint it carries is the same colour the
+               wallpaper's top scrim paints just under it, so the band and the
+               page meet with no seam, whatever the scroll position. The
+               bottom edge is deliberately left without one: see
+               `.sticky-wallpaper` in index.css. */
+            <div aria-hidden className="sticky-edge-colour" />
+          )}
           {phoneBrowser ? (
             <div
               aria-hidden
-              className="sticky-wallpaper -z-10"
+              className="sticky-wallpaper"
               style={{
                 '--band-reach-top': '160px',
                 '--band-reach-bottom': '120px',
@@ -7739,15 +7772,17 @@ const Dashboard = () => {
               } as React.CSSProperties}
             >
               {/* The backdrop under the image, in the canvas colours rather
-                  than black: while any overlay has Safari in its flat-band
-                  mode, this is the topmost PLAIN paint at the band (the image
-                  above it is composited and skipped by the sampler), so it is
-                  what the bands become. Black gave a black bar under the URL
-                  bar whenever a menu was open. Top tint to bottom tint, read
-                  at each edge. */}
+                  than black: it is what shows until the image has decoded,
+                  and what an overlay's flat bands read (see EdgeSampleSlivers
+                  — black here gave a black bar under the URL bar whenever a
+                  menu was open). Top tint to bottom tint, but the bottom tint
+                  is reached by 55% of the box, not at its end: the viewport's
+                  bottom edge sits around 85% of it, and a gradient still
+                  mixing there read as a teal-tinged sand against the canvas
+                  past the page's end, which is the bottom tint exactly. */}
               <div
                 className="sticky-full-screen pointer-events-none"
-                style={{ background: 'linear-gradient(to bottom, var(--canvas-tint, #000), var(--canvas-tint-bottom, var(--canvas-tint, #000)))' }}
+                style={{ background: 'linear-gradient(to bottom, var(--canvas-tint, #000) 0, var(--canvas-tint, #000) var(--band-reach-top, 0px), var(--canvas-tint-bottom, var(--canvas-tint, #000)) 55%)' }}
               />
               <BackgroundImage
                 placement="sticky"
