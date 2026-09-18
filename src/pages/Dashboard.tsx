@@ -8330,7 +8330,12 @@ const Dashboard = () => {
           // The same glass the tab bar and the header bubbles use, rather than a
           // flat panel — it sits directly over the widgets and looked like a
           // different kind of surface pasted on top of them.
-          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
+          // A phone browser's bar sits where its header does — 10px down, a
+          // 40px row — so Done stays on the header's centre-line, where the
+          // toasts are centred, and the bar's box keeps out of Safari's top
+          // 8px (see AppHeader). It is a cover while it is up, so the bands go
+          // flat regardless; this is about the geometry matching.
+          className={`fixed ${phoneBrowser ? 'top-[10px]' : 'top-0'} left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
             editMode ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
           } ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
           // Out of the tree for anyone not looking at it, and unreachable by
@@ -8349,7 +8354,7 @@ const Dashboard = () => {
           {...{ [NATIVE_HEADER_COVER_ATTR]: editMode ? 'true' : 'false' }}
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
-            <div className="flex items-center justify-between gap-2 h-[80px]">
+            <div className={`flex items-center justify-between gap-2 ${phoneBrowser ? 'h-10' : 'h-[80px]'}`}>
               {/* No burger. The sidebar used to be half of what you came here
                   to arrange, but the home name's own menu now covers homes
                   and rooms and the drawer is still an edge swipe away — and
