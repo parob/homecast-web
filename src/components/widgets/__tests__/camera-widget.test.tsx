@@ -270,7 +270,7 @@ describe('CameraWidget hero', () => {
   it('explains failed capture without claiming macOS permission is missing, and stops asking', async () => {
     request.mockRejectedValue({ code: 'SCREEN_RECORDING_DENIED', message: 'denied' });
     render(<CameraWidget {...baseProps} accessory={camera()} expanded />);
-    expect(await screen.findByText(/Restart Homecast/)).toBeTruthy();
+    expect(await screen.findByText(/could not capture/)).toBeTruthy();
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     expect(request).toHaveBeenCalledTimes(1);
   });
