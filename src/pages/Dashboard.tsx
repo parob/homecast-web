@@ -279,7 +279,7 @@ import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog'
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
 import { useBackgroundDarkness } from '@/hooks/useBackgroundDarkness';
 import PullToRefresh from 'react-simple-pull-to-refresh';
-import { useCanvasTint } from '@/hooks/useCanvasTint';
+import { useCanvasTint, PHONE_BROWSER_BAND_TOP } from '@/hooks/useCanvasTint';
 import { BackgroundContext } from '@/contexts/BackgroundContext';
 import { getAutoPresetId } from '@/lib/colorUtils';
 // Cloud admin components — resolved at render time (not module-load time)
@@ -7693,19 +7693,25 @@ const Dashboard = () => {
           // Safari decides what its status bar band shows by hit-testing a
           // point 8px inside the top of the viewport (WebKit's
           // LocalFrameView::fixedContainerEdges — a 4px inset, then 4px in)
-          // and walking up to the first fixed or sticky ancestor. Content
-          // flush at y=0 put this container's tree under that point; the
-          // gap keeps it clear, so the only thing there is the
-          // `.sticky-edge-colour` strip whose colour the band is meant to
-          // take. Hacker News has the gap by accident, from body's default
-          // 8px margin; Tailwind's preflight zeroes ours. The sticky
-          // wallpaper sticks at the same 10px (`--band-gap`) so the first
-          // scroll does not move it, and its box reaches up past the gap
-          // regardless. Measured on the iPhone 17 Pro simulator, 2026-09-18.
+          // and walking up to the first fixed or sticky ancestor; the gap
+          // keeps this container's tree clear of that point at rest. Hacker
+          // News has the gap by accident, from body's default 8px margin;
+          // Tailwind's preflight zeroes ours. The sticky wallpaper sticks at
+          // the same 10px (`--band-gap`) so the first scroll does not move
+          // it, and its box reaches up past the gap regardless.
+          //
+          // And at least a status bar band taller than the viewport, so that
+          // every page — a room with two tiles included — can scroll past
+          // `PHONE_BROWSER_BAND_TOP`. useCanvasTint paints the canvas in the
+          // wallpaper's top colour until then and its bottom colour after:
+          // the canvas is what shows above a page at rest and past its end,
+          // and a page that could reach its end before that switch showed
+          // the top colour under the URL bar. Measured on the iPhone 17 Pro
+          // simulator, 2026-09-18.
           style={isInMobileApp || isInMacApp || shellScrolls
             ? undefined
             : phoneBrowser
-              ? { minHeight: '100dvh', marginTop: 'var(--band-gap)', '--band-gap': '10px' } as React.CSSProperties
+              ? { minHeight: 'calc(100dvh + var(--band-top))', marginTop: 'var(--band-gap)', '--band-gap': '10px', '--band-top': `${PHONE_BROWSER_BAND_TOP}px` } as React.CSSProperties
               : { minHeight: '100dvh' }}
         >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
@@ -7741,23 +7747,6 @@ const Dashboard = () => {
               and the header, the edit bar and every portal carry z-indices
               of their own. Measured on the iPhone 17 Pro simulator,
               2026-09-18. */}
-          {phoneBrowser && (
-            /* What iOS 26 Safari colours its status bar band with. Not a sample
-               of the pixels: WebKit hit-tests a point 4px inside the top of
-               the viewport, walks up to the first fixed or sticky ancestor,
-               and takes the first plain `background-color` it meets on the
-               way, read straight from style, on every re-evaluation
-               (LocalFrameView::fixedContainerEdges). This strip is that
-               ancestor: fixed, full width, taller than WebKit's 10px "thin
-               border" floor, above the content (so it is the hit), and at
-               12% opacity — WebKit reads the colour, the wallpaper shows
-               through. The canvas tint it carries is the same colour the
-               wallpaper's top scrim paints just under it, so the band and the
-               page meet with no seam, whatever the scroll position. The
-               bottom edge is deliberately left without one: see
-               `.sticky-wallpaper` in index.css. */
-            <div aria-hidden className="sticky-edge-colour" />
-          )}
           {phoneBrowser ? (
             <div
               aria-hidden
