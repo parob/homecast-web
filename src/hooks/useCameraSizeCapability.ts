@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import {
   cameraSnapshotCacheKey,
   getCameraSnapshot,
@@ -38,12 +38,20 @@ export function useCameraSizeCapability(
   const width = image?.width ?? undefined;
   const height = image?.height ?? undefined;
 
+  // Through a ref, so the effect below depends on the *answer* and not on the
+  // callback's identity. The caller builds it inline per tile, so it is a new
+  // function on every Dashboard render; in the deps array that would re-run
+  // this effect on every render of every camera. It cannot loop — the reducer
+  // returns `prev` unchanged and React bails — but it is work for nothing, and
+  // a future caller that did not bail would loop.
+  const reportRef = useRef(report);
+  reportRef.current = report;
+
   useEffect(() => {
-    if (!report) return;
     // Depend on the two numbers rather than the image object: the cache hands
     // back a new object on every refreshed still, and reporting on each one
     // would push a new capability through the grid every few seconds for an
     // answer that has not changed.
-    report(available ? cameraSizeCapability({ width, height }) : {});
-  }, [report, available, width, height]);
+    reportRef.current?.(available ? cameraSizeCapability({ width, height }) : {});
+  }, [available, width, height]);
 }
