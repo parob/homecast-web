@@ -214,6 +214,10 @@ const HowItWorks = () => {
                     </li>
                     <li className="flex items-center gap-2">
                       <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                      <span>Camera snapshots and live view</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
                       <span>Apple Home Hub required</span>
                     </li>
                   </ul>
@@ -427,11 +431,13 @@ const HowItWorks = () => {
                 </p>
               </FAQItem>
 
-              <FAQItem question="What about HomeKit Secure Video?">
+              <FAQItem question="What about cameras and HomeKit Secure Video?">
                 <p>
-                  HomeKit Secure Video cameras appear as accessories in Homecast, but video streaming is not
-                  available through Homecast. Video recording and analysis continues to work through iCloud
-                  and Apple Home as usual—Homecast doesn't interfere with that functionality.
+                  With a Cloud Relay, camera and video-doorbell tiles show a still from the camera and open
+                  to a live view — muted, and without talkback. Cameras are a Cloud Relay feature: a
+                  self-hosted relay on your own Mac shows their status only. HomeKit Secure Video recording
+                  and analysis continue to work through iCloud and Apple Home as usual — Homecast doesn't
+                  interfere with that.
                 </p>
               </FAQItem>
 
