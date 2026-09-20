@@ -13,6 +13,7 @@ import { useOverlayViewport } from '@/hooks/useOverlayViewport';
 import { prefersImmersiveCamera } from '@/lib/camera-viewer';
 import { CameraTileFrame } from './CameraTileFrame';
 import { CameraTilePreview } from './CameraTilePreview';
+import { useCameraSizeCapability } from '@/hooks/useCameraSizeCapability';
 import { describeCameraFailure, describeCaptureAge } from '@/lib/camera-snapshot';
 import { isCommunity } from '@/lib/config';
 import type { HomeKitAccessory } from '@/lib/graphql/types';
@@ -167,6 +168,10 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   onToggleShowHidden,
   onShare,
   locationSubtitle,
+  size,
+  sizeOptions,
+  onSizeChange,
+  onSizeCapability,
 }) => {
   // Motion sensor
   const motionChar = getCharacteristic(accessory, 'motion_detected');
@@ -177,6 +182,10 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
   // (absent on relays that predate it), and the owner switched cameras on.
   const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
   const cameraAvailable = !isCommunity && camerasEnabled && (accessory.camera?.snapshot === true || accessory.camera?.stream === true);
+  // Large as soon as there is a picture; Tall only for a portrait one.
+  // Derived from the snapshot rather than configured, so a camera added
+  // later is covered with nothing to set up. See lib/widget-sizes.ts.
+  useCameraSizeCapability(accessory, cameraAvailable, onSizeCapability);
   const showHero = !compact && cameraAvailable;
   const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
   // Subscribed only while the viewer is open, and it follows the visible
@@ -198,6 +207,9 @@ export const CameraWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
+      size={size}
+      sizeOptions={sizeOptions}
+      onSizeChange={onSizeChange}
       compact={compact}
       expanded={preview.expanded}
       headerAction={showHero && preview.expanded ? <CameraCloseButton onImage={immersive} /> : undefined}
