@@ -72,6 +72,15 @@ export function ActionCard({
   // two-way one stays live: its press means something new.
   const inert = action.disabled || !!isViewOnly || editMode
     || (running && !action.toggle);
+  // Whether the card LOOKS unavailable, which is not the same question as
+  // whether it fires. Editing bars the press for a reason about the gesture,
+  // not about the card: it is still something you are looking at and
+  // arranging. Dimming for it faded the whole Scenes grid to half strength
+  // while every tile, scene card and automation card beside it stayed solid —
+  // and it all but erased the one distinction the mode exists to draw, since a
+  // hidden card is `opacity-40` and a dimmed visible one 0.5.
+  // See parob/homecast-cloud#158.
+  const unavailable = action.disabled || !!isViewOnly || (running && !action.toggle);
   // A two-way action carries its own control, and the card must then
   // stop being one: leaving the press on the card too would run the
   // catalog's chosen direction from anywhere outside the toggle,
@@ -79,7 +88,7 @@ export function ActionCard({
   const toggle = editMode ? undefined : action.toggle;
   // A revealed card carries `data-hidden-item` as well as this dimming (below),
   // which is what fades it out when the reveal ends — see index.css.
-  const dimClass = isHidden ? 'opacity-40' : (inert ? 'opacity-50' : '');
+  const dimClass = isHidden ? 'opacity-40' : (unavailable ? 'opacity-50' : '');
 
   const [panelOpen, setPanelOpen] = useState(false);
   /**
@@ -129,9 +138,9 @@ export function ActionCard({
         'relative rounded-2xl h-fit transition-all duration-300 ring-1 ring-inset',
         isDarkBackground ? 'ring-transparent' : 'ring-slate-200',
         // One class, not two conditions: a revealed hidden card that is also
-        // inert would otherwise carry `opacity-40` and `opacity-50` at once.
-        // Hidden wins — it is the fact the badge is offering to change, and an
-        // inert card that is also hidden still just reads as hidden.
+        // unavailable would otherwise carry `opacity-40` and `opacity-50` at
+        // once. Hidden wins — it is the fact the badge is offering to change,
+        // and an unavailable card that is also hidden still reads as hidden.
         dimClass,
         toggle
           ? (canExpand ? 'cursor-pointer' : 'cursor-default')

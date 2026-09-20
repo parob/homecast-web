@@ -27,6 +27,7 @@ export default defineConfig({
     'request-log-minimised.spec.ts',
     'status-bar-under-fullscreen-dialog.spec.ts',
     'room-visibility-surfaces.spec.ts',
+    'scenes-dim-in-edit-layout.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,

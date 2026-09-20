@@ -399,6 +399,26 @@ describe('shortcut cards', () => {
     expect(onRunAction).toHaveBeenCalledTimes(1);
   });
 
+  it('does not dim a shortcut card just because the layout is being edited', () => {
+    // Editing stops the card firing, but it is still a card you can see and
+    // reorder. Dimming it there faded the whole Scenes grid to half strength
+    // while every tile, scene and automation card beside it stayed solid, and
+    // it left a hidden card (opacity-40) all but indistinguishable from a
+    // visible one. See parob/homecast-cloud#158.
+    renderSection([lightOn, lockOpen], {}, { touchMode: true, editMode: true });
+    expect(card('lights').className).not.toContain('opacity-5');
+    expect(card('locks').className).not.toContain('opacity-5');
+  });
+
+  it('still dims a hidden card while editing, so the reveal reads as a reveal', () => {
+    renderSection(
+      [lightOn],
+      { homeLayout: { visibility: { hiddenActions: ['lights'] } }, homeId: 'HOME-1' },
+      { touchMode: true, editMode: true },
+    );
+    expect(card('lights').className).toContain('opacity-40');
+  });
+
   it('disables every card for a view-only member', () => {
     const { onRunAction } = renderSection([lightOn, lockOpen], { isViewOnly: true });
     fireEvent.click(switchOn('lights'));
