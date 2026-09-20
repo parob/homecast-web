@@ -1035,6 +1035,7 @@ export function AutomationEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={sizeClass}
+        ownsThemeColor
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
