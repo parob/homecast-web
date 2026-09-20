@@ -144,4 +144,51 @@ test.describe('camera tile sizes', () => {
       expect(m.cameraRadius, q).toBe(m.lightsRadius);
     }
   });
+
+  test('Edit Layout carries a resize badge beside Hide and Pin, and it is properly tappable', async ({ page }) => {
+    // Asked for on review: "you can fit the expand/collapse button on the tile
+    // next to hide and pin — just have a small circle with the expand and
+    // contract icons in the top right next to the other bubbles". I had argued
+    // a third badge would not fit; a circle does, which is why this one is a
+    // glyph where every other badge is a word.
+    await page.goto('/screenshots/fixtures/widget-sizes.html?size=regular&edit=1');
+    await expect(page.locator('[data-camera-tile-preview] img')).toBeVisible();
+
+    const camera = page.locator('[data-tile="camera"]');
+    const resize = camera.getByRole('button', { name: /^Resize/ });
+    await expect(resize).toBeVisible();
+    // Next to Hide, not instead of it.
+    await expect(camera.getByRole('button', { name: /Hide/ })).toBeVisible();
+
+    const m = await page.evaluate(() => {
+      const tile = document.querySelector('[data-tile="camera"]')!;
+      const btn = (re: RegExp) => [...tile.querySelectorAll('button')]
+        .find(b => re.test(b.getAttribute('aria-label') ?? ''))!;
+      const r = btn(/^Resize/), h = btn(/Hide/);
+      const box = (el: Element) => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+      return { resize: box(r), hide: box(h), cameraTop: tile.getBoundingClientRect().top };
+    });
+
+    // A circle: square, and the same height as the word badges beside it, or the
+    // cluster looks ragged.
+    expect(m.resize.w).toBeCloseTo(m.resize.h, 0);
+    expect(m.resize.h).toBeCloseTo(m.hide.h, 0);
+    // Top-right corner, on the same line as Hide, and to its left so Hide and
+    // Pin do not move from where muscle memory puts them.
+    expect(m.resize.y).toBeCloseTo(m.hide.y, 0);
+    expect(m.resize.x).toBeLessThan(m.hide.x);
+    // Same hit-slop contract `edit-badge-hit-target.spec.ts` holds the others
+    // to: the paint is small, the target must not be.
+    const slop = await page.evaluate(() => {
+      const tile = document.querySelector('[data-tile="camera"]')!;
+      const btn = [...tile.querySelectorAll('button')]
+        .find(b => /^Resize/.test(b.getAttribute('aria-label') ?? ''))!;
+      const paint = btn.getBoundingClientRect();
+      const before = getComputedStyle(btn, '::before');
+      return { paint: { w: paint.width, h: paint.height }, insetY: before.top, content: before.content };
+    });
+    expect(slop.content).not.toBe('none');   // the pseudo-element target exists
+
+    await page.locator('[data-size-grid]').screenshot({ path: evidence('widget-size-edit-badges.png') });
+  });
 });

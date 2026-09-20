@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePinAction } from '@/contexts/PinnedTabsContext';
 import type { PinnedTab } from '@/lib/pinned-tabs';
@@ -28,6 +29,21 @@ interface ActionButtonProps {
   ariaLabel: string;
   onClick: () => void;
   disabled?: boolean;
+  /**
+   * A circle with a glyph instead of a word.
+   *
+   * Everything else here is deliberately a word — see the `Words, not glyphs`
+   * note below, which is about not making someone look away from the thing they
+   * are acting on to find out what a symbol means. This is the documented
+   * exception, and the reason is arithmetic rather than taste: a compact tile is
+   * about 160px wide and already carries "Hide" and "Pin", so a third *word*
+   * does not fit. Asked for explicitly on review, in these terms: "just have a
+   * small circle with the expand and contract icons".
+   *
+   * It stays legible without a legend because the two glyphs are the standard
+   * pair and the accessible name still says exactly what one tap will do.
+   */
+  icon?: 'expand' | 'contract';
   /** `tile` sits over a widget; `row` is the smaller one for a sidebar line. */
   /**
    * `pill` is the summary row's: the tile's badge, one step shorter, floating
@@ -120,8 +136,12 @@ const PILL_BADGE = 'px-2 py-0.5 text-[10px] leading-4 -my-0.5';
  */
 const HIT_SLOP = "relative before:absolute before:-inset-x-1 before:-inset-y-1.5 before:content-['']";
 
-export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile' }: ActionButtonProps) {
+const ICON_BADGE = 'h-6 w-6 p-0';
+const BADGE_ICONS = { expand: Maximize2, contract: Minimize2 } as const;
+
+export function EditActionButton({ label, ariaLabel, onClick, disabled, size = 'tile', icon }: ActionButtonProps) {
   const swallow = (e: React.SyntheticEvent) => { e.stopPropagation(); e.preventDefault(); };
+  const Icon = icon ? BADGE_ICONS[icon] : null;
   return (
     <button
       type="button"
@@ -149,7 +169,10 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
         HIT_SLOP,
         'transition-colors duration-fast hover:bg-zinc-900/85 active:bg-zinc-900/85',
         'disabled:opacity-50 disabled:hover:bg-zinc-900/70',
-        size === 'tile' ? TILE_BADGE
+        // 24px square, which is exactly the word badges' height (`py-1` around a
+        // 16px line box). They have to agree or the cluster looks ragged.
+        icon ? ICON_BADGE
+          : size === 'tile' ? TILE_BADGE
           // The tile's badge, one step shorter and tucked into the line box
           // around it — see the `pill` doc on ActionButtonProps.
           : size === 'pill' ? PILL_BADGE
@@ -160,7 +183,7 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
           : TILE_BADGE,
       )}
     >
-      {label}
+      {Icon ? <Icon className="h-3 w-3" aria-hidden /> : label}
     </button>
   );
 }
@@ -176,6 +199,39 @@ export function EditActionButton({ label, ariaLabel, onClick, disabled, size = '
  * `onRemove` slot on WidgetCard, and putting an irreversible delete where every
  * other tile has a reversible hide is how someone loses a helper by aiming badly.
  */
+/**
+ * Cycling the tile's size from the badge cluster.
+ *
+ * A cycle rather than a picker because there is room on a tile for one circle
+ * and not for a menu — and the glyph plus the accessible name together say where
+ * the next tap goes, which is what a cycle needs to be predictable. The desktop
+ * context menu still offers the three explicitly, with the current one ticked.
+ *
+ * `next` is supplied by the caller rather than derived here: which sizes a
+ * widget may take depends on the widget (a camera's depends on the shape of the
+ * snapshot that came back), and this module knows nothing about widgets.
+ */
+export type SizeEditAction = {
+  /** What one tap changes it to, and what to call that in the label. */
+  nextLabel: string;
+  /** Growing, or going back to Regular. Picks the glyph. */
+  direction: 'expand' | 'contract';
+  onCycle: () => void;
+  name: string;
+} | null;
+
+function sizeButton(action: SizeEditAction) {
+  if (!action) return null;
+  return (
+    <EditActionButton
+      label={action.nextLabel}
+      ariaLabel={`Resize ${action.name} to ${action.nextLabel}`}
+      icon={action.direction}
+      onClick={action.onCycle}
+    />
+  );
+}
+
 export type PrimaryEditAction =
   | { kind: 'hide'; isHidden: boolean; onToggle: () => void; name: string }
   | { kind: 'remove'; label: string; onRemove: () => void }
@@ -251,23 +307,26 @@ function useBadgePresence(visible: boolean) {
  * Rendered by the caller *outside* the Card, so the dimming applied to a hidden
  * tile's content does not also grey out the button that undoes it.
  */
-export function TileEditActions({ action, tab, visible = true }: {
+export function TileEditActions({ action, tab, size, visible = true }: {
   action: PrimaryEditAction;
   tab?: PinnedTab | null;
+  /** Resize, for a widget that can take more than one size. Absent for most. */
+  size?: SizeEditAction;
   /** False while Edit Layout is ending — the badges stay to animate away. */
   visible?: boolean;
 }) {
   const { rendered, exiting } = useBadgePresence(visible);
   // What was on the badge when it was last real. Its props go null the moment
   // the mode ends, and an exit animation of an empty box is nothing at all.
-  const held = useRef({ action, tab });
-  if (visible) held.current = { action, tab };
-  const shown = visible ? { action, tab } : held.current;
+  const held = useRef({ action, tab, size });
+  if (visible) held.current = { action, tab, size };
+  const shown = visible ? { action, tab, size } : held.current;
 
   const pin = usePinAction(shown.tab);
   const primary = primaryButton(shown.action, 'tile');
   const pinned = pinButton(pin, 'tile');
-  if (!rendered || (!primary && !pinned)) return null;
+  const resize = sizeButton(shown.size ?? null);
+  if (!rendered || (!primary && !pinned && !resize)) return null;
   return (
     <div className={cn(
       // `gap-2` and not `gap-1`: the gap is what the two hit targets divide
@@ -275,6 +334,10 @@ export function TileEditActions({ action, tab, visible = true }: {
       'absolute right-2.5 top-2.5 z-30 flex items-center gap-2 pointer-events-none',
       exiting ? 'edit-badge-out' : 'edit-badge-in',
     )}>
+      {/* Resize leads, so Hide and Pin stay where they have always been: the
+          cluster is right-aligned, and adding a badge on the right would shift
+          two controls people already reach for by muscle memory. */}
+      {resize}
       {primary}
       {pinned}
     </div>

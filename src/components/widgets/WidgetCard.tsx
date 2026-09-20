@@ -12,7 +12,7 @@ import {
 import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart, Check } from 'lucide-react';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
-import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
+import { TileEditActions, HiddenLabel, type PrimaryEditAction, type SizeEditAction } from '@/components/shared/EditActions';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
@@ -537,10 +537,40 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId }
     : null;
 
+  // Size: a resized tile fills its grid area, and its preview fills the tile.
+  //
+  // `sized` is deliberately not `size !== 'regular'` at every call site — the
+  // card is asked for one decision and reuses it, so the card, the wrapper and
+  // the header cannot end up disagreeing about whether this tile stretches.
+  const sized = size !== 'regular';
+  const offeredSizes = sizeOptions ?? [];
+  const canResize = !!onSizeChange && offeredSizes.length > 1;
+  // One round button in a cluster of round buttons, so it cycles rather than
+  // opening a picker inside an overlay that is itself a picker. Desktop gets
+  // the explicit three-way choice in the context menu below.
+  const nextSize = canResize
+    ? offeredSizes[(Math.max(0, offeredSizes.indexOf(size)) + 1) % offeredSizes.length]
+    : undefined;
+
+  // The Edit Layout badge for resizing, asked for on review: "just have a small
+  // circle with the expand and contract icons ... next to the other bubbles".
+  //
+  // Same cycle as the expanded panel's button, so the two cannot disagree about
+  // what one tap does. The glyph is `contract` only on the step that returns to
+  // Regular — anything else is growing, whatever it is growing into.
+  const sizeEditAction: SizeEditAction = canResize && nextSize
+    ? {
+        nextLabel: WIDGET_SIZE_LABELS[nextSize],
+        direction: nextSize === 'regular' ? 'contract' : 'expand',
+        onCycle: () => onSizeChange?.(nextSize),
+        name: accessory?.name ?? title,
+      }
+    : null;
+
   // Always rendered, gated by `visible`: the badges have to outlive the mode
   // by the length of their exit animation, and a component that is not there
   // cannot animate away.
-  const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} visible={showEditActions} />;
+  const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} size={sizeEditAction} visible={showEditActions} />;
 
   // A hidden tile with no way to act on it still has to say why it is greyed out.
   // Named outside edit mode, where there is no legend explaining what a bare eye
@@ -636,21 +666,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const pinAction = usePinAction(
     accessory ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId } : null,
   );
-  // Size: a resized tile fills its grid area, and its preview fills the tile.
-  //
-  // `sized` is deliberately not `size !== 'regular'` at every call site — the
-  // card is asked for one decision and reuses it, so the card, the wrapper and
-  // the header cannot end up disagreeing about whether this tile stretches.
-  const sized = size !== 'regular';
-  const offeredSizes = sizeOptions ?? [];
-  const canResize = !!onSizeChange && offeredSizes.length > 1;
-  // One round button in a cluster of round buttons, so it cycles rather than
-  // opening a picker inside an overlay that is itself a picker. Desktop gets
-  // the explicit three-way choice in the context menu below.
-  const nextSize = canResize
-    ? offeredSizes[(Math.max(0, offeredSizes.indexOf(size)) + 1) % offeredSizes.length]
-    : undefined;
-
   const expandedActions: ExpandedAction[] = [];
   if (canShowHistory && accessory) {
     expandedActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openHistory(accessory) });

@@ -63,6 +63,8 @@ setCameraSnapshotAccount('widget-sizes-test');
 const params = new URLSearchParams(location.search);
 const size = (params.get('size') ?? 'regular') as WidgetSize;
 const portrait = params.get('portrait') === '1';
+// `?edit=1` renders the tile as Edit Layout does, to exercise the badge cluster.
+const editMode = params.get('edit') === '1';
 
 const camera = {
   id: 'front-door',
@@ -108,17 +110,21 @@ function Grid() {
           size={size}
           sizeOptions={['regular', 'large', 'tall']}
           onSizeChange={() => {}}
+          editMode={editMode}
+          isHidden={false}
+          onHide={() => {}}
+          hideLabel="Hide"
           collapsedPreview={<CameraTilePreview accessory={camera} paused />}
         />
       </div>
       <div data-tile="lights">
-        <WidgetCard title="Lights" subtitle="Off" icon={<Lightbulb />} compact isReachable headerAction={toggle('Lights')} />
+        <WidgetCard editMode={editMode} isHidden={false} onHide={() => {}} hideLabel="Hide" title="Lights" subtitle="Off" icon={<Lightbulb />} compact isReachable headerAction={toggle('Lights')} />
       </div>
       <div data-tile="lock">
-        <WidgetCard title="Front Lock" subtitle="Locked" icon={<Lock />} compact isReachable headerAction={toggle('Lock')} />
+        <WidgetCard editMode={editMode} isHidden={false} onHide={() => {}} hideLabel="Hide" title="Front Lock" subtitle="Locked" icon={<Lock />} compact isReachable headerAction={toggle('Lock')} />
       </div>
       <div data-tile="thermostat">
-        <WidgetCard title="Hallway" subtitle="19°C" icon={<Thermometer />} compact isReachable headerAction={toggle('Heating')} />
+        <WidgetCard editMode={editMode} isHidden={false} onHide={() => {}} hideLabel="Hide" title="Hallway" subtitle="19°C" icon={<Thermometer />} compact isReachable headerAction={toggle('Heating')} />
       </div>
     </div>
   );
