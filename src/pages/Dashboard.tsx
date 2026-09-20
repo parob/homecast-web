@@ -6266,7 +6266,6 @@ const Dashboard = () => {
   const [bgHeaderLuminance, setBgHeaderLuminance] = useState<number | null>(null);
   // Average top-row color from image backgrounds (for iOS 26 Liquid Glass tinting)
   const [bgImageTopColor, setBgImageTopColor] = useState<string | null>(null);
-  const [bgImageBottomColor, setBgImageBottomColor] = useState<string | null>(null);
 
   // Compute effective background: collectionGroup > collection > room > home (with inheritance)
   // NOTE: This hook MUST be before early returns to satisfy React's Rules of Hooks
@@ -6493,7 +6492,6 @@ const Dashboard = () => {
   useCanvasTint({
     background: displayedBackground,
     sampledTopColor: bgImageTopColor,
-    sampledBottomColor: bgImageBottomColor,
     isDark: isDarkBackground,
     isNativeShell: isInMacApp || isInMobileApp,
   });
@@ -7763,10 +7761,11 @@ const Dashboard = () => {
               : hasBackground ? 'relative' : 'relative bg-background'
           }
           // A phone browser's page starts 10px down, as a MARGIN. iOS 26
-          // Safari paints the document into the bands behind its status bar
-          // and URL bar only while nothing is laid out in the document's top
-          // ~8px — any box flush at y=0 (this one, or a header; positioned or
-          // not, painted or not) switches it to flat sampled bands. Hacker
+          // Safari decides what its status bar band shows by hit-testing a
+          // point 8px inside the top of the viewport (WebKit's
+          // LocalFrameView::fixedContainerEdges — a 4px inset, then 4px in)
+          // and walking up to the first fixed or sticky ancestor; the gap
+          // keeps this container's tree clear of that point at rest. Hacker
           // News has the gap by accident, from body's default 8px margin;
           // Tailwind's preflight zeroes ours. The sticky wallpaper sticks at
           // the same 10px (`--band-gap`) so the first scroll does not move
@@ -7798,29 +7797,43 @@ const Dashboard = () => {
               the canvas softly. The cost is framing: `object-fit: cover` on
               the taller box scales a landscape wallpaper up by the added
               height. Everything else keeps the fixed layer. */}
+          {/* No negative z-index on this one, unlike the fixed layer below.
+              Safari's bars are glass over the page, and what shows through
+              them past the viewport's edges is the layer tree there — this
+              layer's overhang under the tiles. A negative z-index here
+              resolves in the ROOT stacking context (this container is
+              `relative`, not a stacking context), and a negative-z layer of
+              the root is not drawn past the viewport: the bands showed the
+              flat canvas colour instead of the wallpaper. At z auto it is.
+              The content still covers it on screen because it comes later
+              in tree order inside a positioned wrapper (`relative`, below),
+              and the header, the edit bar and every portal carry z-indices
+              of their own. Measured on the iPhone 17 Pro simulator,
+              2026-09-18. */}
           {phoneBrowser ? (
             <div
               aria-hidden
-              className="sticky-wallpaper -z-10"
+              className="sticky-wallpaper"
               style={{
                 '--band-reach-top': '160px',
                 '--band-reach-bottom': '120px',
                 '--band-fade-top': '40px',
-                // How far below the status bar band the canvas-coloured top
-                // gradient runs into the screen before the wallpaper is clear.
-                '--top-scrim-run': '90px',
+                // How far into the screen each canvas-coloured scrim runs
+                // before the wallpaper is clear: a short one under the status
+                // bar, a longer one above the URL bar, where the wallpaper's
+                // own bottom colour has furthest to travel to meet the canvas.
+                '--top-scrim-run': '70px',
+                '--bottom-scrim-run': '120px',
               } as React.CSSProperties}
             >
-              {/* The backdrop under the image, in the canvas colours rather
-                  than black: while any overlay has Safari in its flat-band
-                  mode, this is the topmost PLAIN paint at the band (the image
-                  above it is composited and skipped by the sampler), so it is
-                  what the bands become. Black gave a black bar under the URL
-                  bar whenever a menu was open. Top tint to bottom tint, read
-                  at each edge. */}
+              {/* The backdrop under the image, in the canvas colour rather
+                  than black: it is what shows until the image has decoded,
+                  and what an overlay's flat bands read (see EdgeSampleSlivers
+                  — black here gave a black bar under the URL bar whenever a
+                  menu was open). */}
               <div
                 className="sticky-full-screen pointer-events-none"
-                style={{ background: 'linear-gradient(to bottom, var(--canvas-tint, #000), var(--canvas-tint-bottom, var(--canvas-tint, #000)))' }}
+                style={{ background: 'var(--canvas-tint, #000)' }}
               />
               <BackgroundImage
                 placement="sticky"
@@ -7830,9 +7843,15 @@ const Dashboard = () => {
                 onLuminanceChange={setBgImageLuminance}
                 onHeaderLuminanceChange={setBgHeaderLuminance}
                 onTopColorChange={setBgImageTopColor}
-                onBottomColorChange={setBgImageBottomColor}
               />
+              {/* The wallpaper meets the canvas colour at both of its edges —
+                  see index.css. What iOS 26 Safari shows through its bars is
+                  the document behind this layer (the tiles over the canvas),
+                  and the canvas past the page's ends, so every band is this
+                  one colour: the scrims are what let the wallpaper arrive at
+                  it softly rather than being cut by it. */}
               {hasBackground && <div className="sticky-top-scrim" />}
+              {hasBackground && <div className="sticky-bottom-scrim" />}
             </div>
           ) : (
             <>
@@ -7850,7 +7869,6 @@ const Dashboard = () => {
                 onLuminanceChange={setBgImageLuminance}
                 onHeaderLuminanceChange={setBgHeaderLuminance}
                 onTopColorChange={setBgImageTopColor}
-                onBottomColorChange={setBgImageBottomColor}
               />
             </>
           )}
@@ -8405,11 +8423,13 @@ const Dashboard = () => {
           // different kind of surface pasted on top of them.
           // A phone browser's bar sits where its header does — 10px down, a
           // 40px row — so Done stays on the header's centre-line, where the
-          // toasts are centred, and the bar's box keeps out of Safari's top
-          // 8px (see AppHeader). It is a cover while it is up, so the bands go
-          // flat regardless; this is about the geometry matching.
+          // toasts are centred. It is a cover while it is up, so the bands go
+          // flat regardless; this is about the geometry matching. PARKED, it
+          // has to clear Safari's top ~8px too: translated up by its own
+          // height alone it sat at -30..+10 and the bands were flat on every
+          // page (see AppHeader for the rule), so it parks 12px further up.
           className={`fixed ${phoneBrowser ? 'top-[10px]' : 'top-0'} left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
-            editMode ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
+            editMode ? 'translate-y-0 opacity-100' : `${phoneBrowser ? 'translate-y-[calc(-100%-12px)]' : '-translate-y-full'} opacity-0 pointer-events-none`
           } ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
           // Out of the tree for anyone not looking at it, and unreachable by
           // pointer or keyboard — it is off-screen but still rendered, and an
@@ -9939,6 +9959,7 @@ const Dashboard = () => {
             sit differently read as two different apps. */}
         <DialogContent
           hideCloseButton
+          ownsThemeColor
           className={`!max-w-[100vw] !w-[100vw] !rounded-none p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] !max-h-[100dvh] ${
             isMacApp
               ? 'sm:!max-w-[calc(100vw-88px)] sm:!w-[calc(100vw-88px)] sm:!rounded-2xl sm:!h-[calc(100dvh-88px)] sm:!max-h-[calc(100dvh-88px)]'

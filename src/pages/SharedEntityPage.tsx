@@ -785,6 +785,7 @@ export default function SharedEntityPage() {
     }}>
       <DialogContent
         hideCloseButton
+        ownsThemeColor
         className={`!max-w-[100vw] !w-[100vw] !rounded-none p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] !max-h-[100dvh] ${
           isInMacApp
             ? 'sm:!max-w-[calc(100vw-88px)] sm:!w-[calc(100vw-88px)] sm:!rounded-2xl sm:!h-[calc(100dvh-88px)] sm:!max-h-[calc(100dvh-88px)]'

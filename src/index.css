@@ -499,7 +499,31 @@ All colors MUST be HSL.
   top: var(--band-gap, 0px);
   height: 0;
   pointer-events: none;
+  /* Hidden itself, every child visible again below. iOS 26 Safari colours
+     each of its bars from the first fixed or sticky ancestor of whatever
+     lies 8px inside that edge of the viewport (WebKit's
+     LocalFrameView::fixedContainerEdges): a colour read from its style, or
+     failing that one sampled once and then kept for as long as the same
+     element is there. This wrapper was that ancestor at both edges, so both
+     bars were flat fills — the wallpaper's tints when they were right, a
+     placeholder's when the first paint beat the image, the old value after
+     any change — and the page never showed through. A hidden container with
+     pointer-events: none is one WebKit deliberately looks past (its
+     color-sampling-ignores-transparent-pointer-events-none-container test),
+     the hit test is retried honouring pointer-events, nothing fixed or sticky
+     is left under the point, and with no container Safari draws its glass
+     over the page itself, so the tiles run under the clock and under the
+     URL bar. What shows behind them there is the DOCUMENT's own paint — the
+     tiles and the body/canvas colours from useCanvasTint — never this
+     layer: composited fixed and sticky layers are not drawn past the
+     viewport's edges, on any iOS 26 (measured, 26.4 and 26.5). Measured on
+     the iPhone 17 Pro simulator, 2026-09-18. */
+  visibility: hidden;
 }
+.sticky-wallpaper > * {
+  visibility: visible;
+}
+
 .sticky-full-screen {
   position: absolute;
   top: calc((var(--safe-area-top) + var(--band-reach-top, 0px)) * -1);
@@ -519,15 +543,18 @@ All colors MUST be HSL.
   mask-image: linear-gradient(to bottom, transparent 0, #000 var(--band-fade-top, 0px));
 }
 
-/* The top of the wallpaper, in the page's own background colour: solid from
-   the very top of the box down through the status bar band, then falling
-   away over a short run into the top of the screen — so the band reads as
-   the canvas, the way it did, and the wallpaper begins just under it with no
-   edge between the two. `--canvas-tint` is the colour useCanvasTint samples
-   from the wallpaper's visible top rows (a plain rgb), the same colour the
-   canvas behind everything is painted. Plain paint, no backdrop. Positioned
-   like the box it sits in (`.sticky-full-screen`), but only as tall as the
-   gradient; `--top-scrim-run` is how far below the band it reaches. */
+/* The wallpaper's two edges, in the page's own background colour. iOS 26
+   Safari shows the document through its glass bars and the canvas past the
+   page's ends, and this layer is in neither, so whatever the wallpaper does
+   at its edges it meets the bars in the canvas colour; these two scrims let
+   it arrive there softly instead of being cut. `--canvas-tint` is the colour
+   useCanvasTint samples from the wallpaper's visible top rows (a plain rgb),
+   the same colour the canvas behind everything is painted. Plain paint, no
+   backdrop. Positioned like the box they sit in (`.sticky-full-screen`), but
+   only as tall as their gradients.
+
+   Top: solid from the very top of the box down through the status bar band,
+   then falling away over `--top-scrim-run` into the top of the screen. */
 .sticky-top-scrim {
   position: absolute;
   top: calc((var(--safe-area-top) + var(--band-reach-top, 0px)) * -1);
@@ -542,6 +569,33 @@ All colors MUST be HSL.
     color-mix(in srgb, var(--canvas-tint, transparent) 70%, transparent) calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px) * 0.3),
     color-mix(in srgb, var(--canvas-tint, transparent) 25%, transparent) calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px) * 0.7),
     transparent 100%
+  );
+}
+/* Bottom: the mirror image, anchored to the viewport's bottom edge — the
+   SHORTEST viewport's (`svh`, the URL bar expanded), so the wallpaper has
+   reached the canvas colour by the time it meets the bar whatever state the
+   bar is in; with the bar collapsed the last 40px above it are simply the
+   canvas colour a little early. Solid from there down through the box's
+   reach under the bar; above it the fade runs `--bottom-scrim-run` up into
+   the screen, and it is all but solid by 85% of that so the rows at the very
+   edge do not read as a shade lighter than the band. A wallpaper's own
+   bottom colour is usually the one furthest from its top, so this run is
+   the longer of the two. The wrapper sticks `--band-gap` down, hence the
+   subtraction. */
+.sticky-bottom-scrim {
+  position: absolute;
+  top: calc(100svh - var(--band-gap, 0px) - var(--bottom-scrim-run, 120px));
+  left: calc(var(--safe-area-left) * -1);
+  width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
+  height: calc(var(--bottom-scrim-run, 120px) + var(--band-gap, 0px) + (100lvh - 100svh) + var(--safe-area-bottom) + var(--band-reach-bottom, 0px));
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0,
+    color-mix(in srgb, var(--canvas-tint, transparent) 35%, transparent) calc(var(--bottom-scrim-run, 120px) * 0.3),
+    color-mix(in srgb, var(--canvas-tint, transparent) 85%, transparent) calc(var(--bottom-scrim-run, 120px) * 0.6),
+    var(--canvas-tint, transparent) calc(var(--bottom-scrim-run, 120px) * 0.85),
+    var(--canvas-tint, transparent) 100%
   );
 }
 
