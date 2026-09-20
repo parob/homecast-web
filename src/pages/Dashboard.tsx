@@ -44,6 +44,7 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { useDebugDockHeight } from '@/lib/debug-dock';
+import { sidebarWidthCss } from '@/lib/sidebar-width';
 import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
@@ -246,7 +247,7 @@ import {
   Home, House, Folder, RefreshCw, Lightbulb,
   Thermometer, Loader2, Power, Sun, Moon, Lock,
   Wind, Droplets, AlertCircle, DoorOpen, DoorClosed, Camera,
-  Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
+  Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
   Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart, Zap} from 'lucide-react';
@@ -5063,8 +5064,14 @@ const Dashboard = () => {
   // overlay, so this is invisible there either way.
   const editingSidebar = isTouchDevice && editMode && !liftInFlight;
   const EDIT_SIDEBAR_EXTRA = 56;
-  const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
-  const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
+  // The panel grows with the window above a threshold rather than staying a
+  // flat 248px — see lib/sidebar-width.ts for the curve and why. Editing's
+  // 56px goes in as the clamp's `extra`, so the mode widens the panel by
+  // exactly that much at every window width rather than losing it to the
+  // ceiling on a wide screen.
+  const sidebarExtra = editingSidebar ? EDIT_SIDEBAR_EXTRA : 0;
+  const sidebarWidth = sidebarWidthCss(sidebarExtra);
+  const mobileSidebarWidth = 296 + sidebarExtra;
 
   // Change font size (optimistic)
   const changeFontSize = useCallback((size: 'small' | 'medium' | 'large') => {
@@ -6420,6 +6427,10 @@ const Dashboard = () => {
     background: displayedBackground,
     sampledTopColor: bgImageTopColor,
     isDark: isDarkBackground,
+    // The raw whole-image figure, not `effectiveLuminance`: canvas-tint applies
+    // the wallpaper's brightness itself, and handing it a value that already
+    // carries it would apply it twice.
+    wallpaperLuminance: bgImageLuminance,
     isNativeShell: isInMacApp || isInMobileApp,
   });
 
@@ -7503,8 +7514,28 @@ const Dashboard = () => {
     const isHeading = !className && !onPlainClick && !(nativeHeaderActive && isMobile);
     // On a phone a crumb is a plain link back: the switcher lives on the
     // page's own name below, not on both.
+    //
+    // And it wears iOS's back chevron there (parob/homecast-cloud#157). The
+    // crumb has always gone back; what it lacked was saying so, next to a
+    // native build that draws `‹ George Street` in the same corner. The glyph
+    // goes inside the button rather than beside it, so the thing that looks
+    // tappable is the thing that is. Only on the phone's path line: a desktop
+    // breadcrumb is a path, reads left to right, and a back arrow in the
+    // middle of one would be pointing at the wrong thing.
     if (!showWebHomeMenu || (className && largeHeading)) {
-      if (onPlainClick) return <button type="button" data-expanded-overlay-dismiss className={className} onClick={onPlainClick}>{name}</button>;
+      if (onPlainClick) return (
+        <button
+          type="button"
+          data-expanded-overlay-dismiss
+          data-testid="crumb-back"
+          aria-label={`Back to ${name}`}
+          className={cn(className, largeHeading && 'inline-flex items-center gap-0.5 -ml-0.5 py-1 -my-1 align-middle')}
+          onClick={onPlainClick}
+        >
+          {largeHeading && <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />}
+          {largeHeading ? <span className="truncate">{name}</span> : name}
+        </button>
+      );
       return <>{name}{isHeading && headingStatusDot}</>;
     }
     // As a heading the chevron is the native bar's: a small filled disc after

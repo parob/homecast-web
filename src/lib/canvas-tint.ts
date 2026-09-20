@@ -25,6 +25,7 @@ import {
   applyBrightnessToHex,
   lightenHex,
   luminanceToHex,
+  setLuminanceHex,
 } from './colorUtils';
 import type { BackgroundSettings } from './graphql/types';
 
@@ -40,9 +41,45 @@ export const THEME_CANVAS = 'hsl(var(--background))';
  */
 export const SAMPLED_TINT_LIFT = 0.12;
 
-/** A sampled colour, made the canvas: the wallpaper's brightness applied, then lifted. */
-function sampledTint(sampled: string, brightness: number): string {
-  return lightenHex(applyBrightnessToHex(sampled, brightness), SAMPLED_TINT_LIFT);
+/**
+ * Brightness, as the wallpaper's own overlay applies it, on a 0–1 luminance.
+ * The same curve `useBackgroundDarkness` uses, so the target the canvas is
+ * matched to is in the same register as the wallpaper that will be on screen.
+ */
+function withBrightness(luminance: number, brightness: number): number {
+  if (brightness < 50) return luminance * (1 - (50 - brightness) / 50);
+  if (brightness > 50) return luminance + (1 - luminance) * ((brightness - 50) / 50);
+  return luminance;
+}
+
+/**
+ * A sampled colour, made the canvas.
+ *
+ * The sample is an average of the wallpaper's outermost rows, and it decides
+ * the canvas's HUE. It does not decide its brightness, because those rows are
+ * not representative of the picture: on a photograph of a building against the
+ * sky the top 5% is sky and nothing else gets a vote, which is how a dark brick
+ * facade came to sit between two bright blue bands (parob/homecast-cloud#157 —
+ * measured at 1.9× the luminance of the wallpaper they bordered).
+ *
+ * So the sampled colour is re-exposed at the luminance of the whole wallpaper
+ * and keeps its own hue. That is also the only answer that can be fair to BOTH
+ * ends: one colour serves the top band and the bottom band, and a wallpaper
+ * that runs sky-to-sand has no single edge worth matching.
+ *
+ * Then the existing lift, unchanged: a band that reads a shade darker than the
+ * wallpaper beside it looks like a shadow, so it is nudged towards white last.
+ *
+ * With no whole-image luminance yet (it lands with the sample, but a caller
+ * that tracks neither passes null) this is the old behaviour exactly — the
+ * sample's own brightness, lifted.
+ */
+function sampledTint(sampled: string, brightness: number, wallpaperLuminance: number | null | undefined): string {
+  const adjusted = applyBrightnessToHex(sampled, brightness);
+  const matched = wallpaperLuminance == null
+    ? adjusted
+    : setLuminanceHex(adjusted, withBrightness(wallpaperLuminance, brightness));
+  return lightenHex(matched, SAMPLED_TINT_LIFT);
 }
 
 export interface CanvasTintInput {
@@ -52,6 +89,13 @@ export interface CanvasTintInput {
   sampledTopColor: string | null | undefined;
   /** Whether the wallpaper reads as dark, known before the sample lands. */
   isDark: boolean;
+  /**
+   * Relative luminance (0–1) of the wallpaper as a whole, before brightness —
+   * `analyzeLoadedImage`'s figure, the one the dark/light decision already
+   * runs on. What the sampled edge colour is re-exposed to. Null or absent
+   * keeps the pre-#157 behaviour, so a caller that tracks no image is safe.
+   */
+  wallpaperLuminance?: number | null;
 }
 
 /**
@@ -60,7 +104,7 @@ export interface CanvasTintInput {
  * Returns `THEME_CANVAS` when there is no wallpaper — the page really is the
  * theme colour then, and hardcoding a hex would fight a future dark mode.
  */
-export function resolveCanvasTint({ background, sampledTopColor, isDark }: CanvasTintInput): string {
+export function resolveCanvasTint({ background, sampledTopColor, isDark, wallpaperLuminance }: CanvasTintInput): string {
   const bg = background;
   if (!bg || bg.type === 'none') return THEME_CANVAS;
 
@@ -73,17 +117,17 @@ export function resolveCanvasTint({ background, sampledTopColor, isDark }: Canva
     }
     if (PRESET_IMAGES[bg.presetId]) {
       return sampledTopColor
-        ? sampledTint(sampledTopColor, brightness)
+        ? sampledTint(sampledTopColor, brightness, wallpaperLuminance)
         : pendingTint(isDark);
     }
     // A preset id we do not recognise: treat it as an image awaiting its sample
     // rather than falling through to the theme colour, which would flash.
-    return sampledTopColor ? sampledTint(sampledTopColor, brightness) : pendingTint(isDark);
+    return sampledTopColor ? sampledTint(sampledTopColor, brightness, wallpaperLuminance) : pendingTint(isDark);
   }
 
   if (bg.type === 'custom') {
     return sampledTopColor
-      ? sampledTint(sampledTopColor, brightness)
+      ? sampledTint(sampledTopColor, brightness, wallpaperLuminance)
       : pendingTint(isDark);
   }
 
