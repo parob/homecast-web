@@ -31,6 +31,7 @@ export default defineConfig({
     // spec that no check runs turns into: red on main since the commit that
     // created it, found only by a hand-run months later.
     'widget-sizes.spec.ts',
+    'scenes-dim-in-edit-layout.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,
