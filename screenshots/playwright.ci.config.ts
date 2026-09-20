@@ -29,7 +29,7 @@ export default defineConfig({
     'room-visibility-surfaces.spec.ts',
     'wallpaper-edge-colour.spec.ts',
     'sidebar-width.spec.ts',
-    'phone-back-crumb.spec.ts',
+    'phone-back-button.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,

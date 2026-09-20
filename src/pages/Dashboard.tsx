@@ -7515,27 +7515,13 @@ const Dashboard = () => {
     // On a phone a crumb is a plain link back: the switcher lives on the
     // page's own name below, not on both.
     //
-    // And it wears iOS's back chevron there (parob/homecast-cloud#157). The
-    // crumb has always gone back; what it lacked was saying so, next to a
-    // native build that draws `‹ George Street` in the same corner. The glyph
-    // goes inside the button rather than beside it, so the thing that looks
-    // tappable is the thing that is. Only on the phone's path line: a desktop
-    // breadcrumb is a path, reads left to right, and a back arrow in the
-    // middle of one would be pointing at the wrong thing.
+    // No chevron on it. This first carried one, and the report it came from
+    // said plainly that it was not what the native bar draws
+    // (parob/homecast-cloud#157): UIKit puts the back button in the top bar
+    // and leaves the path line as text. The chevron moved there — see
+    // `headerBackButton` — and this went back to what it was.
     if (!showWebHomeMenu || (className && largeHeading)) {
-      if (onPlainClick) return (
-        <button
-          type="button"
-          data-expanded-overlay-dismiss
-          data-testid="crumb-back"
-          aria-label={`Back to ${name}`}
-          className={cn(className, largeHeading && 'inline-flex items-center gap-0.5 -ml-0.5 py-1 -my-1 align-middle')}
-          onClick={onPlainClick}
-        >
-          {largeHeading && <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />}
-          {largeHeading ? <span className="truncate">{name}</span> : name}
-        </button>
-      );
+      if (onPlainClick) return <button type="button" data-expanded-overlay-dismiss className={className} onClick={onPlainClick}>{name}</button>;
       return <>{name}{isHeading && headingStatusDot}</>;
     }
     // As a heading the chevron is the native bar's: a small filled disc after
@@ -7623,6 +7609,39 @@ const Dashboard = () => {
   // Search and ⋯ share one glass capsule, as they do in the iOS native bar
   // (parob/homecast-cloud#120): the same two controls, the same shape, on
   // every platform.
+  // iOS's back button, where iOS actually puts it: a bare chevron at the
+  // LEADING edge of the top bar, opposite the search and ⋯ controls.
+  //
+  // This was first built as a chevron on the path line above the room's name,
+  // and the report it came from said that is not the native look
+  // (parob/homecast-cloud#157). It is not: `NativeHeaderBar.swift` sets
+  // `backButtonDisplayMode = .minimal` on the pushed controller, which is a
+  // chevron ALONE in the navigation bar — no title beside it — while the page
+  // below keeps its own small path line as plain text. So the glyph belongs in
+  // the bar and the crumb goes back to being a crumb.
+  //
+  // It wears the same glass capsule as its neighbours rather than sitting bare
+  // on the wallpaper. UIKit can afford a bare glyph because its bar is opaque
+  // chrome; this row is transparent over a photograph, which is the whole
+  // reason `lib/header-chrome.ts` exists. Same 40px box and same classes as
+  // the ☰ button that occupies this slot when the home menu is not on the
+  // name, so the row keeps one vocabulary.
+  //
+  // Only where the web draws its own header and only off the home view: the
+  // native bar draws its own back button, and a desktop has the breadcrumb.
+  const headerBackButton = largeHeading && hasContentAccess && !onWholeHome && selectedHomeId ? (
+    <Button
+      data-testid="header-back"
+      aria-label="Back"
+      variant="ghost"
+      size="icon"
+      className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] transition-colors duration-300 ${headerGlassClass(headerInkLight)} ${headerGlassControlClass(headerInkLight)}`}
+      onClick={() => handleSelectHome(selectedHomeId)}
+    >
+      <ChevronLeft className="h-5 w-5" />
+    </Button>
+  ) : null;
+
   const headerRightMenu = (
     <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
     {hasContentAccess && (
@@ -7894,6 +7913,7 @@ const Dashboard = () => {
           guard that gates the search button. */}
       <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} centerTitle={compactTitle} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
+            {headerBackButton}
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
