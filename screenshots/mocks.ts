@@ -310,8 +310,8 @@ function handleWsRequest(
       };
 
     case 'rooms.list':
-      if (homeId === SHARED_HOME_ID) return { rooms: SHARED_HOME_ROOMS };
-      return { rooms: MY_HOME_ROOMS };
+      if (homeId === SHARED_HOME_ID) return { rooms: withOverriddenNames(SHARED_HOME_ROOMS) };
+      return { rooms: withOverriddenNames(MY_HOME_ROOMS) };
 
     case 'accessories.list':
       if (homeId === SHARED_HOME_ID) return { accessories: SHARED_HOME_ACCESSORIES };
@@ -374,6 +374,26 @@ let settingsOverride: Record<string, unknown> | null = null;
 /** Override the settings returned by GetSettings for the next setupMocks call. */
 export function overrideSettings(settings: Record<string, unknown>) {
   settingsOverride = settings;
+}
+
+// ── Room name overrides ────────────────────────────────────────────────
+
+/**
+ * Rename fixture rooms, keyed by room id.
+ *
+ * The fixture names are all short, which is the wrong shape for anything about
+ * how a name is laid out — truncation, wrapping, a panel's width. Rather than
+ * lengthening the shared fixtures and moving every other capture, a spec that
+ * cares says so.
+ */
+let roomNameOverrides: Record<string, string> = {};
+
+export function overrideRoomNames(names: Record<string, string>) {
+  roomNameOverrides = names;
+}
+
+function withOverriddenNames<T extends { id: string; name: string }>(rooms: T[]): T[] {
+  return rooms.map(r => (roomNameOverrides[r.id] ? { ...r, name: roomNameOverrides[r.id] } : r));
 }
 
 export function getEffectiveSettings() {

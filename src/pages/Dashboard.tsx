@@ -44,6 +44,7 @@ import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceS
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { useDebugDockHeight } from '@/lib/debug-dock';
+import { sidebarWidthCss } from '@/lib/sidebar-width';
 import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
@@ -258,7 +259,7 @@ import {
   Home, House, Folder, RefreshCw, Lightbulb,
   Thermometer, Loader2, Power, Sun, Moon, Lock,
   Wind, Droplets, AlertCircle, DoorOpen, DoorClosed, Camera,
-  Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
+  Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
   Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart, Zap} from 'lucide-react';
@@ -5136,8 +5137,14 @@ const Dashboard = () => {
   // overlay, so this is invisible there either way.
   const editingSidebar = isTouchDevice && editMode && !liftInFlight;
   const EDIT_SIDEBAR_EXTRA = 56;
-  const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
-  const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
+  // The panel grows with the window above a threshold rather than staying a
+  // flat 248px — see lib/sidebar-width.ts for the curve and why. Editing's
+  // 56px goes in as the clamp's `extra`, so the mode widens the panel by
+  // exactly that much at every window width rather than losing it to the
+  // ceiling on a wide screen.
+  const sidebarExtra = editingSidebar ? EDIT_SIDEBAR_EXTRA : 0;
+  const sidebarWidth = sidebarWidthCss(sidebarExtra);
+  const mobileSidebarWidth = 296 + sidebarExtra;
 
   // Change font size (optimistic)
   const changeFontSize = useCallback((size: 'small' | 'medium' | 'large') => {
@@ -6493,6 +6500,10 @@ const Dashboard = () => {
     background: displayedBackground,
     sampledTopColor: bgImageTopColor,
     isDark: isDarkBackground,
+    // The raw whole-image figure, not `effectiveLuminance`: canvas-tint applies
+    // the wallpaper's brightness itself, and handing it a value that already
+    // carries it would apply it twice.
+    wallpaperLuminance: bgImageLuminance,
     isNativeShell: isInMacApp || isInMobileApp,
   });
 
@@ -7576,6 +7587,12 @@ const Dashboard = () => {
     const isHeading = !className && !onPlainClick && !(nativeHeaderActive && isMobile);
     // On a phone a crumb is a plain link back: the switcher lives on the
     // page's own name below, not on both.
+    //
+    // No chevron on it. This first carried one, and the report it came from
+    // said plainly that it was not what the native bar draws
+    // (parob/homecast-cloud#157): UIKit puts the back button in the top bar
+    // and leaves the path line as text. The chevron moved there — see
+    // `headerBackButton` — and this went back to what it was.
     if (!showWebHomeMenu || (className && largeHeading)) {
       if (onPlainClick) return <button type="button" data-expanded-overlay-dismiss className={className} onClick={onPlainClick}>{name}</button>;
       return <>{name}{isHeading && headingStatusDot}</>;
@@ -7665,6 +7682,47 @@ const Dashboard = () => {
   // Search and ⋯ share one glass capsule, as they do in the iOS native bar
   // (parob/homecast-cloud#120): the same two controls, the same shape, on
   // every platform.
+  // iOS's back button, where iOS actually puts it: a bare chevron at the
+  // LEADING edge of the top bar, opposite the search and ⋯ controls.
+  //
+  // This was first built as a chevron on the path line above the room's name,
+  // and the report it came from said that is not the native look
+  // (parob/homecast-cloud#157). It is not: `NativeHeaderBar.swift` sets
+  // `backButtonDisplayMode = .minimal` on the pushed controller, which is a
+  // chevron ALONE in the navigation bar — no title beside it — while the page
+  // below keeps its own small path line as plain text. So the glyph belongs in
+  // the bar and the crumb goes back to being a crumb.
+  //
+  // It wears the same glass capsule as its neighbours rather than sitting bare
+  // on the wallpaper. UIKit can afford a bare glyph because its bar is opaque
+  // chrome; this row is transparent over a photograph, which is the whole
+  // reason `lib/header-chrome.ts` exists. Same 40px box and same classes as
+  // the ☰ button that occupies this slot when the home menu is not on the
+  // name, so the row keeps one vocabulary.
+  //
+  // Only where the web draws its own header and only off the home view: the
+  // native bar draws its own back button, and a desktop has the breadcrumb.
+  const headerBackButton = largeHeading && hasContentAccess && !onWholeHome && selectedHomeId ? (
+    // The same capsule the search and ⋯ controls sit in, with the same
+    // control inside it: `headerGlassClass` on a `p-[2px]` box, and a
+    // 36x40 `rounded-full` ghost button wearing `headerGlassControlClass`.
+    // Asked for on review — it was built at 40x40 with the glass on the
+    // button itself, copied from the ☰ trigger, which made it a slightly
+    // taller circle than the capsule opposite it.
+    <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
+      <Button
+        data-testid="header-back"
+        aria-label="Back"
+        variant="ghost"
+        size="icon"
+        className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`}
+        onClick={() => handleSelectHome(selectedHomeId)}
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </div>
+  ) : null;
+
   const headerRightMenu = (
     <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
     {hasContentAccess && (
@@ -7936,6 +7994,7 @@ const Dashboard = () => {
           guard that gates the search button. */}
       <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} centerTitle={compactTitle} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
+            {headerBackButton}
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>

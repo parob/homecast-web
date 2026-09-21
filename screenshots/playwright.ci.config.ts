@@ -32,6 +32,9 @@ export default defineConfig({
     // created it, found only by a hand-run months later.
     'widget-sizes.spec.ts',
     'scenes-dim-in-edit-layout.spec.ts',
+    'wallpaper-edge-colour.spec.ts',
+    'sidebar-width.spec.ts',
+    'phone-back-button.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,

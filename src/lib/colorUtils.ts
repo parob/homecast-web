@@ -346,6 +346,47 @@ export function applyBrightnessToHex(hex: string, brightness: number): string {
   return applyBrightness(rgb.r, rgb.g, rgb.b, brightness);
 }
 
+/**
+ * Re-expose a colour at a given relative luminance, keeping its hue.
+ *
+ * The scaling is done in LINEAR light — the same space `getLuminance` measures
+ * in — so the three channels keep their ratios to each other and only the
+ * exposure moves. Doing it on the sRGB bytes instead would pull a colour
+ * towards grey as it darkened, which is exactly the character the band is
+ * supposed to keep.
+ *
+ * `target` is a relative luminance in 0–1, as `analyzeLoadedImage` reports it.
+ * A target a colour cannot reach without clipping (asking a saturated blue for
+ * the luminance of white) lands as close as it can and desaturates on the way,
+ * which is what an over-exposure does anyway. Black has no hue to keep, so it
+ * answers with the neutral grey of that luminance rather than dividing by zero.
+ */
+export function setLuminanceHex(hex: string, target: number): string {
+  const rgb = parseColor(hex);
+  if (!rgb) return hex;
+  const t = Math.min(1, Math.max(0, target));
+  const toLinear = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const toByte = (v: number) => {
+    const c = Math.min(1, Math.max(0, v));
+    const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.round(s * 255);
+  };
+  const hexOf = (r: number, g: number, b: number) =>
+    `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+  const r = toLinear(rgb.r), g = toLinear(rgb.g), b = toLinear(rgb.b);
+  const current = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  if (current <= 0) {
+    const v = toByte(t);
+    return hexOf(v, v, v);
+  }
+  const k = t / current;
+  return hexOf(toByte(r * k), toByte(g * k), toByte(b * k));
+}
+
 /** Mix a hex colour towards white by `amount` (0–1). Non-hex input is returned unchanged. */
 export function lightenHex(hex: string, amount: number): string {
   const rgb = parseColor(hex);

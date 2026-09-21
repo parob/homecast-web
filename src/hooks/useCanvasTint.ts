@@ -5,8 +5,9 @@
  * during rubber-band overscroll, nor the bands iOS 26 Safari shows through
  * its glass bars; whatever shows there comes from the canvas. Left alone that
  * is white, which reads as the wallpaper being clipped. The canvas is ONE
- * colour — the wallpaper's top colour — and the wallpaper fades into it at
- * both of its edges, so the bars never meet a colour other than their own.
+ * colour — the wallpaper's top colour, re-exposed at the whole picture's own
+ * brightness — and the wallpaper fades into it at both of its edges, so the
+ * bars never meet a colour other than their own.
  *
  * Lives in a hook because two screens need it — the dashboard and everything
  * under MainLayout (MQTT, Analytics, Diagnostics). It used to be an effect
@@ -24,14 +25,20 @@ interface Options {
   background: BackgroundSettings | null | undefined;
   sampledTopColor: string | null | undefined;
   isDark: boolean;
+  /**
+   * The wallpaper's whole-image relative luminance (0–1), which is what the
+   * sampled edge colour is re-exposed to — see `lib/canvas-tint.ts`. Omit it
+   * and the sample's own brightness is used, as it was before #157.
+   */
+  wallpaperLuminance?: number | null;
   /** Mac or iOS shell: the backdrop is the WKWebView's, not the document's. */
   isNativeShell: boolean;
 }
 
-export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShell }: Options): string {
+export function useCanvasTint({ background, sampledTopColor, isDark, wallpaperLuminance, isNativeShell }: Options): string {
   const tint = useMemo(
-    () => resolveCanvasTint({ background, sampledTopColor, isDark }),
-    [background, sampledTopColor, isDark],
+    () => resolveCanvasTint({ background, sampledTopColor, isDark, wallpaperLuminance }),
+    [background, sampledTopColor, isDark, wallpaperLuminance],
   );
 
   useEffect(() => {
