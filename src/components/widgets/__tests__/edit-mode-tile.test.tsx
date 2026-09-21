@@ -194,6 +194,28 @@ describe('pin to tab bar', () => {
     renderTile({ editMode: true, onHide: vi.fn() });
     expect(screen.queryByRole('button', { name: /Pin|Unpin/ })).toBeNull();
   });
+
+  /**
+   * Edit Layout is the only route, which is what homecast-cloud#173 asked for:
+   * "Remove pin from the options when you expand any widget ... this should
+   * only be accessible in editing mode and that's enough".
+   *
+   * Asserted with pinning ON OFFER — the same provider that puts the badge on
+   * the tile above — because a panel with no pin is the normal state when
+   * pinning is switched off, and would pass this without meaning anything.
+   * `expanded-actions.spec.ts` measures the same claim in a real browser; this
+   * one runs on every commit.
+   */
+  it('keeps Pin out of the expanded panel, where it was a second route to the badge', () => {
+    renderPinnable({ expanded: true, compact: false });
+    expect(screen.queryByRole('button', { name: /Pin|Unpin/ })).toBeNull();
+    cleanup();
+
+    // ... and the badge that replaces it is still there, so this cannot be
+    // satisfied by taking pinning away altogether.
+    renderPinnable({ editMode: true, onHide: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Pin to Tab Bar' })).toBeTruthy();
+  });
 });
 
 describe('collections, where nothing is hidden', () => {

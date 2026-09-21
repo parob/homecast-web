@@ -18,7 +18,7 @@ import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/w
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
 import { PendingRing } from '@/components/widgets/shared/PendingRing';
 import { groupKey } from '@/lib/pending-writes';
-import { usePinnedTabs, usePinAction } from '@/contexts/PinnedTabsContext';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
@@ -986,9 +986,6 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   // Expanded card content for the overlay (non-compact, shares state with parent)
   // Group panels carry the same corner cluster as accessory panels.
-  const groupPinAction = usePinAction({
-    type: 'serviceGroup', id: group.id, name: group.name, homeId: accessories[0]?.homeId,
-  });
   const groupActions: ExpandedAction[] = [];
   if (canShowHistory) {
     groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group, accessories) });
@@ -999,17 +996,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   if (onShare) {
     groupActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
   }
-  // Same reasoning as the accessory panel: pinning lived in the menu touch no
-  // longer has. `usePinAction` answers null when there is no tab bar to pin to.
-  if (groupPinAction && !groupPinAction.full) {
-    groupActions.push({
-      key: 'pin',
-      icon: groupPinAction.pinned ? 'unpin' : 'pin',
-      label: groupPinAction.pinned ? 'Unpin' : 'Pin',
-      ariaLabel: groupPinAction.label,
-      onClick: groupPinAction.toggle,
-    });
-  }
+  // No Pin here, for the reason WidgetCard states at length: Edit Layout's
+  // badge is where a phone pins from, and the panel was a second route to it.
+  // homecast-cloud#173.
 
   const expandedCardContent = (
     <Card className={`relative ${expandedCardBgClass} ${noResponseClass} cursor-pointer`} onClick={handleExpandedCardClick}>
