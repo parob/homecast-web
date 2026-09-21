@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
-  fetchResolution, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, offersResolution,
+  fetchResolution, fixStatus, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, offersResolution,
   planStatus, shortPr, type MergePlanEntry, type Resolution,
 } from '../resolution';
 
@@ -29,6 +29,16 @@ describe('offersResolution', () => {
   it('offers nothing on an open report nobody has a fix for', () => {
     expect(offersResolution(row(['bug', 'claude-attempted']))).toBe(false);
     expect(offersResolution(row([]))).toBe(false);
+  });
+});
+
+describe('fixStatus — the word on a row', () => {
+  it('reads Fix proposed while a PR is open, Fixed once closed, and nothing otherwise', () => {
+    expect(fixStatus(row(['bug', 'claude-pr-open']))).toBe('Fix proposed');
+    expect(fixStatus(row(['bug', 'claude-pr-open'], 'closed'))).toBe('Fixed');
+    expect(fixStatus(row(['bug', 'claude-attempted'], 'closed'))).toBe('Fixed');
+    expect(fixStatus(row(['bug', 'claude-attempted']))).toBeNull();
+    expect(fixStatus(row([]))).toBeNull();
   });
 });
 

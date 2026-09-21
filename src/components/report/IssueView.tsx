@@ -1,10 +1,13 @@
 /**
- * The resolution for one reported issue: evidence first, prose last.
+ * One reported issue, on one screen: what was reported, then what fixes it.
  *
- * A reviewer on a phone wants to know one thing — does the fix look right —
- * and the picture answers that in the time a PR body takes to scroll past.
- * So the pictures come first and full width, the one-line summary under them,
- * and the pull requests as a short list to follow through to GitHub.
+ * The person opening this is usually the one who filed it, days ago, from a
+ * phone. They want to recognise their own report — their words, their
+ * screenshot — and then see what has been done about it without leaving the
+ * app. So the report comes first, in the words they wrote; the fix second,
+ * pictures before prose, because a before/after answers "does it look right"
+ * faster than a PR body; and the pull requests as a short list with their
+ * place in the merge plan.
  *
  * Then, where the server holds a credential for it, **Merge**. It merges what
  * the server's plan says merges now — cloud before web before native, and
@@ -13,42 +16,43 @@
  * and asks once before acting on it, because a merge to `main` reaches
  * production and a tap on a phone deserves a sentence saying so.
  *
+ * Nothing here leaves the app silently. Every link out — the issue, each pull
+ * request — prints the full address it goes to, and says it opens on GitHub.
+ * The old row tap that jumped straight to github.com was the one thing on
+ * this sheet a reader could not predict.
+ *
  * Replaces the list in place rather than opening a second dialog: the sheet is
  * already a focus trap on a small screen, and a Back button is what a phone
  * user expects from a row they tapped.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, RefreshCw,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { openExternalUrl } from '@/lib/open-url';
-import type { ReportedIssue } from '@/lib/report/issues';
+import { relativeAge, type ReportedIssue } from '@/lib/report/issues';
 import {
   fetchResolution, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, planStatus, shortPr,
-  type MergePlanEntry, type MergeState, type Resolution, type ResolutionImage,
+  type MergePlanEntry, type MergeState, type Resolution, type ResolutionImage, type ResolutionPr,
 } from '@/lib/report/resolution';
 
-interface ResolutionViewProps {
+interface IssueViewProps {
   issue: ReportedIssue;
   onBack: () => void;
 }
 
-export function ResolutionView({ issue, onBack }: ResolutionViewProps) {
+export function IssueView({ issue, onBack }: IssueViewProps) {
   const [resolution, setResolution] = useState<Resolution | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Distinguishes "the server has no record" from "still loading": both have
-  // a null resolution, and only one of them should say so.
-  const [missing, setMissing] = useState(false);
 
   const load = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setMissing(false);
     const token = localStorage.getItem('homecast-token');
     if (!token) {
       setLoading(false);
@@ -59,11 +63,10 @@ export function ResolutionView({ issue, onBack }: ResolutionViewProps) {
       .then((result) => {
         if (cancelled) return;
         setResolution(result);
-        setMissing(result === null);
       })
       .catch((loadError) => {
         if (cancelled) return;
-        setError(loadError instanceof Error ? loadError.message : 'Could not load the resolution.');
+        setError(loadError instanceof Error ? loadError.message : 'Could not load this issue.');
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -71,42 +74,46 @@ export function ResolutionView({ issue, onBack }: ResolutionViewProps) {
 
   useEffect(() => load(), [load]);
 
-  const nothing = !loading && !error && (missing || (
-    resolution !== null && resolution.prs.length === 0 && resolution.evidence.length === 0
-  ));
+  const fixed = issue.state === 'closed';
+  const age = relativeAge(resolution?.createdAt ?? issue.createdAt);
+  const reportedText = (resolution?.reportedText ?? '').trim();
+  const reported = resolution?.reported ?? [];
+  const hasFix = resolution !== null && (
+    resolution.prs.length > 0 || resolution.evidence.length > 0 || Boolean(resolution.summary)
+  );
 
   const plan = resolution?.merge?.plan ?? [];
   const planByUrl = new Map(plan.map((entry) => [entry.url, entry]));
 
   return (
-    <div className="w-full min-w-0 space-y-3">
+    <div className="w-full min-w-0 space-y-4">
       <div className="flex items-start gap-1">
         <Button
           type="button" variant="ghost" size="icon"
           onClick={onBack}
-          aria-label="Back to reports"
+          aria-label="Back to issues"
           className="-ml-2 h-8 w-8 shrink-0"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
         {/* The row the reader tapped, so they know which issue this is
-            without the list to compare against. */}
-        <button
-          type="button"
-          onClick={() => openExternalUrl(issue.url)}
-          className="flex min-w-0 flex-1 items-start gap-2 rounded-md py-1 text-left hover:bg-muted/50"
-        >
-          {issue.state === 'closed' ? (
+            without the list to compare against. Not a link: where it goes
+            on GitHub is printed at the bottom, in full. */}
+        <div className="flex min-w-0 flex-1 items-start gap-2 py-1">
+          {fixed ? (
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
           ) : (
             <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           )}
-          <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 break-words text-sm">{issue.title}</span>
-            <span className="block text-xs text-muted-foreground">#{issue.issueNumber}</span>
-          </span>
-          <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        </button>
+          <div className="min-w-0 flex-1">
+            <h2 className="line-clamp-3 break-words text-sm font-medium">{issue.title}</h2>
+            <div className="text-xs text-muted-foreground">
+              #{issue.issueNumber}
+              {age && ` · reported ${age}`}
+              {` · ${fixed ? 'Fixed' : 'Open'}`}
+            </div>
+          </div>
+        </div>
       </div>
 
       {loading && (
@@ -116,101 +123,170 @@ export function ResolutionView({ issue, onBack }: ResolutionViewProps) {
       )}
 
       {!loading && error && (
-        <p role="alert" className="py-10 text-center text-sm text-destructive">{error}</p>
+        <p role="alert" className="py-6 text-center text-sm text-destructive">{error}</p>
       )}
 
-      {nothing && (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          No resolution recorded yet.
-        </p>
-      )}
-
-      {!loading && !error && resolution && !nothing && (
+      {!loading && !error && (
         <>
-          {resolution.evidence.length > 0 && (
-            <section aria-label="Evidence" className="space-y-2">
-              {resolution.evidence.map((image) => (
-                <Picture key={image.url} image={image} />
-              ))}
-            </section>
-          )}
-
-          {resolution.summary && (
-            <p className="text-sm">{resolution.summary}</p>
-          )}
-
-          {resolution.prs.length > 0 && (
-            <section aria-label="Pull requests" className="space-y-1">
-              {/* In the plan's order where there is one — that is the order
-                  they merge in, and the order the reader should expect. */}
-              {(plan.length > 0 ? plan : resolution.prs).map((pr) => {
-                const entry = planByUrl.get(pr.url);
-                return (
-                  <button
-                    key={pr.url}
-                    type="button"
-                    onClick={() => openExternalUrl(pr.url)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md border p-2 text-left text-sm transition-colors hover:bg-muted/50"
-                  >
-                    <GitPullRequest className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">{shortPr(pr)}</span>
-                    {entry ? (
-                      <PlanPill entry={entry} />
-                    ) : (
-                      <>
-                        {resolution.primary?.url === pr.url && resolution.prs.length > 1 && (
-                          // Where a comment is picked up first. Only worth
-                          // saying when there is more than one place it could go.
-                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            primary
-                          </span>
-                        )}
-                        {resolution.reach && (
-                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {resolution.reach}
-                          </span>
-                        )}
-                      </>
-                    )}
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  </button>
-                );
-              })}
-            </section>
-          )}
-
-          {resolution.merge && resolution.prs.length > 0 && (
-            <MergeControls
-              issueNumber={issue.issueNumber}
-              merge={resolution.merge}
-              onMerged={(state) => setResolution({ ...resolution, merge: state })}
-              onCheckAgain={() => { load(); }}
-            />
-          )}
-
-          {resolution.reported.length > 0 && (
-            // Smaller and last: what was reported is context for the fix,
-            // not the thing being reviewed.
-            <section aria-label="As reported" className="space-y-1">
-              <div className="text-xs text-muted-foreground">As reported</div>
+          <section aria-label="You reported" className="space-y-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              You reported
+            </h3>
+            {reportedText ? (
+              // The reporter's own words, as written — line breaks kept, and
+              // nothing of the reporter's appended tables and logs.
+              <p className="whitespace-pre-wrap break-words text-sm">{reportedText}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {resolution === null
+                  ? 'Your report is on GitHub — the link is below.'
+                  : 'No description beyond the title.'}
+              </p>
+            )}
+            {reported.length > 0 && (
               <div className="flex gap-2 overflow-x-auto">
-                {resolution.reported.map((image) => (
+                {reported.map((image) => (
                   <button
                     key={image.url}
                     type="button"
                     onClick={() => openExternalUrl(image.url)}
-                    aria-label={`Open ${image.alt || 'the reported screenshot'}`}
-                    className="h-20 w-20 shrink-0 overflow-hidden rounded-md border"
+                    aria-label={`Open ${image.alt || 'your screenshot'} full size in your browser`}
+                    className="h-24 w-24 shrink-0 overflow-hidden rounded-md border"
                   >
                     <img src={image.url} alt="" className="h-full w-full object-cover" />
                   </button>
                 ))}
               </div>
-            </section>
-          )}
+            )}
+          </section>
+
+          <section aria-label="Proposed fix" className="space-y-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {fixed ? 'The fix' : 'Proposed fix'}
+            </h3>
+
+            {!hasFix && (
+              <p className="text-sm text-muted-foreground">No fix proposed yet.</p>
+            )}
+
+            {hasFix && resolution && (
+              <>
+                {resolution.evidence.length > 0 && (
+                  <div className="space-y-2">
+                    {resolution.evidence.map((image) => (
+                      <Picture key={image.url} image={image} />
+                    ))}
+                  </div>
+                )}
+
+                {resolution.summary && (
+                  <p className="text-sm">{resolution.summary}</p>
+                )}
+
+                {resolution.prs.length > 0 && (
+                  <div className="space-y-1">
+                    {/* In the plan's order where there is one — that is the
+                        order they merge in, and the order the reader should
+                        expect. Each one says where it goes, in full. */}
+                    {(plan.length > 0 ? plan : resolution.prs).map((pr) => (
+                      <PullRequestRow
+                        key={pr.url}
+                        pr={pr}
+                        entry={planByUrl.get(pr.url)}
+                        primary={resolution.primary?.url === pr.url && resolution.prs.length > 1}
+                        reach={resolution.reach}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {resolution.merge && resolution.prs.length > 0 && (
+                  <MergeControls
+                    issueNumber={issue.issueNumber}
+                    merge={resolution.merge}
+                    onMerged={(state) => setResolution({ ...resolution, merge: state })}
+                    onCheckAgain={() => { load(); }}
+                  />
+                )}
+              </>
+            )}
+          </section>
+
+          <section aria-label="On GitHub" className="space-y-1">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              On GitHub
+            </h3>
+            <ExternalRow
+              label={`Issue #${issue.issueNumber}`}
+              url={issue.url}
+            />
+          </section>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * A link out of the app, with its destination printed in full.
+ *
+ * A button, not an anchor: inside the app's WKWebView a target=_blank
+ * navigation is silently dropped — github.com is not an app-bound domain — so
+ * `openExternalUrl` hands the URL to the native shell, which opens it in the
+ * system browser, and falls back to window.open in a real browser.
+ */
+function ExternalRow({ label, url, children }: { label: string; url: string; children?: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={() => openExternalUrl(url)}
+      aria-label={`Open ${label} on GitHub — ${url}`}
+      className="flex w-full min-w-0 items-center gap-2 rounded-md border p-2 text-left text-sm transition-colors hover:bg-muted/50"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate">{label}</span>
+          {children}
+        </div>
+        <div className="truncate font-mono text-[11px] text-muted-foreground">{url}</div>
+      </div>
+      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
+interface PullRequestRowProps {
+  pr: ResolutionPr;
+  entry?: MergePlanEntry;
+  primary: boolean;
+  reach: string | null;
+}
+
+/** One pull request: its short name, where it stands, and its full address. */
+function PullRequestRow({ pr, entry, primary, reach }: PullRequestRowProps) {
+  return (
+    <ExternalRow label={shortPr(pr)} url={pr.url}>
+      <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1" />
+      {entry ? (
+        <PlanPill entry={entry} />
+      ) : (
+        <>
+          {primary && (
+            // Where a comment is picked up first. Only worth saying when
+            // there is more than one place it could go.
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+              primary
+            </span>
+          )}
+          {reach && (
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+              {reach}
+            </span>
+          )}
+        </>
+      )}
+    </ExternalRow>
   );
 }
 
@@ -379,7 +455,7 @@ function Picture({ image }: { image: ResolutionImage }) {
       <button
         type="button"
         onClick={() => openExternalUrl(image.url)}
-        aria-label={`Open ${image.alt || 'the picture'} full size`}
+        aria-label={`Open ${image.alt || 'the picture'} full size in your browser`}
         className="block w-full overflow-hidden rounded-md border bg-muted/30"
       >
         <img src={image.url} alt={image.alt} className="block h-auto w-full" loading="lazy" />

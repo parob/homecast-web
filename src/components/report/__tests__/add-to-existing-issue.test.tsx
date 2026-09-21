@@ -14,8 +14,8 @@ import type { ReportedIssue } from '@/lib/report/issues';
  * wrong — that the confirmation names where the report ACTUALLY went rather
  * than where it was asked to go.
  *
- * The picker is reached from the compose tab, not from Previous, and the last
- * test here is what holds that: Previous offers no way to add, so a report can
+ * The picker is reached from the compose tab, not from Existing, and the last
+ * test here is what holds that: Existing offers no way to add, so a report can
  * only be aimed at an issue from the tab it is being written on.
  */
 
@@ -39,7 +39,8 @@ vi.mock('@/lib/report/submit', () => ({
   submitReport: (...args: unknown[]) => submitReport(...args),
 }));
 
-vi.mock('@/lib/report/issues', () => ({
+vi.mock('@/lib/report/issues', async (importActual) => ({
+  ...(await importActual<typeof import('@/lib/report/issues')>()),
   fetchReportedIssues: async () => ({ issues: ISSUES, page: 1, hasMore: false }),
 }));
 
@@ -93,13 +94,13 @@ describe('adding a report to an existing issue', () => {
     localStorage.clear();
   });
 
-  it('offers the choice on the compose tab, and nowhere on Previous', async () => {
+  it('offers the choice on the compose tab, and nowhere on Existing', async () => {
     render(<ReportSheet open onOpenChange={() => {}} />);
 
     expect(screen.getByRole('button', { name: 'Add to an existing report' })).toBeTruthy();
 
     // Radix switches tabs on mousedown, not click.
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Previous' }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Existing' }));
 
     // The list is there to read — and that is all it is there for.
     expect(await screen.findByText(/Analytics draws a value/)).toBeTruthy();

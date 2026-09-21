@@ -26,6 +26,19 @@ export interface ReportedIssuePage {
 
 export type IssueFilter = 'open' | 'closed' | 'all';
 
+/** `today`, `yesterday`, `3d ago`, `2mo ago`, `1y ago` — or '' for nothing usable. */
+export function relativeAge(iso: string | null | undefined, now: number = Date.now()): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const days = Math.floor((now - then) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
 export async function fetchReportedIssues(
   { state, page, limit = 20 }: { state: IssueFilter; page: number; limit?: number },
   token: string,

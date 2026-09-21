@@ -81,6 +81,14 @@ export interface Resolution {
   evidence: ResolutionImage[];
   /** The report's own screenshots — what was reported, not what fixed it. */
   reported: ResolutionImage[];
+  /**
+   * What the reporter wrote — the body above the Context table the reporter
+   * appends. Absent on a server that predates it; empty for an issue written
+   * by hand with nothing above the marker.
+   */
+  reportedText?: string | null;
+  /** When the issue was opened. Absent on a server that predates it. */
+  createdAt?: string | null;
   /** Absent on a server that predates merging. */
   merge?: MergeState;
 }
@@ -138,6 +146,17 @@ export const PR_OPEN_LABEL = 'claude-pr-open';
  */
 export function offersResolution(issue: Pick<ReportedIssue, 'labels' | 'state'>): boolean {
   return issue.labels.includes(PR_OPEN_LABEL) || issue.state === 'closed';
+}
+
+/**
+ * The word on a row for where its fix stands, or null for a row with nothing
+ * to say. Closed reads as fixed — the label comes off once the PR has merged,
+ * and a closed report is usually a fixed one.
+ */
+export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): 'Fixed' | 'Fix proposed' | null {
+  if (issue.state === 'closed') return 'Fixed';
+  if (issue.labels.includes(PR_OPEN_LABEL)) return 'Fix proposed';
+  return null;
 }
 
 /** The part of a PR URL worth reading: `homecast-web#208`. */
