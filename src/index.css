@@ -392,6 +392,12 @@ All colors MUST be HSL.
 :root {
   --toast-pill-height: 40px;
   --top-row-center: calc(16px + (var(--toast-pill-height) / 2) + var(--safe-area-top) + var(--mac-app-inset, 0px));
+  /* The toaster's own top edge. Normally it follows from the line above —
+     the pill centred on the row of controls. AppHeader overrides it outright
+     while the iOS native bar is up, because there the toast cannot sit on
+     that line at all: the bar is a UINavigationBar outside the web view and
+     paints over anything the page puts there (parob/homecast-cloud#164). */
+  --toast-top: calc(var(--top-row-center) - (var(--toast-pill-height) / 2));
 }
 
 .safe-area-top {

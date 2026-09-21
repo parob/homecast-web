@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNativeHeader } from '@/hooks/useNativeHeader';
-import { NATIVE_HEADER_EVENT, NATIVE_HEADER_HIDDEN_CLASS, isNativeHeaderEnabled, nativeHeaderRowCenter, type NativeHeaderRefreshKind, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderNavSection, type NativeHeaderState } from '@/native/native-header';
+import { NATIVE_HEADER_EVENT, NATIVE_HEADER_HIDDEN_CLASS, isNativeHeaderEnabled, isNativePageHeading, nativeHeaderRowCenter, nativeHeaderToastTop, type NativeHeaderRefreshKind, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderNavSection, type NativeHeaderState } from '@/native/native-header';
 import { LogIn } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -110,6 +110,13 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   // anything else that moves the row.
   const rowRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
+  // Whether the bar is showing a page heading above the home's name, which
+  // makes its band 18pt taller. The publish effect below runs on shell events
+  // and resize, not on render, so it reads this through a ref rather than
+  // closing over a prop it would then hold a stale copy of.
+  const nativeOnPage = isNativePageHeading(nativeHeading, nativeTitle);
+  const onNativePageRef = useRef(nativeOnPage);
+  onNativePageRef.current = nativeOnPage;
   const titleRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
 
@@ -152,10 +159,19 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       // follows from those.
       if (isNativeHeaderEnabled()) {
         document.documentElement.style.setProperty('--top-row-center', `${nativeHeaderRowCenter()}px`);
+        // ...but the toast does NOT go on that line. The bar is a
+        // UINavigationBar outside the web view, so a pill centred on its
+        // controls is painted over by them and by the bar's scrim, with no
+        // `z-index` that reaches (parob/homecast-cloud#164). It clears the
+        // band instead, starting where the page's own content does.
+        document.documentElement.style.setProperty('--toast-top', `${nativeHeaderToastTop(onNativePageRef.current)}px`);
         return;
       }
       const box = row.getBoundingClientRect();
       document.documentElement.style.setProperty('--top-row-center', `${box.top + box.height / 2}px`);
+      // Back to the stylesheet's rule — the pill centred on this row — which
+      // is where a toast belongs whenever the page draws the controls itself.
+      document.documentElement.style.removeProperty('--toast-top');
     };
     publish();
     // The bar coming or going, or reporting new insets after a rotation.
@@ -187,11 +203,21 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     return () => {
       observer.disconnect();
       window.removeEventListener(NATIVE_HEADER_EVENT, publish);
-      // Back to the stylesheet's default, which is what a page with no header
+      // Back to the stylesheet's defaults, which is what a page with no header
       // — login, a share link — is positioned against.
       document.documentElement.style.removeProperty('--top-row-center');
+      document.documentElement.style.removeProperty('--toast-top');
     };
   }, []);
+  // Navigating between the home and a room changes the bar's band by the
+  // eyebrow's 18pt, and a shell that reports `base`/`eyebrow` separately does
+  // NOT re-report for it — that split exists precisely so the page can add the
+  // line itself in the same render that changes the heading. So nothing above
+  // fires, and without this the toast would keep clearing yesterday's band.
+  useLayoutEffect(() => {
+    if (!isNativeHeaderEnabled()) return;
+    document.documentElement.style.setProperty('--toast-top', `${nativeHeaderToastTop(nativeOnPage)}px`);
+  }, [nativeOnPage, nativeHeaderActive]);
 
   return (
     <header
