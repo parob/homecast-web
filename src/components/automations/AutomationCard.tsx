@@ -243,6 +243,10 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
    * The wiggle stays on its own element so it doesn't move the edit badge or
    * compete with the transform used by the surrounding drag handle.
    */
+  // The same condition TileEditActions renders an "Unhide" badge under, named
+  // once so the pill below and the badge cannot both appear.
+  const unhideOffered = !!(editMode && onToggleHidden);
+
   const editable = (
     <div className="relative">
       <div
@@ -253,11 +257,12 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
       >
         {card}
       </div>
-      {/* No `editMode &&` guard: a hidden card is only ever rendered once
-          something has revealed it, and on a desktop that is Show Hidden Items
-          rather than a mode. Labelling it only while editing left the desktop
-          reveal showing a dimmed card with nothing saying why. */}
-      {isHidden && <HiddenLabel />}
+      {/* The fallback only — not an `editMode` guard, which would leave the
+          desktop reveal (Show Hidden Items, never a mode) showing a dimmed card
+          with nothing saying why. It stands down exactly when the Unhide badge
+          takes over, because the pill is centred and sat across the
+          automation's own name. See homecast-cloud#160. */}
+      {isHidden && !unhideOffered && <HiddenLabel />}
       {/* Gated by `visible` so it can animate away — see SceneCard. */}
       <TileEditActions
         visible={!!(editMode && onToggleHidden)}
