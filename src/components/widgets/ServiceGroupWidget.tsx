@@ -607,11 +607,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Always rendered, gated by `visible` — see WidgetCard.
   const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} visible={showEditActions} />;
 
-  // Named outside edit mode, where there is no legend explaining what a bare eye
-  // icon means — desktop reveals hidden tiles from the context menu and never
-  // enters edit mode. Inside edit mode the bar spells the icons out, and a pill
-  // across the middle would cover the name again.
-  const hiddenLabel = isHidden && !editMode ? <HiddenLabel /> : null;
+  // The fallback for a group with no badge to say it for them — see WidgetCard,
+  // and homecast-cloud#160 for why it is `!onHide` rather than `!editMode`.
+  const hiddenLabel = isHidden && !onHide ? <HiddenLabel /> : null;
 
   // The press shrink, same as an accessory tile — see WidgetCard for why this
   // is state rather than CSS `:active`. Compact only: the inline card has its

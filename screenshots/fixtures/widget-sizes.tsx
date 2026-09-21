@@ -65,6 +65,18 @@ const size = (params.get('size') ?? 'regular') as WidgetSize;
 const portrait = params.get('portrait') === '1';
 // `?edit=1` renders the tile as Edit Layout does, to exercise the badge cluster.
 const editMode = params.get('edit') === '1';
+/**
+ * `?wrapped=1` puts the tile inside the wrapper the Dashboard actually renders.
+ *
+ * The grid child on the dashboard is `SortableItem`, and between it and the
+ * card sit `LazyWidget` (a fragment once visible) and the `relative` div that
+ * positions the deal badge and the expanded overlay. That div is the whole
+ * difference between this fixture and production, and it is where the height
+ * chain broke: `h-full` is `height: 100%`, so every element between the grid
+ * cell and the card needs a definite height or the card resolves 100% against
+ * `auto` and keeps its one-row size inside a two-row area.
+ */
+const wrapped = params.get('wrapped') === '1';
 
 const camera = {
   id: 'front-door',
@@ -86,6 +98,29 @@ const toggle = (label: string) => (
   <button aria-label={label} style={{ width: 36, height: 20, borderRadius: 20, background: '#64748b' }} />
 );
 
+/** The card, optionally inside the dashboard's own `relative` wrapper. */
+function CameraTile() {
+  const card = (
+    <WidgetCard
+      title="Front Door"
+      subtitle="Camera"
+      icon={<Video />}
+      compact
+      isReachable
+      size={size}
+      sizeOptions={['regular', 'large', 'tall']}
+      onSizeChange={() => {}}
+      editMode={editMode}
+      isHidden={false}
+      onHide={() => {}}
+      hideLabel="Hide"
+      collapsedPreview={<CameraTilePreview accessory={camera} paused />}
+    />
+  );
+  if (!wrapped) return card;
+  return <div className="relative" data-dashboard-wrapper>{card}</div>;
+}
+
 // The dashboard's own compact phone grid: two columns, items-start, gap-2 —
 // including the measured row track, which is half of what gives a sized tile
 // its height. Measuring it here rather than hard-coding one keeps the fixture
@@ -101,21 +136,7 @@ function Grid() {
       style={gridRowUnitStyle(size !== 'regular', rowUnit)}
     >
       <div data-tile="camera" style={widgetSizeStyle(size)}>
-        <WidgetCard
-          title="Front Door"
-          subtitle="Camera"
-          icon={<Video />}
-          compact
-          isReachable
-          size={size}
-          sizeOptions={['regular', 'large', 'tall']}
-          onSizeChange={() => {}}
-          editMode={editMode}
-          isHidden={false}
-          onHide={() => {}}
-          hideLabel="Hide"
-          collapsedPreview={<CameraTilePreview accessory={camera} paused />}
-        />
+        <CameraTile />
       </div>
       <div data-tile="lights">
         <WidgetCard editMode={editMode} isHidden={false} onHide={() => {}} hideLabel="Hide" title="Lights" subtitle="Off" icon={<Lightbulb />} compact isReachable headerAction={toggle('Lights')} />
