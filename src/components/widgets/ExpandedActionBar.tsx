@@ -1,4 +1,4 @@
-import { LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-react';
+import { LayoutGrid, LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-react';
 
 /**
  * The action row in an expanded widget panel: small round icon buttons in
@@ -17,7 +17,7 @@ import { LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-reac
  */
 export interface ExpandedAction {
   key: string;
-  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin' | 'delete';
+  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin' | 'size' | 'delete';
   label: string;
   onClick: () => void;
 }
@@ -29,8 +29,13 @@ export interface ExpandedAction {
 // bar was a menu item, and Edit Layout's badge is the only other route. The
 // expanded panel is where a person is already studying the accessory, so it is
 // where the rest of the menu's actions went too.
+// `size` is a grid, not a magnifying glass or arrows: what it changes is how
+// many cells the tile occupies, and both of the obvious alternatives already
+// mean something else here — a camera's own "expanded" is the full-screen
+// viewer, which is exactly the collision this control was named away from.
 const ICONS = {
   analytics: LineChart,
+  size: LayoutGrid,
   prices: Tag,
   edit: Pencil,
   share: Share2,

@@ -148,6 +148,18 @@ import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { appVersionLabel } from '@/lib/app-version';
 import { withAutomationVisibility } from '@/lib/automation-cards';
+import {
+  availableWidgetSizes,
+  gridHasSizedWidget,
+  gridRowUnitStyle,
+  offersWidgetSizeChoice,
+  resolveWidgetSize,
+  widgetSizeStyle,
+  withWidgetSize,
+  type WidgetSize,
+  type WidgetSizeCapability,
+} from '@/lib/widget-sizes';
+import { useGridRowUnit } from '@/hooks/useGridRowUnit';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
 import { captureHeights, collapseContainers, emptyingContainers, heightChanges, playHeightChanges, prefersReducedMotion, REFLOW_MS, type HeightMap } from '@/lib/reflow';
@@ -3309,6 +3321,67 @@ const Dashboard = () => {
       },
     })).catch(err => console.error('Failed to save room visibility to entity layout:', err));
   }, [selectedHomeId, updateHomeLayout]);
+
+  /**
+   * Widget sizes — how many grid cells a tile takes. See lib/widget-sizes.ts.
+   *
+   * Two pieces of state, and they are different kinds of thing:
+   *
+   * - the **stored** size is the user's choice, in the home's layout;
+   * - the **capability** is what the widget says it can currently do, reported
+   *   up from the widget itself because only it knows (a camera derives it from
+   *   the shape of the snapshot that came back).
+   *
+   * Capabilities live in React state rather than the layout because they are
+   * observations, not preferences: they must not be persisted, and they change
+   * on their own when a first snapshot lands.
+   */
+  const [widgetCapabilities, setWidgetCapabilities] = useState<Record<string, WidgetSizeCapability>>({});
+
+  /**
+   * The measured height of an ordinary tile in the device grid, which is what
+   * lets a Large tile be exactly two of them plus the gap. Only armed once
+   * something in the grid is actually sized — see `useGridRowUnit`.
+   */
+  const anyWidgetSized = Object.values(homeLayout?.widgetSizes ?? {}).some(size => size && size !== 'regular');
+  const [deviceGridRef, deviceGridRowUnit] = useGridRowUnit(anyWidgetSized);
+
+  const reportWidgetCapability = useCallback((key: string, capability: WidgetSizeCapability) => {
+    setWidgetCapabilities(prev => {
+      const before = prev[key];
+      // Bail on an unchanged answer. A widget reports on every snapshot, and
+      // setting state to an equal-but-new object here would re-render the whole
+      // grid every few seconds per camera.
+      if (before && !!before.large === !!capability.large && !!before.tall === !!capability.tall) return prev;
+      return { ...prev, [key]: capability };
+    });
+  }, []);
+
+  const setWidgetSize = useCallback((key: string, size: WidgetSize) => {
+    updateHomeLayout(prev => ({
+      ...prev,
+      widgetSizes: withWidgetSize(prev?.widgetSizes, key, size),
+    })).catch(err => console.error('Failed to save widget size to entity layout:', err));
+  }, [updateHomeLayout]);
+
+  /**
+   * Everything one tile needs to render at its size and offer the control.
+   *
+   * Returns `undefined` for a widget with no capability — the overwhelmingly
+   * common case — so the props are absent rather than present-and-empty, and
+   * every tile that has never been resized takes exactly the path it took
+   * before this existed.
+   */
+  const widgetSizeProps = useCallback((key: string) => {
+    const capability = widgetCapabilities[key];
+    const size = resolveWidgetSize(homeLayout?.widgetSizes, key, capability);
+    if (!offersWidgetSizeChoice(capability) && size === 'regular') return undefined;
+    return {
+      size,
+      sizeOptions: availableWidgetSizes(capability),
+      onSizeChange: (next: WidgetSize) => setWidgetSize(key, next),
+    };
+  }, [widgetCapabilities, homeLayout?.widgetSizes, setWidgetSize]);
 
   /**
    * Hide or reveal an accessory on one surface, or on both.
@@ -7630,16 +7703,24 @@ const Dashboard = () => {
   // Only where the web draws its own header and only off the home view: the
   // native bar draws its own back button, and a desktop has the breadcrumb.
   const headerBackButton = largeHeading && hasContentAccess && !onWholeHome && selectedHomeId ? (
-    <Button
-      data-testid="header-back"
-      aria-label="Back"
-      variant="ghost"
-      size="icon"
-      className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] transition-colors duration-300 ${headerGlassClass(headerInkLight)} ${headerGlassControlClass(headerInkLight)}`}
-      onClick={() => handleSelectHome(selectedHomeId)}
-    >
-      <ChevronLeft className="h-5 w-5" />
-    </Button>
+    // The same capsule the search and ⋯ controls sit in, with the same
+    // control inside it: `headerGlassClass` on a `p-[2px]` box, and a
+    // 36x40 `rounded-full` ghost button wearing `headerGlassControlClass`.
+    // Asked for on review — it was built at 40x40 with the glass on the
+    // button itself, copied from the ☰ trigger, which made it a slightly
+    // taller circle than the capsule opposite it.
+    <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
+      <Button
+        data-testid="header-back"
+        aria-label="Back"
+        variant="ghost"
+        size="icon"
+        className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`}
+        onClick={() => handleSelectHome(selectedHomeId)}
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </div>
   ) : null;
 
   const headerRightMenu = (
@@ -9511,6 +9592,17 @@ const Dashboard = () => {
                         enabled={layoutMode === 'masonry' && !compactMode && !isMobile}
                         compact={compactMode}
                         minColumnWidth={290}
+                        gridRef={deviceGridRef}
+                        // An explicit row track, and only when this grid holds a
+                        // resized tile. Without it a spanning tile has nothing
+                        // to stretch into; with it, two rows is exactly twice an
+                        // ordinary tile plus the gap, at any column width. A
+                        // grid with nothing resized gets `undefined` and is
+                        // laid out exactly as it was before this existed.
+                        style={gridRowUnitStyle(
+                          gridHasSizedWidget(homeLayout?.widgetSizes, allItemIds),
+                          deviceGridRowUnit,
+                        )}
                         // One set of column widths for every text size: the
                         // narrower set existed for the 14px setting, and the
                         // smallest is now 16px — which always took these.
@@ -9570,6 +9662,13 @@ const Dashboard = () => {
                           const isHidden = selectedHomeId ? isDeviceActuallyHidden(selectedHomeId, contextId, accessory.id, accessorySurface) : false;
                           
                           const isCurrentlyHidden = isHidden;
+                          // Size, and the control for it. `undefined` unless
+                          // this widget has actually said it can grow.
+                          const sizeProps = widgetSizeProps(accessory.id);
+                          const sizeCapabilityProps = {
+                            onSizeCapability: (capability: WidgetSizeCapability) =>
+                              reportWidgetCapability(accessory.id, capability),
+                          };
 
                           /*
                            * The label names the surface, because the same
@@ -9614,6 +9713,8 @@ const Dashboard = () => {
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
                                 editMode={isTouchDevice && editMode}
+                                {...sizeProps}
+                                {...sizeCapabilityProps}
                               />
                               {getDealBadge(accessory)}
 
@@ -9639,6 +9740,8 @@ const Dashboard = () => {
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
                                 editMode={isTouchDevice && editMode}
+                                {...sizeProps}
+                                {...sizeCapabilityProps}
                                 />
                               </ExpandedOverlay>
                             </div>
@@ -9666,13 +9769,23 @@ const Dashboard = () => {
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
                                 editMode={isTouchDevice && editMode}
+                                {...sizeProps}
+                                {...sizeCapabilityProps}
                               />
                               {getDealBadge(accessory)}
                             </div>
                           );
 
                           return (
-                            <SortableItem key={accessory.id} id={accessory.id} disabled={isHidden}>
+                            <SortableItem
+                              key={accessory.id}
+                              id={accessory.id}
+                              disabled={isHidden}
+                              // The span goes on the grid child, which is this.
+                              // `undefined` for a regular tile, so a grid with
+                              // nothing resized in it is untouched.
+                              style={widgetSizeStyle(sizeProps?.size ?? 'regular')}
+                            >
                               <LazyWidget enabled={useLazyWidgets} height={compactMode ? 80 : 140} tone={isDarkBackground ? 'dark' : 'light'}>
                                 {accessoryContent}
                               </LazyWidget>

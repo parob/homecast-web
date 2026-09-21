@@ -46,6 +46,13 @@ async function openRoom(page: Page) {
   await waitForDashboard(page);
   await page.locator('main').getByRole('button', { name: 'Bedroom', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: /Bedroom/ })).toBeVisible();
+  // At the top, deliberately. A room opened from a scrolled home can come in
+  // scrolled, and the header collapses to its compact title there — which is a
+  // different bar from the one being captured.
+  await page.evaluate(() => {
+    const scroller = document.scrollingElement || document.documentElement;
+    scroller.scrollTop = 0;
+  });
   await page.waitForTimeout(700);
 }
 
@@ -70,10 +77,36 @@ test('a room page on a phone shows the way back', async ({ page }) => {
   expect(box.x + box.width).toBeLessThan(controls.x);
   // Same line: centres within a few pixels of each other.
   expect(Math.abs((box.y + box.height / 2) - (controls.y + controls.height / 2))).toBeLessThan(6);
-  // A tap target, not a glyph: UIKit's bar buttons are 44pt, and 40 is what
-  // every other control in this row already is.
-  expect(box.width).toBeGreaterThanOrEqual(40);
-  expect(box.height).toBeGreaterThanOrEqual(40);
+  // Asked for on review: the same style and dimensions as the search and ⋯
+  // controls. Measured rather than eyeballed, because "same" in a class string
+  // is not the same thing as same on screen — the first version of this was
+  // built at 40x40 with the glass on the button itself and read as a slightly
+  // taller circle beside the capsule opposite it.
+  expect(box.width).toBe(controls.width);
+  expect(box.height).toBe(controls.height);
+  // And the capsule around it matches the one around them, so the row has a
+  // glass pill at each end rather than a pill and a disc.
+  const pillHeight = async (l: ReturnType<Page['locator']>) =>
+    (await l.locator('xpath=..').boundingBox())!.height;
+  expect(await pillHeight(back)).toBe(await pillHeight(page.locator('[data-native-header="search"]')));
+  // Radius and background come from the same helpers; assert they resolve to
+  // the same painted values rather than trusting the class names.
+  const sameStyle = await page.evaluate(() => {
+    const pick = (el: Element | null) => {
+      if (!el) return null;
+      const s = getComputedStyle(el);
+      return { radius: s.borderRadius, bg: s.backgroundColor, backdrop: s.backdropFilter };
+    };
+    const backBtn = document.querySelector('[data-testid="header-back"]');
+    const searchBtn = document.querySelector('[data-native-header="search"]');
+    return {
+      back: pick(backBtn), search: pick(searchBtn),
+      backPill: pick(backBtn?.parentElement ?? null),
+      searchPill: pick(searchBtn?.parentElement ?? null),
+    };
+  });
+  expect(sameStyle.back).toEqual(sameStyle.search);
+  expect(sameStyle.backPill).toEqual(sameStyle.searchPill);
 
   // Chevron alone — `.minimal` draws no title beside it.
   expect((await back.innerText()).trim()).toBe('');

@@ -7,6 +7,15 @@ interface MasonryGridProps {
   compact?: boolean;
   style?: React.CSSProperties;
   minColumnWidth?: number;
+  /**
+   * The CSS-grid element, when this is rendering as one (`enabled` false).
+   *
+   * Deliberately not a `forwardRef`: the masonry branch is a flex row of
+   * columns, not a grid, and handing a caller that element under the same name
+   * would invite it to set grid properties on something with no cells. Nobody
+   * gets a ref to the masonry container until something needs one.
+   */
+  gridRef?: (el: HTMLDivElement | null) => void;
 }
 
 export const MasonryGrid: React.FC<MasonryGridProps> = ({
@@ -16,6 +25,7 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   compact = false,
   style,
   minColumnWidth = 290,
+  gridRef,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(2);
@@ -72,6 +82,7 @@ export const MasonryGrid: React.FC<MasonryGridProps> = ({
   if (!enabled) {
     return (
       <div
+        ref={gridRef}
         className={className}
         style={{
           ...style,

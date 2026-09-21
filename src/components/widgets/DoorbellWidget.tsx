@@ -7,6 +7,7 @@ import { useHomeCamerasEnabled } from '@/hooks/useHomeCamerasEnabled';
 import { useCameraTileExpansion } from '@/hooks/useCameraTileExpansion';
 import { CameraTileFrame } from './CameraTileFrame';
 import { CameraTilePreview } from './CameraTilePreview';
+import { useCameraSizeCapability } from '@/hooks/useCameraSizeCapability';
 import { isCommunity } from '@/lib/config';
 
 export const DoorbellWidget: React.FC<WidgetProps> = memo(({
@@ -33,10 +34,18 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
   onToggleShowHidden,
   onShare,
   locationSubtitle,
+  size,
+  sizeOptions,
+  onSizeChange,
+  onSizeCapability,
 }) => {
   const hasCamera = accessory.camera?.snapshot === true || accessory.camera?.stream === true;
   const camerasEnabled = useHomeCamerasEnabled(accessory.homeId);
   const cameraAvailable = !isCommunity && camerasEnabled && hasCamera;
+  // Large as soon as there is a picture; Tall only for a portrait one.
+  // Derived from the snapshot rather than configured, so a camera added
+  // later is covered with nothing to set up. See lib/widget-sizes.ts.
+  useCameraSizeCapability(accessory, cameraAvailable, onSizeCapability);
   const showHero = !compact && cameraAvailable;
   const preview = useCameraTileExpansion({ previewAvailable: showHero, compact, expanded, onExpandToggle });
   // Battery info
@@ -76,6 +85,9 @@ export const DoorbellWidget: React.FC<WidgetProps> = memo(({
       isReachable={accessory.isReachable}
       accessory={accessory}
       collapsedPreview={cameraAvailable ? <CameraTilePreview accessory={accessory} paused={preview.expanded || editMode || !!editModeType || isHidden || isHiddenUi} /> : undefined}
+      size={size}
+      sizeOptions={sizeOptions}
+      onSizeChange={onSizeChange}
       compact={compact}
       expanded={preview.expanded}
       headerAction={showHero && preview.expanded ? <CameraCloseButton /> : undefined}
