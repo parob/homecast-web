@@ -37,6 +37,7 @@ export default defineConfig({
     'sidebar-width.spec.ts',
     'phone-back-button.spec.ts',
     'native-backdrop-colour.spec.ts',
+    'lock-battery-ink.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,
