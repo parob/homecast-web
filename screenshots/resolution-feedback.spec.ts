@@ -79,7 +79,8 @@ const BEFORE = process.env.BEFORE === '1';
 async function asAdminReporter(page: Page) {
   await setupMocks(page);
 
-  await page.route(/^https?:\/\/(api\.homecast\.cloud|localhost:8080)\/?$/, async (route) => {
+  // Port-agnostic: the CI config serves on a different port from the dev one.
+  await page.route(/^https?:\/\/(api\.homecast\.cloud|localhost:\d+|127\.0\.0\.1:\d+)\/?$/, async (route) => {
     const body = route.request().postDataJSON() as { query?: string } | null;
     if (route.request().method() !== 'POST' || !body?.query?.includes('GetMe')) {
       return route.fallback();
