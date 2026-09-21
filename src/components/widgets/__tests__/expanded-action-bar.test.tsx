@@ -5,8 +5,12 @@
 // offered no way to prices but a right-click — and a service group offered none
 // at all.
 //
-// Order is the thing worth pinning: the two "read about this" actions sit
-// together ahead of the two that act on it.
+// Two things are worth pinning. Order: the two "read about this" actions sit
+// together ahead of the ones that act on it. And the split between the word on
+// the button and the fuller phrasing behind it — homecast-cloud#162 reported
+// the icon-only version as unreadable, and a label that silently fell back to
+// the long phrasing would put "Delete Virtual Accessory" on a pill in a 360px
+// panel, which is the same problem wearing a different hat.
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import ExpandedActionBar, { type ExpandedAction } from '../ExpandedActionBar';
@@ -15,7 +19,7 @@ afterEach(cleanup);
 
 const ALL: ExpandedAction[] = [
   { key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => {} },
-  { key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => {} },
+  { key: 'prices', icon: 'prices', label: 'Prices', ariaLabel: 'Price & Deals', onClick: () => {} },
   { key: 'edit', icon: 'edit', label: 'Edit', onClick: () => {} },
   { key: 'share', icon: 'share', label: 'Share', onClick: () => {} },
 ];
@@ -27,11 +31,33 @@ describe('ExpandedActionBar', () => {
     expect(labels).toEqual(['Analytics', 'Price & Deals', 'Edit', 'Share']);
   });
 
-  it('gives Price & Deals a real button, labelled for a screen reader and a tooltip', () => {
+  it('says what each button does in words, not only in a glyph', () => {
+    render(<ExpandedActionBar actions={ALL} onDark={false} />);
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Analytics', 'Prices', 'Edit', 'Share',
+    ]);
+  });
+
+  it('shows the short word and keeps the full phrasing as name and tooltip', () => {
     render(<ExpandedActionBar actions={ALL} onDark={false} />);
     const prices = screen.getByRole('button', { name: 'Price & Deals' });
+    expect(prices.textContent).toBe('Prices');
     expect(prices.getAttribute('title')).toBe('Price & Deals');
     expect(prices.querySelector('svg')).not.toBeNull();
+  });
+
+  it('falls back to the word itself when there is no fuller phrasing', () => {
+    render(<ExpandedActionBar actions={ALL} onDark={false} />);
+    const share = screen.getByRole('button', { name: 'Share' });
+    expect(share.getAttribute('title')).toBe('Share');
+  });
+
+  it('wraps rather than truncating, so a sixth action still shows its word', () => {
+    const { container } = render(<ExpandedActionBar actions={ALL} onDark={false} />);
+    expect(container.firstElementChild?.className).toContain('flex-wrap');
+    // Whatever else changes about the pill, the word must not be cut in half
+    // to make it fit — wrapping is the release valve, not truncation.
+    expect(container.querySelector('button')?.className).toContain('whitespace-nowrap');
   });
 
   it('renders nothing at all when an accessory offers no actions', () => {
