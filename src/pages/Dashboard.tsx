@@ -9262,7 +9262,7 @@ const Dashboard = () => {
                     Only the title moves. The content below keeps the page's
                     `px-3`, which is what native does and what keeps the tile
                     grid where the reporter's two screenshots agree. */}
-                <h2 ref={headingRef} className={`font-bold ${largeHeading ? 'mb-[5.5px] text-[34px] leading-[41px] tracking-tight pl-1' : 'mb-[4px] text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                <h2 ref={headingRef} className={`font-bold ${largeHeading ? 'mt-[6px] mb-[5.5px] text-[34px] leading-[41px] tracking-tight pl-1' : 'mb-[4px] text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
