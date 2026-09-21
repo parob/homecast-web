@@ -1,14 +1,28 @@
-import { LayoutGrid, LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-react';
+import { LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-react';
 
 /**
- * The action row in an expanded widget panel: small round icon buttons in
- * the corner — analytics, prices, edit, share, pin — rather than a full-width bar
+ * The action row in an expanded widget panel: small labelled pills in the
+ * corner — analytics, prices, edit, share, pin — rather than a full-width bar
  * or a header icon.
  *
  * A header icon competed with the widget's own control for the top-right
  * slot; a full-width bar shouted louder than the controls above it. A
  * corner cluster reads as "things you can do with this accessory", which is
  * also where the actions that were context-menu-only belong.
+ *
+ * **Words, not glyphs.** These were icon-only circles, and were reported as
+ * unreadable in as many words (homecast-cloud#162): "the buttons on the screen
+ * are just icons it's not clear enough what they'll do". That is the same
+ * finding `EditActions` already acts on for the badge cluster — a symbol makes
+ * you look away from the thing you are acting on to find out what you are about
+ * to do — so this row now answers the same way, and the two clusters read alike.
+ *
+ * The word is one word, and the fuller phrasing survives as the accessible name
+ * and the tooltip. That is not a style rule, it is the panel's arithmetic: the
+ * content box is about 360px on the phone this was reported from, and "Price &
+ * Deals" plus "Pin to Tab Bar" alone would eat it. The row wraps rather than
+ * truncating or scrolling, so a virtual accessory carrying all six still shows
+ * every word.
  *
  * Colour comes from `onDark`, which callers derive the way WidgetWrapper
  * does: white only when the tile is OFF over a dark wallpaper. An ON tile
@@ -17,25 +31,36 @@ import { LayoutGrid, LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 
  */
 export interface ExpandedAction {
   key: string;
-  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin' | 'size' | 'delete';
+  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin' | 'delete';
+  /** The word on the button. One word, so a row of them fits a phone panel. */
   label: string;
+  /**
+   * The full phrasing, for a screen reader and the tooltip — "Price & Deals"
+   * behind `Prices`, "Delete Virtual Accessory" behind `Delete`. Omit it where
+   * the word already says the whole thing.
+   */
+  ariaLabel?: string;
   onClick: () => void;
 }
 
 // `prices` takes the same Tag as the context menu's Price & Deals item — the
 // cluster and the menu offer the same actions and should be recognisable as
-// each other.
+// each other. The glyphs stay beside the words for that reason: the word says
+// what the button does, the icon ties it to the same action somewhere else.
 // `pin`/`unpin` moved here when touch lost its context menus: pinning to the tab
 // bar was a menu item, and Edit Layout's badge is the only other route. The
 // expanded panel is where a person is already studying the accessory, so it is
 // where the rest of the menu's actions went too.
-// `size` is a grid, not a magnifying glass or arrows: what it changes is how
-// many cells the tile occupies, and both of the obvious alternatives already
-// mean something else here — a camera's own "expanded" is the full-screen
-// viewer, which is exactly the collision this control was named away from.
+//
+// There is deliberately no `size` here any more. It cycled the tile between
+// Regular, Large and Tall, and by #197 the same cycle was on Edit Layout's
+// badge next to Hide and Pin (`EditActions`' `sizeButton`) and in the desktop
+// context menu, which lists all three with the current one ticked. Reported as
+// redundant in homecast-cloud#162 — "it's now next to the hide and pin button"
+// — and removing it closes no door: both of those routes remain, one per
+// platform, which is the rule the Automations grid states.
 const ICONS = {
   analytics: LineChart,
-  size: LayoutGrid,
   prices: Tag,
   edit: Pencil,
   share: Share2,
@@ -60,19 +85,28 @@ export default function ExpandedActionBar({
     : 'bg-white/55 hover:bg-white/80 text-slate-900/80 hover:text-slate-900 ring-black/[0.06]';
 
   return (
-    <div className="mt-3 flex items-center justify-end gap-1.5">
+    // `flex-wrap` is load-bearing, not defensive: six pills do not fit one
+    // phone row, and the alternatives are a truncated word — which is the
+    // problem this row was changed to fix — or a sideways scroller inside a
+    // panel that already scrolls vertically.
+    <div className="mt-3 flex flex-wrap items-center justify-end gap-1.5">
       {actions.map(action => {
         const Icon = ICONS[action.icon];
+        const name = action.ariaLabel ?? action.label;
         return (
           <button
             key={action.key}
-            className={`h-7 w-7 rounded-full flex items-center justify-center ring-1 shadow-sm backdrop-blur-sm transition-colors ${tone}`}
+            // `h-7`, the ring and the glass are the circles' — only the width
+            // changed, so the row still sits at the height it did under the
+            // controls above it.
+            className={`h-7 px-2.5 rounded-full flex items-center gap-1.5 whitespace-nowrap text-xs font-medium leading-none ring-1 shadow-sm backdrop-blur-sm transition-colors ${tone}`}
             onClick={(e) => { e.stopPropagation(); action.onClick(); }}
             onPointerDown={(e) => e.stopPropagation()}
-            aria-label={action.label}
-            title={action.label}
+            aria-label={name}
+            title={name}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {action.label}
           </button>
         );
       })}

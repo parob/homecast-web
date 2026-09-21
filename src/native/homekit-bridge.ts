@@ -901,7 +901,19 @@ export const HomeKit = {
     return bridge.onEvent(handler);
   },
 
-  // MARK: Cameras (cloud relay only — see CameraCaptureService.swift)
+  // MARK: Cameras (cloud-managed relay only — see CameraCaptureService.swift)
+
+  /**
+   * Tell the Mac whether it is a cloud-managed relay, and so should run the
+   * camera engine window. The Swift side cannot know — the account is ours —
+   * and remembers the answer across launches. Off closes the window and
+   * refuses every other `camera.*` method. See `hooks/useCameraEngine.ts`.
+   */
+  async setCameraEngine(enabled: boolean): Promise<{ enabled: boolean; engineWindow: boolean }> {
+    const bridge = getNativeBridge();
+    if (!bridge) throw new Error('HomeKit bridge not available');
+    return bridge.call('camera.engine.set', { enabled });
+  },
 
   /** What the relay can do for cameras: engine window, Screen Recording, limits. */
   async cameraCapabilities(): Promise<CameraCapabilities> {

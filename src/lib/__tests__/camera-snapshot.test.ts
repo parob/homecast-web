@@ -5,6 +5,7 @@ import {
   PREVIEW_REFRESH_MS,
   PREVIEW_BATTERY_REFRESH_MS,
   isBatteryPowered,
+  isCloudManagedHome,
   previewMaxAgeSec,
   previewRefreshMs,
   describeCameraFailure,
@@ -14,6 +15,25 @@ import {
   shouldPollSnapshots,
   snapshotDataUrl,
 } from '../camera-snapshot';
+
+describe('isCloudManagedHome', () => {
+  it("is the member's flag, set by the cloud on the homes it operates", () => {
+    expect(isCloudManagedHome({ isCloudManaged: true }, 'cloud')).toBe(true);
+    expect(isCloudManagedHome({ isCloudManaged: true }, 'standard')).toBe(true);
+  });
+
+  it("is the relay's own account, which owns those homes and sees no flag", () => {
+    expect(isCloudManagedHome({}, 'managed')).toBe(true);
+    expect(isCloudManagedHome(undefined, 'managed')).toBe(true);
+  });
+
+  it('is not a plan: a cloud customer can run a self-hosted relay beside the managed one', () => {
+    expect(isCloudManagedHome({ isCloudManaged: false }, 'cloud')).toBe(false);
+    expect(isCloudManagedHome({}, 'cloud')).toBe(false);
+    expect(isCloudManagedHome(null, 'standard')).toBe(false);
+    expect(isCloudManagedHome({}, undefined)).toBe(false);
+  });
+});
 
 describe('shouldPollSnapshots', () => {
   it('polls only for a supported camera on an expanded tile on a visible page', () => {
@@ -56,7 +76,7 @@ describe('isPermanentCameraFailure', () => {
 describe('describeCameraFailure', () => {
   it('does not mistake a failed own-window capture for missing macOS permission', () => {
     for (const code of ['SCREEN_RECORDING_DENIED', 'CAMERA_CAPTURE_UNAVAILABLE']) {
-      expect(describeCameraFailure({ code, message: 'x' })).toMatch(/Restart Homecast/);
+      expect(describeCameraFailure({ code, message: 'x' })).toMatch(/could not capture/);
       expect(describeCameraFailure({ code, message: 'x' })).not.toMatch(/permission|Screen Recording/);
     }
   });

@@ -208,16 +208,50 @@ export function isNativePageHeading(heading: string | undefined, title: string |
 export const NATIVE_HEADER_LARGE_TITLE_HEIGHT = 52;
 
 /**
- * The line the native bar's controls are centred on, in viewport px — where
- * a toast should sit while the bar is up, since the web header row it would
- * otherwise measure is collapsed. In the sidebar layout the bar reports no
- * band (bar == status) and is just its buttons on a standard-height row.
+ * The line the native bar's controls are centred on, in viewport px. In the
+ * sidebar layout the bar reports no band (bar == status) and is just its
+ * buttons on a standard-height row.
+ *
+ * This is NOT where a toast goes — see `nativeHeaderToastTop`. It used to be,
+ * and that is parob/homecast-cloud#164: the bar is UIKit, composited above the
+ * web view, so a pill centred on its controls is painted over by them and no
+ * `z-index` reaches it.
  */
 export function nativeHeaderRowCenter(): number {
   const { bar, status, base } = nativeHeaderInsets();
   const band = typeof base === 'number' ? base : bar;
   const compactBottom = band > status ? band - NATIVE_HEADER_LARGE_TITLE_HEIGHT : status + 54;
   return status + (compactBottom - status) / 2;
+}
+
+/**
+ * The air the toast leaves between itself and the native bar's band.
+ */
+export const NATIVE_HEADER_TOAST_GAP = 8;
+
+/**
+ * Where the toaster's top edge goes while the native bar is up, in viewport px.
+ *
+ * The web header can have a toast sit on its own controls' line, because the
+ * page draws both and the toaster wins on `z-index`. The native bar cannot: it
+ * is a `UINavigationBar` outside the web view, so anything the page puts on
+ * that line is painted over — the search and ⋯ buttons, the bar's scrim, and
+ * the large title band too, since the bar draws the title and its eyebrow as
+ * well as the controls (parob/homecast-cloud#164).
+ *
+ * So the toast clears the WHOLE band and starts where the page's own content
+ * does. `nativeHeaderContentInset` is that line already — the same number the
+ * page pads itself by — which keeps the two from drifting apart.
+ *
+ * The sidebar layout reports no band (`bar == status`): the bar is two
+ * floating buttons on a standard-height row over content that lays itself out
+ * as it always did, so there is nothing to clear but that row.
+ */
+export function nativeHeaderToastTop(onPage: boolean): number {
+  const { bar, status, base } = nativeHeaderInsets();
+  const band = typeof base === 'number' ? base : bar;
+  const bottom = band > status ? nativeHeaderContentInset(onPage) : status + 54;
+  return bottom + NATIVE_HEADER_TOAST_GAP;
 }
 
 /**

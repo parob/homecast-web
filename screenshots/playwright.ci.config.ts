@@ -9,6 +9,11 @@ export default defineConfig({
   ...base,
   testMatch: [
     'expanded-overlay.spec.ts',
+    // The panel's action cluster: Size removed, and every remaining action
+    // readable as a word rather than a glyph. homecast-cloud#162.
+    'expanded-actions.spec.ts',
+    // What resolves a reported issue, from the Feedback sheet. homecast-cloud#169.
+    'resolution-view.spec.ts',
     'camera-live.spec.ts',
     'camera-viewer-fit.spec.ts',
     'camera-cache-reload.spec.ts',
@@ -37,6 +42,7 @@ export default defineConfig({
     'sidebar-width.spec.ts',
     'phone-back-button.spec.ts',
     'native-backdrop-colour.spec.ts',
+    'lock-battery-ink.spec.ts',
     'overlay-band-colour.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),

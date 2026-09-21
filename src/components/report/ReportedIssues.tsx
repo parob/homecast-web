@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Loader2, Plus,
+  CheckCircle2, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Loader2, Plus, Wrench,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ import { openExternalUrl } from '@/lib/open-url';
 import {
   fetchReportedIssues, type IssueFilter, type ReportedIssue,
 } from '@/lib/report/issues';
+import { offersResolution } from '@/lib/report/resolution';
 
 const FILTERS: { value: IssueFilter; label: string }[] = [
   { value: 'open', label: 'Open' },
@@ -53,9 +54,15 @@ interface ReportedIssuesProps {
    * single action of opening the issue on GitHub.
    */
   onAddTo?: (issue: ReportedIssue) => void;
+  /**
+   * Offer the resolution — the fix's pictures and pull requests — on rows
+   * that have one. Absent where the list is a picker: someone choosing where
+   * a report goes is not here to review a fix.
+   */
+  onShowResolution?: (issue: ReportedIssue) => void;
 }
 
-export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
+export function ReportedIssues({ onAddTo, onShowResolution }: ReportedIssuesProps = {}) {
   const [filter, setFilter] = useState<IssueFilter>('open');
   const [page, setPage] = useState(1);
   const [issues, setIssues] = useState<ReportedIssue[]>([]);
@@ -180,6 +187,22 @@ export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
               </div>
               <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </button>
+
+            {onShowResolution && offersResolution(issue) && (
+              // Same slot as Add, same reason: a row's second action lives
+              // beside it. Only on rows that have a fix to show — a button
+              // that opens "nothing yet" on every row teaches people to
+              // stop pressing it.
+              <button
+                type="button"
+                onClick={() => onShowResolution(issue)}
+                aria-label={`See the resolution for #${issue.issueNumber}`}
+                className="flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-r-md border-l px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              >
+                <Wrench className="h-4 w-4" />
+                Fix
+              </button>
+            )}
 
             {onAddTo && (
               // Beside the row rather than under it: a footer per card would
