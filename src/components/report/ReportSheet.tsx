@@ -61,6 +61,7 @@ import type { ReportedIssue } from '@/lib/report/issues';
 import { AttachmentPreview } from './AttachmentPreview';
 import { RecordingOverlay } from './RecordingOverlay';
 import { ReportedIssues } from './ReportedIssues';
+import { ResolutionView } from './ResolutionView';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 /**
@@ -162,6 +163,10 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
   // same state either way, still here when the picker closes.
   const [picking, setPicking] = useState(false);
   const [tab, setTab] = useState('report');
+  // The issue whose resolution is open on the Previous tab. It replaces the
+  // list the same way the picker replaces the form: one scroller, a Back
+  // button, nothing stacked.
+  const [viewing, setViewing] = useState<ReportedIssue | null>(null);
 
   const recordingRef = useRef<ActiveRecording | null>(null);
   recordingRef.current = recording;
@@ -177,6 +182,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
     setPreview(null);
     setAddingTo(null);
     setPicking(false);
+    setViewing(null);
     setTab('report');
   }, [open, initialScreenshot]);
 
@@ -395,8 +401,15 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
             >
               {/* No `onAddTo`: a reference, which is all this tab claims to be.
                   Choosing where a report goes happens on the tab where the
-                  report is written. */}
-              <ReportedIssues />
+                  report is written. What it does offer is the fix, where one
+                  exists — the pictures and the pull requests — since "has it
+                  been fixed, and does the fix look right" is what someone on
+                  this tab is usually asking. */}
+              {viewing ? (
+                <ResolutionView issue={viewing} onBack={() => setViewing(null)} />
+              ) : (
+                <ReportedIssues onShowResolution={setViewing} />
+              )}
             </TabsContent>
 
             {/* `px-1 -mx-1`: the focus ring is drawn outside the element's box,
