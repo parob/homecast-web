@@ -74,6 +74,7 @@ const WITH_PLAN: Resolution = {
 const fetchResolution = vi.fn();
 const mergeResolution = vi.fn();
 const nudgeConflicts = vi.fn();
+const sendFeedback = vi.fn();
 const openExternalUrl = vi.fn();
 
 vi.mock('@/lib/report/issues', async (importActual) => ({
@@ -86,6 +87,7 @@ vi.mock('@/lib/report/resolution', async (importActual) => ({
   fetchResolution: (...args: unknown[]) => fetchResolution(...args),
   mergeResolution: (...args: unknown[]) => mergeResolution(...args),
   nudgeConflicts: (...args: unknown[]) => nudgeConflicts(...args),
+  sendFeedback: (...args: unknown[]) => sendFeedback(...args),
 }));
 
 vi.mock('@/lib/open-url', () => ({
@@ -97,6 +99,7 @@ beforeEach(() => {
   fetchResolution.mockReset();
   mergeResolution.mockReset();
   nudgeConflicts.mockReset();
+  sendFeedback.mockReset();
   openExternalUrl.mockReset();
 });
 
@@ -406,3 +409,128 @@ describe('asking for a conflict to be fixed', () => {
   });
 });
 
+/**
+ * Saying something back, and choosing who hears it.
+ *
+ * The selector is answering one question — who reads this, and how soon — so
+ * each option has to carry its own cost. The pull request wakes an agent
+ * straight away; the issue waits for the next sweep. And it reaches exactly
+ * one pull request: three comments would start three agents that each think
+ * they are alone, so the view says which one gets it and which do not.
+ */
+describe('sending feedback from the issue view', () => {
+  const WITH_FEEDBACK: Resolution = { ...WITH_PLAN, feedback: { configured: true } };
+
+  it('offers no field at all on a server that predates feedback', async () => {
+    fetchResolution.mockResolvedValue(WITH_PLAN);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    await screen.findByRole('button', { name: /Open homecast-cloud#170 on GitHub/ });
+    expect(screen.queryByRole('textbox', { name: 'Your feedback' })).toBeNull();
+    expect(screen.queryByText(/Sending feedback isn.t set up/)).toBeNull();
+  });
+
+  it('says so on a server that has it unset, and offers nothing to type into', async () => {
+    fetchResolution.mockResolvedValue({ ...WITH_PLAN, feedback: { configured: false } });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    await screen.findByText(/Sending feedback isn.t set up on this server/);
+    expect(screen.queryByRole('textbox', { name: 'Your feedback' })).toBeNull();
+  });
+
+  it('defaults to the pull request, and says what each door costs', async () => {
+    fetchResolution.mockResolvedValue(WITH_FEEDBACK);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const toPr = await screen.findByRole('radio', { name: /homecast-cloud#170/ });
+    const toIssue = screen.getByRole('radio', { name: /Issue #167/ });
+    expect(toPr.getAttribute('aria-checked')).toBe('true');
+    expect(toIssue.getAttribute('aria-checked')).toBe('false');
+    expect(toPr.textContent).toContain('Picked up straight away');
+    expect(toIssue.textContent).toContain('Next sweep');
+  });
+
+  it('says which pull request gets it and which do not', async () => {
+    fetchResolution.mockResolvedValue(WITH_FEEDBACK);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    const line = await screen.findByText(/Goes on homecast-cloud#170 only/);
+    expect(line.textContent).toContain('homecast-web#214');
+    expect(line.textContent).toContain('one agent per comment');
+  });
+
+  it('sends what was typed, to the chosen target, and shows where it landed', async () => {
+    fetchResolution.mockResolvedValue(WITH_FEEDBACK);
+    sendFeedback.mockResolvedValue({
+      posted: true,
+      target: 'pr',
+      on: CLOUD_PR.url,
+      comment: `${CLOUD_PR.url}#issuecomment-1`,
+      named: [WEB_PR.url],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const box = await screen.findByRole('textbox', { name: 'Your feedback' });
+    // Nothing to send is nothing to tap.
+    expect(screen.getByRole('button', { name: /^Send$/ }).hasAttribute('disabled')).toBe(true);
+
+    fireEvent.change(box, { target: { value: '  The spacing is still wrong.  ' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }));
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(167, 'tok', 'pr', 'The spacing is still wrong.'));
+    await screen.findByText(/Sent to homecast-cloud#170 — it gets picked up straight away/);
+    expect(screen.getByText(/names homecast-web#214 as part of the same fix. Nothing was posted on them/)).toBeTruthy();
+
+    // The comment's own address, printed in full like every link out.
+    const link = screen.getByRole('button', { name: `Open The comment on GitHub — ${CLOUD_PR.url}#issuecomment-1` });
+    fireEvent.click(link);
+    expect(openExternalUrl).toHaveBeenCalledWith(`${CLOUD_PR.url}#issuecomment-1`);
+  });
+
+  it('sends to the issue when that is chosen, and says it waits for the sweep', async () => {
+    fetchResolution.mockResolvedValue(WITH_FEEDBACK);
+    sendFeedback.mockResolvedValue({
+      posted: true, target: 'issue', on: FIXED.url, comment: `${FIXED.url}#issuecomment-2`,
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Issue #167/ }));
+    expect(screen.getByText(/Goes on the report itself/)).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your feedback' }), { target: { value: 'Not what I meant.' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }));
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(167, 'tok', 'issue', 'Not what I meant.'));
+    await screen.findByText(/Sent to issue #167 — it gets picked up on the next sweep, about a day/);
+  });
+
+  it('offers only the issue when no pull request is open, with no selector to get wrong', async () => {
+    fetchResolution.mockResolvedValue({
+      ...WITH_FEEDBACK,
+      merge: {
+        ...TWO_PR_PLAN,
+        plan: TWO_PR_PLAN.plan.map((e) => ({ ...e, state: 'closed', merged: true, action: 'merged' as const })),
+      },
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    await screen.findByRole('textbox', { name: 'Your feedback' });
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByText(/Goes on the report itself/)).toBeTruthy();
+
+    sendFeedback.mockResolvedValue({ posted: true, target: 'issue', on: FIXED.url });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your feedback' }), { target: { value: 'Still broken.' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }));
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(167, 'tok', 'issue', 'Still broken.'));
+  });
+
+  it("shows the server's refusal and keeps the words so they are not retyped", async () => {
+    fetchResolution.mockResolvedValue(WITH_FEEDBACK);
+    sendFeedback.mockRejectedValue(new Error('GitHub refused the comment (403): Resource not accessible by integration'));
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const box = await screen.findByRole('textbox', { name: 'Your feedback' });
+    fireEvent.change(box, { target: { value: 'Try again.' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Resource not accessible'));
+    expect((box as HTMLTextAreaElement).value).toBe('Try again.');
+  });
+});
