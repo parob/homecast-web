@@ -680,10 +680,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // accessory, and the deal badge only ever appears on the collapsed tile — so
   // without this the expanded panel offered no way to prices but a right-click.
   if (canShowPrices && accessory) {
-    expandedActions.push({ key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => openPriceHistory(accessory) });
+    expandedActions.push({ key: 'prices', icon: 'prices', label: 'Prices', ariaLabel: 'Price & Deals', onClick: () => openPriceHistory(accessory) });
   }
   if (effectiveOnEdit) {
-    expandedActions.push({ key: 'edit', icon: 'edit', label: editLabel || 'Edit', onClick: effectiveOnEdit });
+    expandedActions.push({ key: 'edit', icon: 'edit', label: 'Edit', ariaLabel: editLabel, onClick: effectiveOnEdit });
   }
   if (onShare) {
     expandedActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
@@ -696,24 +696,21 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // edit badge uses, so the pinned/full/pinnable wording cannot drift between
   // the two places that offer the same job. It answers null when pinning is not
   // on offer at all (no tab bar), which is the gate.
-  // Next to Pin, which is where the issue asked for it. Ahead of it rather
-  // than after, because Pin is about the tab bar and this is about the tile
-  // you are looking at.
-  if (canResize && nextSize) {
-    expandedActions.push({
-      key: 'size',
-      icon: 'size',
-      // The label names where you are and where one tap goes, because a
-      // cycling control that only says "Size" gives no way to predict it.
-      label: `Size: ${WIDGET_SIZE_LABELS[size]} — tap for ${WIDGET_SIZE_LABELS[nextSize]}`,
-      onClick: () => onSizeChange?.(nextSize),
-    });
-  }
+  // Size is deliberately NOT here. It was, and by the time #197 had also put
+  // the same cycle on Edit Layout's badge beside Hide and Pin, the panel was
+  // the third route to one setting — reported as redundant in
+  // homecast-cloud#162. `nextSize` stays because `sizeEditAction` above is
+  // that badge, driving the identical cycle, and the desktop context menu
+  // below still lists all three sizes with the current one ticked. One route
+  // per platform, which is the rule that matters.
   if (pinAction && !pinAction.full) {
     expandedActions.push({
       key: 'pin',
       icon: pinAction.pinned ? 'unpin' : 'pin',
-      label: pinAction.label,
+      // `Pin`/`Unpin` is the word Edit Layout's badge uses for the same job;
+      // `pinAction.label` is the phrasing that says which bar it means.
+      label: pinAction.pinned ? 'Unpin' : 'Pin',
+      ariaLabel: pinAction.label,
       onClick: pinAction.toggle,
     });
   }
@@ -732,7 +729,8 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     expandedActions.push({
       key: 'delete',
       icon: 'delete',
-      label: effectiveRemoveLabel,
+      label: 'Delete',
+      ariaLabel: effectiveRemoveLabel,
       onClick: effectiveOnRemove,
     });
   }
