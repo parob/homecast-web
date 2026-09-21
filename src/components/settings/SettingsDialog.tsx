@@ -36,6 +36,7 @@ import {
   visibleHomeSettingsSections,
   type HomeSettingsSectionId,
 } from '@/lib/home-settings-sections';
+import { isCloudManagedHome } from '@/lib/camera-snapshot';
 import { Input } from '@/components/ui/input';
 import { RelayInfoCard } from './RelayInfoCard';
 import { getCloud } from '@/lib/cloud';
@@ -345,15 +346,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return items;
   }, [developerMode, isInMacApp, isInMobileApp, isRelayCapable, launchAtLoginSupported, showSmartDeals]);
 
-  // Which sub-sections a home offers, for both the sidebar's third level and
-  // the mobile row list — one source so the two can't disagree.
+  // Matched case-insensitively: home ids reach us from sources that disagree on
+  // case (the relay and dashboard cache use uppercase, the cloud lowercase).
+  // Resolving to nothing is a real state — a cloud-relay removal shrinks the
+  // list under us — and falls back to the homes list rather than a blank pane.
+  const selectedHome = selectedHomeId
+    ? props.homes.find(h => h.id.toUpperCase() === selectedHomeId.toUpperCase()) ?? null
+    : null;
+
+  // Which sub-sections the open home offers, for both the sidebar's third
+  // level and the mobile row list — one source so the two can't disagree.
+  // Per home, not per dialog: Cameras exists only for a cloud-managed home,
+  // and the third level only ever renders for the one that is open.
+  const selectedHomeCloudManaged = isCloudManagedHome(selectedHome, props.accountType);
   const homeSections = useMemo(
     () => visibleHomeSettingsSections({
       isCommunity,
       developerMode,
       mqttBridgeAvailable: isMQTTAvailable(),
+      cloudManaged: selectedHomeCloudManaged,
     }),
-    [developerMode],
+    [developerMode, selectedHomeCloudManaged],
   );
 
   // Clamp rather than reset: if developer mode goes off while the MQTT page is
@@ -382,14 +395,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
     return groups;
   }, [menuItems]);
-
-  // Matched case-insensitively: home ids reach us from sources that disagree on
-  // case (the relay and dashboard cache use uppercase, the cloud lowercase).
-  // Resolving to nothing is a real state — a cloud-relay removal shrinks the
-  // list under us — and falls back to the homes list rather than a blank pane.
-  const selectedHome = selectedHomeId
-    ? props.homes.find(h => h.id.toUpperCase() === selectedHomeId.toUpperCase()) ?? null
-    : null;
 
   const openExternalUrl = (url: string) => (e: React.MouseEvent) => {
     const w = window as any;

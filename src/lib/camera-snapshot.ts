@@ -12,6 +12,28 @@
 
 import type { HomeKitAccessory } from '@/lib/graphql/types';
 
+/**
+ * Is this home served by a relay Homecast operates?
+ *
+ * Cameras exist only there: the engine window they are captured from is
+ * opened on a cloud-managed relay and on no other Mac, and the cloud refuses
+ * camera requests for any other home. So the Cameras settings page — the one
+ * place the feature is configured — is offered for these homes and no others.
+ *
+ * Two sources, because the cloud sets `isCloudManaged` only on homes the
+ * account is a *member* of: the customer's view. The managed relay's own
+ * account owns those same homes and sees no flag, so it is recognised by
+ * what it is instead. A `cloud` account is deliberately not enough — that is
+ * a plan, and a plan holder can still run a self-hosted relay beside the
+ * managed one.
+ */
+export function isCloudManagedHome(
+  home: { isCloudManaged?: boolean } | null | undefined,
+  accountType: string | null | undefined,
+): boolean {
+  return home?.isCloudManaged === true || accountType === 'managed';
+}
+
 /** How often an expanded tile refreshes its still. */
 export const SNAPSHOT_REFRESH_MS = 10_000;
 
@@ -151,7 +173,7 @@ export function describeCameraFailure(failure: CameraFailure): string {
     case 'CAMERA_CAPTURE_UNAVAILABLE':
       // Build 70 used SCREEN_RECORDING_DENIED for a failed own-window capture.
       // Neither error proves that macOS permission is missing.
-      return 'Camera capture is unavailable. Restart Homecast on the relay Mac, then try again.';
+      return 'The Cloud Relay could not capture its camera window. Try again in a moment.';
     case 'CAMERA_UNAVAILABLE':
       return 'Camera images need the Homecast cloud relay running on a Mac.';
     case 'CAMERA_NOT_SUPPORTED':

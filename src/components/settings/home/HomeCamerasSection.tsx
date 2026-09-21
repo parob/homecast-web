@@ -22,8 +22,13 @@ interface Props {
 }
 
 /**
- * What this home's relay can capture, and the owner's opt-in for camera
+ * What this home's Cloud Relay can capture, and the owner's opt-in for camera
  * images. Capturing the app's own window requires no Screen Recording grant.
+ *
+ * Offered for cloud-managed homes only (`visibleHomeSettingsSections`): the
+ * engine window the images come from is opened on a relay Homecast operates
+ * and on no other Mac, and the cloud refuses camera requests for every other
+ * home. A self-hosted relay has nothing here to switch on.
  */
 export function HomeCamerasSection({ home, isAdmin }: Props) {
   const serving = useHomeServing(home.id, 'cloud');
@@ -82,10 +87,10 @@ export function HomeCamerasSection({ home, isAdmin }: Props) {
         <Camera className="mt-0.5 h-5 w-5 text-muted-foreground" />
         <div className="space-y-1">
           <p className="text-sm">
-            View snapshots from your HomeKit cameras. Your relay Mac needs to stay on and connected.
+            Stills and live view from your HomeKit cameras, captured by your Cloud Relay.
           </p>
           <p className="text-sm text-muted-foreground">
-            Homecast captures its own camera window. Screen Recording permission is not required for camera images.
+            Only a Cloud Relay can capture cameras. Homecast captures its own camera window; Screen Recording permission is not required.
           </p>
           <p className="text-sm text-muted-foreground">
             This device saves the last image and its original timestamp for each camera, so it remains visible while refreshing or if the relay is offline.
@@ -139,7 +144,7 @@ export function HomeCamerasSection({ home, isAdmin }: Props) {
         {caps && !captureAvailable && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Restart Homecast on the relay Mac, then check camera access again.
+              The Cloud Relay could not capture its camera window. Check again in a moment.
             </p>
           </div>
         )}

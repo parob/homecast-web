@@ -13,15 +13,19 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useAndroidPush } from '@/hooks/useAndroidPush';
 import { useApplePush } from '@/hooks/useApplePush';
+import { useCameraEngine } from '@/hooks/useCameraEngine';
 
-const PushRegistrar = () => {
+const PushRegistrar = ({ accountType }: { accountType: string | undefined }) => {
   useApplePush();
   useAndroidPush();
+  // Not push, but the same shape: a per-device verdict the native app needs
+  // once the account is known, from wherever the app happens to be routed.
+  useCameraEngine(accountType);
   return null;
 };
 
 export const PushRegistration = () => {
   const { user } = useAuth();
   if (!user) return null;
-  return <PushRegistrar />;
+  return <PushRegistrar accountType={user.accountType} />;
 };

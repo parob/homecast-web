@@ -37,6 +37,6 @@ describe('home camera capture status', () => {
     request.mockResolvedValue({ supported: true, engineWindow: true, captureAvailable: false, screenRecording: 'granted' });
     render(<HomeCamerasSection home={home} isAdmin />);
     await screen.findByText('Unavailable');
-    expect(screen.getByText(/Restart Homecast/)).toBeTruthy();
+    expect(screen.getByText(/could not capture/)).toBeTruthy();
   });
 });
