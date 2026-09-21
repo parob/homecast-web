@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
-  fetchResolution, offersResolution, shortPr, type Resolution,
+  fetchResolution, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, offersResolution,
+  planStatus, shortPr, type MergePlanEntry, type Resolution,
 } from '../resolution';
 
 /**
@@ -34,6 +35,39 @@ describe('offersResolution', () => {
 describe('shortPr', () => {
   it('reads as repo#number', () => {
     expect(shortPr({ repo: 'parob/homecast-web', number: 208, url: '' })).toBe('homecast-web#208');
+  });
+});
+
+const planEntry = (repo: string, number: number, over: Partial<MergePlanEntry>): MergePlanEntry => ({
+  repo, number, url: `https://github.com/${repo}/pull/${number}`, title: null, state: 'open',
+  merged: false, mergeSha: null, mergeable: true, checks: 'success', action: 'merge', reason: null, ...over,
+});
+
+describe('the merge plan, read for the button', () => {
+  const cloud = planEntry('parob/homecast-cloud', 170, {});
+  const web = planEntry('parob/homecast-web', 214, { action: 'wait_deploy', reason: 'homecast-cloud#170 is merged but not serving yet' });
+
+  it('names the one PR a tap merges, counts them when there are more, and is null with nothing to merge', () => {
+    expect(mergeLabel([cloud, web])).toBe('Merge homecast-cloud#170');
+    expect(mergeLabel([cloud, { ...web, action: 'merge' }])).toBe('Merge 2 pull requests');
+    expect(mergeLabel([{ ...cloud, action: 'merged', merged: true }, web])).toBeNull();
+    expect(mergeLabel([])).toBeNull();
+    expect(mergesNow([cloud, web]).map((e) => e.number)).toEqual([170]);
+  });
+
+  it('knows whether anything is still to do', () => {
+    expect(mergeOutstanding([{ ...cloud, action: 'merged', merged: true }, web])).toBe(true);
+    expect(mergeOutstanding([{ ...cloud, action: 'merged', merged: true }, { ...web, action: 'merged', merged: true }])).toBe(false);
+  });
+
+  it('puts each place in the plan into a word or two', () => {
+    expect(planStatus(cloud)).toBe('Ready');
+    expect(planStatus(web)).toBe('Waits for deploy');
+    expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: true })).toBe('Merged · serving');
+    expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: false })).toBe('Merged · deploying');
+    expect(planStatus({ ...web, action: 'merged', merged: true })).toBe('Merged');
+    expect(planStatus({ ...web, action: 'after', reason: 'after homecast-web#214' })).toBe('after homecast-web#214');
+    expect(planStatus({ ...web, action: 'blocked', reason: 'merge conflict' })).toBe('merge conflict');
   });
 });
 
@@ -77,5 +111,38 @@ describe('fetchResolution', () => {
   it('fails plainly on anything else', async () => {
     answer(502);
     await expect(fetchResolution(167, 'tok')).rejects.toThrow('Could not load');
+  });
+});
+
+describe('mergeResolution', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const answer = (status: number, body?: unknown) => {
+    const fetchMock = vi.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('posts to the merge endpoint with the token and returns the plan the server answers with', async () => {
+    const state = { configured: true, servingSha: '4ae7930', merged: [], plan: [] };
+    const fetchMock = answer(200, state);
+    await expect(mergeResolution(169, 'tok')).resolves.toEqual(state);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/169/resolution/merge',
+      { method: 'POST', headers: { authorization: 'Bearer tok' } },
+    );
+  });
+
+  it('says merging is not set up on a 409, and relays the server\'s reason otherwise', async () => {
+    answer(409, { error: 'Merging is not set up on this server.' });
+    await expect(mergeResolution(169, 'tok')).rejects.toThrow("isn't set up");
+    answer(502, { error: 'Could not reach GitHub to merge.' });
+    await expect(mergeResolution(169, 'tok')).rejects.toThrow('Could not reach GitHub');
+    answer(403);
+    await expect(mergeResolution(169, 'tok')).rejects.toThrow('admin');
   });
 });
