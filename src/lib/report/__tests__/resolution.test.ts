@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
-  fetchResolution, fixStatus, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, offersResolution,
+  conflictsIn, fetchResolution, fixStatus, mergeLabel, mergeOutstanding, mergeResolution, mergesNow,
+  nudgeConflicts, offersResolution,
   planStatus, shortPr, type MergePlanEntry, type Resolution,
 } from '../resolution';
 
@@ -39,6 +40,46 @@ describe('fixStatus — the word on a row', () => {
     expect(fixStatus(row(['bug', 'claude-attempted'], 'closed'))).toBe('Fixed');
     expect(fixStatus(row(['bug', 'claude-attempted']))).toBeNull();
     expect(fixStatus(row([]))).toBeNull();
+  });
+});
+
+describe('conflictsIn — the one block a tap can act on', () => {
+  const entry = (over: Partial<MergePlanEntry>): MergePlanEntry => ({
+    repo: 'parob/homecast-web', number: 214, url: 'https://github.com/parob/homecast-web/pull/214',
+    title: null, state: 'open', merged: false, mergeSha: null, mergeable: true, checks: 'success',
+    action: 'merge', reason: null, ...over,
+  });
+
+  it('picks out only the conflicts, not other blocks', () => {
+    const plan = [
+      entry({ action: 'blocked', reason: 'merge conflict' }),
+      entry({ number: 215, action: 'blocked', reason: 'checks failing' }),
+      entry({ number: 216, action: 'after', reason: 'after homecast-cloud#170' }),
+    ];
+    expect(conflictsIn(plan).map((e) => e.number)).toEqual([214]);
+  });
+});
+
+describe('nudgeConflicts', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('posts to the nudge endpoint and hands back the plan with the ask', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      configured: true, servingSha: 'x', plan: [],
+      nudge: { asked: true, conflicts: ['https://github.com/parob/homecast-web/pull/214'], on: 'https://github.com/parob/homecast-cloud/pull/170', comment: 'https://github.com/parob/homecast-cloud/pull/170#issuecomment-1' },
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const state = await nudgeConflicts(169, 'tok');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/169/resolution/nudge',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(state.nudge?.asked).toBe(true);
+  });
+
+  it('says so when merging is not set up', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 409 })));
+    await expect(nudgeConflicts(169, 'tok')).rejects.toThrow("Merging isn't set up on this server.");
   });
 });
 

@@ -62,6 +62,26 @@ export interface MergeState {
   error?: string;
   /** After a merge request: what that request merged. */
   merged?: { url: string; sha: string | null }[];
+  /**
+   * After a merge or nudge request that found a conflict: the ask for it to
+   * be fixed, posted (once) on the primary pull request.
+   */
+  nudge?: ConflictNudge;
+}
+
+export interface ConflictNudge {
+  /** A comment was posted by this request. */
+  asked: boolean;
+  /** The conflicting PRs' URLs. Empty when nothing conflicts. */
+  conflicts: string[];
+  /** The PR the comment is (or already was) on. */
+  on?: string;
+  /** The comment's URL — this request's, or the earlier one that already asked. */
+  comment?: string;
+  /** The same conflict had already been asked about; nothing was posted. */
+  alreadyAsked?: boolean;
+  /** Why nothing could be posted. */
+  error?: string;
 }
 
 export interface Resolution {
@@ -96,6 +116,11 @@ export interface Resolution {
 /** The PRs one tap of Merge would merge right now, in order. */
 export function mergesNow(plan: MergePlanEntry[]): MergePlanEntry[] {
   return plan.filter((entry) => entry.action === 'merge');
+}
+
+/** The PRs that cannot merge because of a conflict — the one block a tap can act on. */
+export function conflictsIn(plan: MergePlanEntry[]): MergePlanEntry[] {
+  return plan.filter((entry) => entry.action === 'blocked' && entry.reason === 'merge conflict');
 }
 
 /** Whether the plan has anything left that is not merged. */
@@ -219,3 +244,35 @@ export async function mergeResolution(
   }
   return (await response.json()) as MergeState;
 }
+
+/**
+ * Ask for the resolution's merge conflicts to be fixed.
+ *
+ * One comment on the primary pull request naming every conflicting one —
+ * where an agent is woken straight away — and only once per conflicting
+ * head, so a second tap is answered with the comment that already exists.
+ * The answer is the plan plus what was asked.
+ */
+export async function nudgeConflicts(
+  issueNumber: number,
+  token: string,
+): Promise<MergeState> {
+  const response = await fetch(
+    `${config.apiUrl}/rest/issue-report/${issueNumber}/resolution/nudge`,
+    { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+  );
+
+  if (!response.ok) {
+    if (response.status === 403) throw new Error('Reporting is limited to admin accounts.');
+    if (response.status === 409) throw new Error("Merging isn't set up on this server.");
+    let detail = '';
+    try {
+      detail = ((await response.json()) as { error?: string }).error ?? '';
+    } catch {
+      // A body that is not JSON says nothing more than the status did.
+    }
+    throw new Error(detail || 'Could not ask right now.');
+  }
+  return (await response.json()) as MergeState;
+}
+
