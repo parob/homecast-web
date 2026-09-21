@@ -994,7 +994,7 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group, accessories) });
   }
   if (priceMember) {
-    groupActions.push({ key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => openPriceHistory(priceMember) });
+    groupActions.push({ key: 'prices', icon: 'prices', label: 'Prices', ariaLabel: 'Price & Deals', onClick: () => openPriceHistory(priceMember) });
   }
   if (onShare) {
     groupActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
@@ -1005,7 +1005,8 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
     groupActions.push({
       key: 'pin',
       icon: groupPinAction.pinned ? 'unpin' : 'pin',
-      label: groupPinAction.label,
+      label: groupPinAction.pinned ? 'Unpin' : 'Pin',
+      ariaLabel: groupPinAction.label,
       onClick: groupPinAction.toggle,
     });
   }

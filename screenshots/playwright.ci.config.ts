@@ -9,6 +9,9 @@ export default defineConfig({
   ...base,
   testMatch: [
     'expanded-overlay.spec.ts',
+    // The panel's action cluster: Size removed, and every remaining action
+    // readable as a word rather than a glyph. homecast-cloud#162.
+    'expanded-actions.spec.ts',
     'camera-live.spec.ts',
     'camera-viewer-fit.spec.ts',
     'camera-cache-reload.spec.ts',
