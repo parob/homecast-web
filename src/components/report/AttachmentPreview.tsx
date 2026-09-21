@@ -15,6 +15,7 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
+import { EdgeSampleSlivers } from '@/components/shared/EdgeSampleSlivers';
 import type { CapturedMedia } from '@/lib/report/capture';
 
 interface AttachmentPreviewProps {
@@ -44,6 +45,12 @@ export function AttachmentPreview({ media, onClose }: AttachmentPreviewProps) {
       aria-modal="true"
       aria-label={media.filename}
     >
+      {/* iOS Safari's bar bands, matched to this backdrop (black at 90%), and
+          the canvas behind them — see EdgeSampleSlivers. */}
+      {/* First child, no z-index: above this box's own black backdrop, below
+          the picture and the close button — paint order in one stacking
+          context is DOM order. */}
+      <EdgeSampleSlivers dim={0.9} />
       <button
         type="button"
         onClick={onClose}
