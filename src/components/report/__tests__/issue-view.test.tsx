@@ -73,6 +73,7 @@ const WITH_PLAN: Resolution = {
 
 const fetchResolution = vi.fn();
 const mergeResolution = vi.fn();
+const nudgeConflicts = vi.fn();
 const openExternalUrl = vi.fn();
 
 vi.mock('@/lib/report/issues', async (importActual) => ({
@@ -84,6 +85,7 @@ vi.mock('@/lib/report/resolution', async (importActual) => ({
   ...(await importActual<typeof import('@/lib/report/resolution')>()),
   fetchResolution: (...args: unknown[]) => fetchResolution(...args),
   mergeResolution: (...args: unknown[]) => mergeResolution(...args),
+  nudgeConflicts: (...args: unknown[]) => nudgeConflicts(...args),
 }));
 
 vi.mock('@/lib/open-url', () => ({
@@ -94,6 +96,7 @@ beforeEach(() => {
   localStorage.setItem('homecast-token', 'tok');
   fetchResolution.mockReset();
   mergeResolution.mockReset();
+  nudgeConflicts.mockReset();
   openExternalUrl.mockReset();
 });
 
@@ -318,3 +321,88 @@ describe('merging from the issue view', () => {
     expect(screen.queryByRole('button', { name: /^Merge / })).toBeNull();
   });
 });
+
+
+/**
+ * The conflict nudge.
+ *
+ * A conflict is the one block a tap can do something about: the ask goes as
+ * one comment on the primary PR, where an agent is woken straight away. The
+ * view offers it as a button, shows what came of it with the comment's
+ * address, and shows the same when a Merge tap ran into the conflict and the
+ * server asked on its own.
+ */
+describe('asking for a conflict to be fixed', () => {
+  const CONFLICTED: Resolution = {
+    ...WITH_PLAN,
+    merge: {
+      configured: true, servingSha: '4ae7930',
+      plan: [
+        entry(CLOUD_PR, { action: 'merged', merged: true, serving: true }),
+        entry(WEB_PR, { action: 'blocked', reason: 'merge conflict', mergeable: false }),
+      ],
+    },
+  };
+  const ASKED = {
+    asked: true, conflicts: [WEB_PR.url], on: CLOUD_PR.url,
+    comment: 'https://github.com/parob/homecast-cloud/pull/170#issuecomment-99',
+  };
+
+  it('offers the ask when a PR conflicts, posts it, and shows where the comment went', async () => {
+    fetchResolution.mockResolvedValue(CONFLICTED);
+    nudgeConflicts.mockResolvedValue({ ...CONFLICTED.merge, nudge: ASKED });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const ask = await screen.findByRole('button', { name: 'Ask for homecast-web#214 to be fixed' });
+    expect(screen.queryByRole('button', { name: /^Merge / })).toBeNull();
+    fireEvent.click(ask);
+
+    await screen.findByText(/Asked on homecast-cloud#170 for the conflict to be fixed/);
+    expect(nudgeConflicts).toHaveBeenCalledWith(167, 'tok');
+    expect(screen.queryByRole('button', { name: /Ask for/ })).toBeNull();
+    const comment = screen.getByRole('button', { name: `Open The comment on GitHub — ${ASKED.comment}` });
+    expect(comment.textContent).toContain(ASKED.comment);
+  });
+
+  it('says it had already been asked, without a second comment', async () => {
+    fetchResolution.mockResolvedValue(CONFLICTED);
+    nudgeConflicts.mockResolvedValue({ ...CONFLICTED.merge, nudge: { ...ASKED, asked: false, alreadyAsked: true } });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Ask for homecast-web#214/ }));
+    await screen.findByText(/Already asked on homecast-cloud#170/);
+  });
+
+  it('shows the ask a Merge tap set in motion when it ran into the conflict', async () => {
+    const before: Resolution = {
+      ...WITH_PLAN,
+      merge: { configured: true, servingSha: '4ae7930', plan: [
+        entry(CLOUD_PR, { action: 'merge' }),
+        entry(WEB_PR, { action: 'blocked', reason: 'merge conflict', mergeable: false }),
+      ] },
+    };
+    fetchResolution.mockResolvedValue(before);
+    mergeResolution.mockResolvedValue({
+      configured: true, servingSha: '4ae7930', merged: [{ url: CLOUD_PR.url, sha: 'abc' }],
+      plan: [
+        entry(CLOUD_PR, { action: 'merged', merged: true, serving: false }),
+        entry(WEB_PR, { action: 'blocked', reason: 'merge conflict', mergeable: false }),
+      ],
+      nudge: ASKED,
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Merge homecast-cloud#170' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm merge' }));
+
+    await screen.findByText('Merged homecast-cloud#170.');
+    expect(screen.getByText(/Asked on homecast-cloud#170 for the conflict to be fixed/)).toBeTruthy();
+  });
+
+  it('shows the refusal when the comment could not be posted', async () => {
+    fetchResolution.mockResolvedValue(CONFLICTED);
+    nudgeConflicts.mockResolvedValue({ ...CONFLICTED.merge, nudge: { asked: false, conflicts: [WEB_PR.url], on: CLOUD_PR.url, error: 'GitHub refused the comment (403): Resource not accessible' } });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Ask for homecast-web#214/ }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('403'));
+  });
+});
+

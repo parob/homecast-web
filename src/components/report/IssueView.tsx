@@ -28,15 +28,18 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-  CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, RefreshCw,
+  CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
+  RefreshCw,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { openExternalUrl } from '@/lib/open-url';
 import { relativeAge, type ReportedIssue } from '@/lib/report/issues';
 import {
-  fetchResolution, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, planStatus, shortPr,
-  type MergePlanEntry, type MergeState, type Resolution, type ResolutionImage, type ResolutionPr,
+  conflictsIn, fetchResolution, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts,
+  planStatus, shortPr,
+  type ConflictNudge, type MergePlanEntry, type MergeState, type Resolution, type ResolutionImage,
+  type ResolutionPr,
 } from '@/lib/report/resolution';
 
 interface IssueViewProps {
@@ -319,6 +322,13 @@ interface MergeControlsProps {
  * is, because "Merge" on its own does not say what ships. A plan with nothing
  * mergeable now says why and offers to look again — the usual reason is a
  * server still rolling out, which is a matter of minutes.
+ *
+ * A merge conflict is the one block a tap can do something about. The server
+ * posts the ask — one comment on the primary pull request, where an agent is
+ * woken straight away — when a Merge tap runs into one; when a conflict is all
+ * that is left, the ask is offered as its own button. Either way what was
+ * posted is shown, with the comment's address, or that it had already been
+ * asked.
  */
 function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeControlsProps) {
   const [confirming, setConfirming] = useState(false);
@@ -326,6 +336,7 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
   const [mergeError, setMergeError] = useState<string | null>(null);
   // What the last tap merged, kept until the next load so the reader sees it.
   const [justMerged, setJustMerged] = useState<string[]>([]);
+  const [asking, setAsking] = useState(false);
 
   if (!merge.configured) {
     return (
@@ -342,6 +353,25 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
   // The first thing not merged and not mergeable now is what everyone is
   // waiting on; its reason is the sentence to show.
   const waitingOn = plan.find((entry) => entry.action !== 'merged' && entry.action !== 'merge');
+
+  const conflicts = conflictsIn(plan);
+
+  const ask = async () => {
+    const token = localStorage.getItem('homecast-token');
+    if (!token) {
+      setMergeError('You are signed out.');
+      return;
+    }
+    setAsking(true);
+    setMergeError(null);
+    try {
+      onMerged(await nudgeConflicts(issueNumber, token));
+    } catch (askFailure) {
+      setMergeError(askFailure instanceof Error ? askFailure.message : 'Could not ask.');
+    } finally {
+      setAsking(false);
+    }
+  };
 
   const confirm = async () => {
     const token = localStorage.getItem('homecast-token');
@@ -426,6 +456,32 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
         </p>
       )}
 
+      {merge.nudge && <NudgeOutcome nudge={merge.nudge} />}
+
+      {conflicts.length > 0 && !merge.nudge?.asked && !merge.nudge?.alreadyAsked && (
+        // The ask, as its own action: a comment on the primary PR names the
+        // conflicting one and is picked up straight away. Offered whether or
+        // not something else can still merge — the conflict is not going to
+        // fix itself while the rest ships.
+        <Button
+          type="button" variant="outline" className="w-full"
+          disabled={asking || merging}
+          onClick={() => void ask()}
+        >
+          {asking ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Asking…
+            </>
+          ) : (
+            <>
+              <MessageSquareWarning className="mr-2 h-4 w-4" />
+              Ask for {conflicts.map(shortPr).join(', ')} to be fixed
+            </>
+          )}
+        </Button>
+      )}
+
       {!label && !outstanding && plan.length > 0 && (
         <p className="text-sm text-muted-foreground">All merged.</p>
       )}
@@ -442,6 +498,34 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
       )}
     </section>
   );
+}
+
+/** What an ask came to: posted, already posted, or refused — with the comment's address. */
+function NudgeOutcome({ nudge }: { nudge: ConflictNudge }) {
+  if (nudge.error) {
+    return <p role="alert" className="text-sm text-destructive">{nudge.error}</p>;
+  }
+  if (!nudge.asked && !nudge.alreadyAsked) return null;
+  const where = nudge.on ? shortPr(prFromUrl(nudge.on)) : 'the pull request';
+  return (
+    <div className="space-y-1 text-sm">
+      <p>
+        {nudge.asked ? 'Asked' : 'Already asked'} on {where} for the conflict to be fixed
+        {nudge.asked ? ' — it gets picked up straight away.' : '.'}
+      </p>
+      {nudge.comment && (
+        <ExternalRow label="The comment" url={nudge.comment} />
+      )}
+    </div>
+  );
+}
+
+/** `homecast-web#208` from a PR or comment URL — enough to name it. */
+function prFromUrl(url: string): ResolutionPr {
+  const match = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url);
+  return match
+    ? { repo: match[1], number: Number(match[2]), url }
+    : { repo: url, number: 0, url };
 }
 
 /**
