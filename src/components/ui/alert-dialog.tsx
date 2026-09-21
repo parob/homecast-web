@@ -3,6 +3,7 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { EdgeSampleSlivers } from "@/components/shared/EdgeSampleSlivers";
 
 const AlertDialog = AlertDialogPrimitive.Root;
 
@@ -32,6 +33,11 @@ const AlertDialogContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPortal>
     <AlertDialogOverlay />
+    {/* iOS Safari's bar bands, matched to the overlay above (black at 80%),
+        and the canvas behind them — see EdgeSampleSlivers. Without it both
+        bands keep the undimmed wallpaper colour while the page goes dark
+        (parob/homecast-cloud#165). */}
+    <EdgeSampleSlivers dim={0.8} zIndex={10050} />
     <AlertDialogPrimitive.Content
       ref={ref}
       aria-describedby={undefined}

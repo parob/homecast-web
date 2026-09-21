@@ -29,6 +29,7 @@ import type { HomeKitAccessory } from '@/native/homekit-bridge';
 import { cn } from '@/lib/utils';
 import { resolveWidgetTint, STANDARD_TINT } from '@/lib/widget-tint';
 import { overlayScrim } from '@/lib/overlay-scrim';
+import { EdgeSampleSlivers } from '@/components/shared/EdgeSampleSlivers';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 
 // ============================================================================
@@ -171,7 +172,17 @@ function SummaryItem({ icon, label, tooltip, variant = 'default', isDarkBackgrou
             it as outside and closes. Portalled so the summary row's own
             stacking cannot trap it. */}
         {appearance === 'inline' && open && createPortal(
-          <div aria-hidden className={cn('fixed-full-screen z-[10004]', overlayScrim(isDarkBackground))} />,
+          <>
+            <div aria-hidden className={cn('fixed-full-screen z-[10004]', overlayScrim(isDarkBackground))} />
+            {/* The scrim's half of the deal — every full-viewport scrim owes
+                the browser's own bars an answer, and this one used to skip it.
+                iOS 26 Safari then filled both bands from the undimmed canvas
+                and drew two lit bars around a dimmed page
+                (parob/homecast-cloud#165). Same dim as `overlayScrim` above;
+                same z as the scrim, after it in tree order, so it paints over
+                the scrim and under the panel. See EdgeSampleSlivers. */}
+            <EdgeSampleSlivers dim={isDarkBackground ? 0.4 : 0.2} zIndex={10004} />
+          </>,
           document.body,
         )}
         <TooltipContent
