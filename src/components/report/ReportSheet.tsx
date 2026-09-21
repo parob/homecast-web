@@ -28,13 +28,14 @@
  * destination, chosen deliberately, for the far commoner case of the same fault
  * described in different words.
  *
- * That choice is made HERE, on the compose tab, and not on Previous. Where the
+ * That choice is made HERE, on the compose tab, and not on Existing. Where the
  * report goes is a property of the report being written, so it belongs beside
  * the field you are writing it in — the same slot, empty or filled, all the way
- * through. It used to live as a small plus on every row of Previous, which meant
+ * through. It used to live as a small plus on every row of Existing, which meant
  * the one place someone could learn the option existed was a tab they had no
  * reason to open, and the ordinary way to reach it was to abandon what they were
- * typing. Previous is a reference again: what is known, and what is fixed.
+ * typing. Existing is a reference again: what is known, and what is fixed — and
+ * a row there opens the issue in the app, report and fix on one screen.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -61,7 +62,7 @@ import type { ReportedIssue } from '@/lib/report/issues';
 import { AttachmentPreview } from './AttachmentPreview';
 import { RecordingOverlay } from './RecordingOverlay';
 import { ReportedIssues } from './ReportedIssues';
-import { ResolutionView } from './ResolutionView';
+import { IssueView } from './IssueView';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 /**
@@ -153,8 +154,8 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
   // than letting someone press a dead button over and over.
   const [recordingRefused, setRecordingRefused] = useState(false);
   const [preview, setPreview] = useState<CapturedMedia | null>(null);
-  // The issue this report is being added to, if the reporter picked one in
-  // Previous. Null is the ordinary case: file a new one.
+  // The issue this report is being added to, if the reporter picked one.
+  // Null is the ordinary case: file a new one.
   const [addingTo, setAddingTo] = useState<ReportedIssue | null>(null);
   // Choosing that issue, which happens on this tab. It replaces the form rather
   // than expanding under it: the list is up to 20 rows and needs the sheet's
@@ -163,9 +164,9 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
   // same state either way, still here when the picker closes.
   const [picking, setPicking] = useState(false);
   const [tab, setTab] = useState('report');
-  // The issue whose resolution is open on the Previous tab. It replaces the
-  // list the same way the picker replaces the form: one scroller, a Back
-  // button, nothing stacked.
+  // The issue open on the Existing tab. It replaces the list the same way
+  // the picker replaces the form: one scroller, a Back button, nothing
+  // stacked.
   const [viewing, setViewing] = useState<ReportedIssue | null>(null);
 
   const recordingRef = useRef<ActiveRecording | null>(null);
@@ -380,7 +381,7 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
           aria-describedby={undefined}
         >
           <DialogHeader className="shrink-0">
-            <DialogTitle>Feedback</DialogTitle>
+            <DialogTitle>Issues</DialogTitle>
           </DialogHeader>
 
           <Tabs
@@ -389,10 +390,10 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
             className="flex min-h-0 min-w-0 flex-1 flex-col"
           >
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="report">New</TabsTrigger>
+              <TabsTrigger value="report">Create new</TabsTrigger>
               {/* Often the answer someone actually wants: it is already known,
                   and possibly already fixed. */}
-              <TabsTrigger value="known">Previous</TabsTrigger>
+              <TabsTrigger value="known">Existing</TabsTrigger>
             </TabsList>
 
             <TabsContent
@@ -401,14 +402,14 @@ export function ReportSheet({ open, onOpenChange, initialScreenshot }: ReportShe
             >
               {/* No `onAddTo`: a reference, which is all this tab claims to be.
                   Choosing where a report goes happens on the tab where the
-                  report is written. What it does offer is the fix, where one
-                  exists — the pictures and the pull requests — since "has it
+                  report is written. A row opens the issue here — what was
+                  reported and what fixes it, on one screen — since "has it
                   been fixed, and does the fix look right" is what someone on
                   this tab is usually asking. */}
               {viewing ? (
-                <ResolutionView issue={viewing} onBack={() => setViewing(null)} />
+                <IssueView issue={viewing} onBack={() => setViewing(null)} />
               ) : (
-                <ReportedIssues onShowResolution={setViewing} />
+                <ReportedIssues onOpen={setViewing} />
               )}
             </TabsContent>
 
