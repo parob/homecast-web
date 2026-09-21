@@ -1,8 +1,8 @@
-import { LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-react';
+import { LineChart, Pencil, Share2, Tag, Trash2 } from 'lucide-react';
 
 /**
  * The action row in an expanded widget panel: small labelled pills in the
- * corner — analytics, prices, edit, share, pin — rather than a full-width bar
+ * corner — analytics, prices, edit, share — rather than a full-width bar
  * or a header icon.
  *
  * A header icon competed with the widget's own control for the top-right
@@ -20,9 +20,9 @@ import { LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-reac
  * The word is one word, and the fuller phrasing survives as the accessible name
  * and the tooltip. That is not a style rule, it is the panel's arithmetic: the
  * content box is about 360px on the phone this was reported from, and "Price &
- * Deals" plus "Pin to Tab Bar" alone would eat it. The row wraps rather than
- * truncating or scrolling, so a virtual accessory carrying all six still shows
- * every word.
+ * Deals" plus "Delete Virtual Accessory" alone would eat it. The row wraps
+ * rather than truncating or scrolling, so a virtual accessory carrying all five
+ * still shows every word.
  *
  * Colour comes from `onDark`, which callers derive the way WidgetWrapper
  * does: white only when the tile is OFF over a dark wallpaper. An ON tile
@@ -31,7 +31,7 @@ import { LineChart, Pencil, Pin, PinOff, Share2, Tag, Trash2 } from 'lucide-reac
  */
 export interface ExpandedAction {
   key: string;
-  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'pin' | 'unpin' | 'delete';
+  icon: 'analytics' | 'prices' | 'edit' | 'share' | 'delete';
   /** The word on the button. One word, so a row of them fits a phone panel. */
   label: string;
   /**
@@ -47,10 +47,16 @@ export interface ExpandedAction {
 // cluster and the menu offer the same actions and should be recognisable as
 // each other. The glyphs stay beside the words for that reason: the word says
 // what the button does, the icon ties it to the same action somewhere else.
-// `pin`/`unpin` moved here when touch lost its context menus: pinning to the tab
-// bar was a menu item, and Edit Layout's badge is the only other route. The
-// expanded panel is where a person is already studying the accessory, so it is
-// where the rest of the menu's actions went too.
+// There is deliberately no `pin`/`unpin` here any more. They came here when
+// touch lost its context menus, on the argument that Edit Layout's badge was
+// then the only other route — but that badge is a route, and reaching it is one
+// hold on the tile. Reported as homecast-cloud#173: "Remove pin from the options
+// when you expand any widget ... this should only be accessible in editing mode
+// and that's enough". `EditActions`' `pinButton` keeps Pin/Unpin on the tile and
+// on a sidebar row, and `MobileTabBar` keeps the ⊗ that unpins a tab; on the
+// desktop pinning is not offered at all (`Dashboard`'s `enabled: isPhone`). The
+// scene and shortcut cards have pinned from the badge alone since the menus
+// went, so this is the panel catching up with them rather than a door closing.
 //
 // There is deliberately no `size` here any more. It cycled the tile between
 // Regular, Large and Tall, and by #197 the same cycle was on Edit Layout's
@@ -64,8 +70,6 @@ const ICONS = {
   prices: Tag,
   edit: Pencil,
   share: Share2,
-  pin: Pin,
-  unpin: PinOff,
   delete: Trash2,
 } as const;
 

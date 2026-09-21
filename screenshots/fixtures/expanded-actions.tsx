@@ -13,28 +13,31 @@ import '../../src/index.css';
  * row can be photographed and measured rather than described.
  *
  * Every action in the cluster is reached through the context that really gates
- * it — Analytics through `SharedHistoryProvider`, Pin through
- * `PinnedTabsProvider`, Edit and Delete through `VirtualAccessoryEditProvider`
- * — because the point of the fixture is the list `WidgetCard` builds, not a
- * list handed to `ExpandedActionBar` by the test. Price & Deals is the one
- * exception: its gate is an Apollo query, and a sixth pill proves nothing the
- * fifth doesn't.
+ * it — Analytics through `SharedHistoryProvider`, Edit and Delete through
+ * `VirtualAccessoryEditProvider`, and pinning through `PinnedTabsProvider`,
+ * which is switched on so that "the panel offers no Pin" is a fact about the
+ * panel rather than about a missing provider — because the point of the fixture
+ * is the list `WidgetCard` builds, not a list handed to `ExpandedActionBar` by
+ * the test. Price & Deals is the one exception: its gate is an Apollo query,
+ * and a fifth pill proves nothing the fourth doesn't.
  *
  * `?virtual=1` adds Edit and Delete, which is the widest the cluster ever gets.
  * `?sizes=1` offers the three tile sizes, which is what put a Size button in
  * the row on the screen this fixture is a picture of.
  * `?immersive=1` is the landscape camera, where the row shares its line with
  * the accessory's name and the close control rather than sitting under a hero.
- * `?pinned=1` swaps `Pin` for the wider `Unpin`, which is what the row has to
- * fit in its worst case rather than its nicest one.
+ *
+ * The `PinnedTabsProvider` stays although the panel no longer offers Pin
+ * (homecast-cloud#173): it is what used to put the pill there, so a guard that
+ * Pin is absent means something only while pinning is switched on around it.
+ * `?pinned=1` went with the pill — there is no longer a wider `Unpin` word for
+ * the row's worst case, which is now the virtual accessory's four pills.
  */
 
 const params = new URLSearchParams(location.search);
 const virtual = params.get('virtual') === '1';
 const sizes = params.get('sizes') === '1';
 const immersive = params.get('immersive') === '1';
-// `?pinned=1` is the wider of the two pin words: `Unpin`, not `Pin`.
-const alreadyPinned = params.get('pinned') === '1';
 
 const accessory: HomeKitAccessory = {
   id: 'front-door',
@@ -72,7 +75,7 @@ const virtualActions = {
 
 const pinned = {
   enabled: true,
-  isPinned: () => alreadyPinned,
+  isPinned: () => false,
   isFull: false,
   toggle: () => {},
 };

@@ -14,6 +14,8 @@ export default defineConfig({
     'expanded-actions.spec.ts',
     // What resolves a reported issue, from the Feedback sheet. homecast-cloud#169.
     'resolution-view.spec.ts',
+    // Saying something back from it, and which one place it goes. homecast-cloud#179.
+    'resolution-feedback.spec.ts',
     'camera-live.spec.ts',
     'camera-viewer-fit.spec.ts',
     'camera-cache-reload.spec.ts',
@@ -43,6 +45,7 @@ export default defineConfig({
     'phone-back-button.spec.ts',
     'native-backdrop-colour.spec.ts',
     'lock-battery-ink.spec.ts',
+    'overlay-band-colour.spec.ts',
     'heading-leading-margin.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),

@@ -62,6 +62,26 @@ export interface MergeState {
   error?: string;
   /** After a merge request: what that request merged. */
   merged?: { url: string; sha: string | null }[];
+  /**
+   * After a merge or nudge request that found a conflict: the ask for it to
+   * be fixed, posted (once) on the primary pull request.
+   */
+  nudge?: ConflictNudge;
+}
+
+export interface ConflictNudge {
+  /** A comment was posted by this request. */
+  asked: boolean;
+  /** The conflicting PRs' URLs. Empty when nothing conflicts. */
+  conflicts: string[];
+  /** The PR the comment is (or already was) on. */
+  on?: string;
+  /** The comment's URL — this request's, or the earlier one that already asked. */
+  comment?: string;
+  /** The same conflict had already been asked about; nothing was posted. */
+  alreadyAsked?: boolean;
+  /** Why nothing could be posted. */
+  error?: string;
 }
 
 export interface Resolution {
@@ -91,11 +111,68 @@ export interface Resolution {
   createdAt?: string | null;
   /** Absent on a server that predates merging. */
   merge?: MergeState;
+  /**
+   * Whether feedback can be sent from here. Its own key, not `merge`: a
+   * server that predates feedback answers `merge.configured: true` and has no
+   * feedback route, so the *absence* of this is the signal to offer no field.
+   */
+  feedback?: { configured: boolean };
+}
+
+/** Where a piece of feedback goes, and how long it waits to be read. */
+export type FeedbackTarget = 'pr' | 'issue';
+
+export interface FeedbackResult {
+  posted: boolean;
+  target: FeedbackTarget;
+  /** The pull request or issue the comment landed on. */
+  on: string;
+  /** The comment's own address. */
+  comment?: string;
+  /** The sibling pull requests the comment named as part of the same fix. */
+  named?: string[];
+  error?: string;
+}
+
+/**
+ * Where feedback on this resolution can go.
+ *
+ * The pull request is offered only while there is an open one to put it on.
+ * The server refuses `pr` otherwise rather than silently sending the words
+ * somewhere the sender did not choose, and an option that always fails is
+ * worse than no option. The issue is always there — it is the report's home.
+ */
+export function feedbackTargets(resolution: Resolution): FeedbackTarget[] {
+  if (!resolution.feedback?.configured) return [];
+  const anyOpen = (resolution.merge?.plan ?? []).some((entry) => entry.state === 'open');
+  return anyOpen ? ['pr', 'issue'] : ['issue'];
+}
+
+/**
+ * The one pull request a comment would land on: the primary while it is open,
+ * else the first open one — the same choice the server makes. Named here so
+ * the view can print where the words are going before they go.
+ */
+export function feedbackPr(resolution: Resolution): MergePlanEntry | null {
+  const open = (resolution.merge?.plan ?? []).filter((entry) => entry.state === 'open');
+  return open.find((entry) => entry.url === resolution.primary?.url) ?? open[0] ?? null;
+}
+
+/** The open pull requests that will *not* be commented on, so the view can say so. */
+export function feedbackSiblings(resolution: Resolution): MergePlanEntry[] {
+  const target = feedbackPr(resolution);
+  if (!target) return [];
+  return (resolution.merge?.plan ?? []).filter((entry) => entry.url !== target.url);
 }
 
 /** The PRs one tap of Merge would merge right now, in order. */
 export function mergesNow(plan: MergePlanEntry[]): MergePlanEntry[] {
   return plan.filter((entry) => entry.action === 'merge');
+}
+
+/** The PRs that cannot merge because of a conflict — the one block a tap can act on. */
+export function conflictsIn(plan: MergePlanEntry[]): MergePlanEntry[] {
+  return plan.filter((entry) => entry.action === 'blocked' && entry.reason === 'merge conflict');
 }
 
 /** Whether the plan has anything left that is not merged. */
@@ -218,4 +295,72 @@ export async function mergeResolution(
     throw new Error(detail || 'Could not merge right now.');
   }
   return (await response.json()) as MergeState;
+}
+
+/**
+ * Ask for the resolution's merge conflicts to be fixed.
+ *
+ * One comment on the primary pull request naming every conflicting one —
+ * where an agent is woken straight away — and only once per conflicting
+ * head, so a second tap is answered with the comment that already exists.
+ * The answer is the plan plus what was asked.
+ */
+export async function nudgeConflicts(
+  issueNumber: number,
+  token: string,
+): Promise<MergeState> {
+  const response = await fetch(
+    `${config.apiUrl}/rest/issue-report/${issueNumber}/resolution/nudge`,
+    { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+  );
+
+  if (!response.ok) {
+    if (response.status === 403) throw new Error('Reporting is limited to admin accounts.');
+    if (response.status === 409) throw new Error("Merging isn't set up on this server.");
+    let detail = '';
+    try {
+      detail = ((await response.json()) as { error?: string }).error ?? '';
+    } catch {
+      // A body that is not JSON says nothing more than the status did.
+    }
+    throw new Error(detail || 'Could not ask right now.');
+  }
+  return (await response.json()) as MergeState;
+}
+
+/**
+ * Send one piece of feedback, to one place.
+ *
+ * `pr` reaches the primary pull request, where an agent is woken on it
+ * straight away; `issue` reaches the report itself and waits for the next
+ * scheduled sweep. One comment, on one pull request — the server names the
+ * siblings inside it rather than commenting on them, because three comments
+ * start three agents that each think they are alone.
+ */
+export async function sendFeedback(
+  issueNumber: number,
+  token: string,
+  target: FeedbackTarget,
+  body: string,
+): Promise<FeedbackResult> {
+  const response = await fetch(
+    `${config.apiUrl}/rest/issue-report/${issueNumber}/resolution/feedback`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ target, body }),
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 403) throw new Error('Reporting is limited to admin accounts.');
+    let detail = '';
+    try {
+      detail = ((await response.json()) as { error?: string }).error ?? '';
+    } catch {
+      // A body that is not JSON says nothing more than the status did.
+    }
+    throw new Error(detail || 'Could not send that right now.');
+  }
+  return (await response.json()) as FeedbackResult;
 }

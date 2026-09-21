@@ -2,6 +2,7 @@ import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
 import { cn } from "@/lib/utils";
+import { EdgeSampleSlivers } from "@/components/shared/EdgeSampleSlivers";
 
 const Drawer = ({ shouldScaleBackground = true, ...props }: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
   <DrawerPrimitive.Root shouldScaleBackground={shouldScaleBackground} {...props} />
@@ -28,6 +29,9 @@ const DrawerContent = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <DrawerPortal>
     <DrawerOverlay />
+    {/* iOS Safari's bar bands, matched to the overlay above (black at 80%),
+        and the canvas behind them — see EdgeSampleSlivers. */}
+    <EdgeSampleSlivers dim={0.8} zIndex={50} />
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(

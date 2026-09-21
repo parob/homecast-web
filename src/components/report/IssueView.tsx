@@ -28,15 +28,19 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-  CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, RefreshCw,
+  CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
+  RefreshCw, Send,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { openExternalUrl } from '@/lib/open-url';
 import { relativeAge, type ReportedIssue } from '@/lib/report/issues';
 import {
-  fetchResolution, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, planStatus, shortPr,
-  type MergePlanEntry, type MergeState, type Resolution, type ResolutionImage, type ResolutionPr,
+  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, mergeLabel,
+  mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planStatus, sendFeedback, shortPr,
+  type ConflictNudge, type FeedbackResult, type FeedbackTarget, type MergePlanEntry, type MergeState,
+  type Resolution, type ResolutionImage, type ResolutionPr,
 } from '@/lib/report/resolution';
 
 interface IssueViewProps {
@@ -212,6 +216,8 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
             )}
           </section>
 
+          {resolution && <FeedbackSection issue={issue} resolution={resolution} />}
+
           <section aria-label="On GitHub" className="space-y-1">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               On GitHub
@@ -319,6 +325,13 @@ interface MergeControlsProps {
  * is, because "Merge" on its own does not say what ships. A plan with nothing
  * mergeable now says why and offers to look again — the usual reason is a
  * server still rolling out, which is a matter of minutes.
+ *
+ * A merge conflict is the one block a tap can do something about. The server
+ * posts the ask — one comment on the primary pull request, where an agent is
+ * woken straight away — when a Merge tap runs into one; when a conflict is all
+ * that is left, the ask is offered as its own button. Either way what was
+ * posted is shown, with the comment's address, or that it had already been
+ * asked.
  */
 function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeControlsProps) {
   const [confirming, setConfirming] = useState(false);
@@ -326,6 +339,7 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
   const [mergeError, setMergeError] = useState<string | null>(null);
   // What the last tap merged, kept until the next load so the reader sees it.
   const [justMerged, setJustMerged] = useState<string[]>([]);
+  const [asking, setAsking] = useState(false);
 
   if (!merge.configured) {
     return (
@@ -342,6 +356,25 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
   // The first thing not merged and not mergeable now is what everyone is
   // waiting on; its reason is the sentence to show.
   const waitingOn = plan.find((entry) => entry.action !== 'merged' && entry.action !== 'merge');
+
+  const conflicts = conflictsIn(plan);
+
+  const ask = async () => {
+    const token = localStorage.getItem('homecast-token');
+    if (!token) {
+      setMergeError('You are signed out.');
+      return;
+    }
+    setAsking(true);
+    setMergeError(null);
+    try {
+      onMerged(await nudgeConflicts(issueNumber, token));
+    } catch (askFailure) {
+      setMergeError(askFailure instanceof Error ? askFailure.message : 'Could not ask.');
+    } finally {
+      setAsking(false);
+    }
+  };
 
   const confirm = async () => {
     const token = localStorage.getItem('homecast-token');
@@ -426,6 +459,32 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
         </p>
       )}
 
+      {merge.nudge && <NudgeOutcome nudge={merge.nudge} />}
+
+      {conflicts.length > 0 && !merge.nudge?.asked && !merge.nudge?.alreadyAsked && (
+        // The ask, as its own action: a comment on the primary PR names the
+        // conflicting one and is picked up straight away. Offered whether or
+        // not something else can still merge — the conflict is not going to
+        // fix itself while the rest ships.
+        <Button
+          type="button" variant="outline" className="w-full"
+          disabled={asking || merging}
+          onClick={() => void ask()}
+        >
+          {asking ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Asking…
+            </>
+          ) : (
+            <>
+              <MessageSquareWarning className="mr-2 h-4 w-4" />
+              Ask for {conflicts.map(shortPr).join(', ')} to be fixed
+            </>
+          )}
+        </Button>
+      )}
+
       {!label && !outstanding && plan.length > 0 && (
         <p className="text-sm text-muted-foreground">All merged.</p>
       )}
@@ -441,6 +500,215 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
         <p role="alert" className="text-sm text-destructive">{mergeError}</p>
       )}
     </section>
+  );
+}
+
+/** What an ask came to: posted, already posted, or refused — with the comment's address. */
+function NudgeOutcome({ nudge }: { nudge: ConflictNudge }) {
+  if (nudge.error) {
+    return <p role="alert" className="text-sm text-destructive">{nudge.error}</p>;
+  }
+  if (!nudge.asked && !nudge.alreadyAsked) return null;
+  const where = nudge.on ? shortPr(prFromUrl(nudge.on)) : 'the pull request';
+  return (
+    <div className="space-y-1 text-sm">
+      <p>
+        {nudge.asked ? 'Asked' : 'Already asked'} on {where} for the conflict to be fixed
+        {nudge.asked ? ' — it gets picked up straight away.' : '.'}
+      </p>
+      {nudge.comment && (
+        <ExternalRow label="The comment" url={nudge.comment} />
+      )}
+    </div>
+  );
+}
+
+/** `homecast-web#208` from a PR or comment URL — enough to name it. */
+function prFromUrl(url: string): ResolutionPr {
+  const match = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url);
+  return match
+    ? { repo: match[1], number: Number(match[2]), url }
+    : { repo: url, number: 0, url };
+}
+
+/**
+ * Saying something back, and choosing who hears it.
+ *
+ * The two doors are not the same speed and the difference is the whole point:
+ * a comment on the pull request wakes an agent on it straight away, while a
+ * comment on the issue waits for the next scheduled sweep — about a day. So
+ * the pull request is the default, and each option says what it costs rather
+ * than leaving the reader to know.
+ *
+ * It goes to exactly **one** pull request. Three comments would start three
+ * agents that each think they are working alone, so the server puts the words
+ * on the primary one and names the others inside that comment; this says so
+ * before the tap, because "who will read this" is the question the selector
+ * is actually answering.
+ *
+ * The pull request is offered only while one is open to put it on. Where the
+ * words went is shown afterwards with the comment's full address, the same
+ * rule the rest of this screen follows: nothing leaves the app silently.
+ */
+function FeedbackSection({ issue, resolution }: { issue: ReportedIssue; resolution: Resolution }) {
+  const [wanted, setWanted] = useState<FeedbackTarget>('pr');
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<FeedbackResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // A server that predates this sends no key at all, and offers no field —
+  // the web half can ship before the server half without showing a door that
+  // answers 404.
+  if (!resolution.feedback) return null;
+
+  const targets = feedbackTargets(resolution);
+  if (targets.length === 0) {
+    return (
+      <section aria-label="Send feedback" className="space-y-1">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Send feedback
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Sending feedback isn&rsquo;t set up on this server.
+        </p>
+      </section>
+    );
+  }
+
+  const target = targets.includes(wanted) ? wanted : targets[0];
+  const pr = feedbackPr(resolution);
+  const siblings = feedbackSiblings(resolution);
+
+  const send = async () => {
+    const token = localStorage.getItem('homecast-token');
+    if (!token) {
+      setError('You are signed out.');
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      setSent(await sendFeedback(issue.issueNumber, token, target, text.trim()));
+      setText('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Could not send that.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <section aria-label="Send feedback" className="space-y-2">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Send feedback
+      </h3>
+
+      {sent ? (
+        <div className="space-y-1 text-sm">
+          <p>
+            Sent to {sent.target === 'issue' ? `issue #${issue.issueNumber}` : shortPr(prFromUrl(sent.on))}
+            {sent.target === 'issue'
+              ? ' — it gets picked up on the next sweep, about a day.'
+              : ' — it gets picked up straight away.'}
+          </p>
+          {sent.named && sent.named.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              The comment names {sent.named.map((url) => shortPr(prFromUrl(url))).join(', ')} as part of the
+              same fix. Nothing was posted on them.
+            </p>
+          )}
+          {sent.comment && <ExternalRow label="The comment" url={sent.comment} />}
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSent(null)}>
+            Say something else
+          </Button>
+        </div>
+      ) : (
+        <>
+          {targets.length > 1 && pr && (
+            <div role="radiogroup" aria-label="Where this goes" className="grid grid-cols-2 gap-2">
+              <TargetChoice
+                chosen={target === 'pr'}
+                onChoose={() => setWanted('pr')}
+                label={shortPr(pr)}
+                detail="Picked up straight away"
+              />
+              <TargetChoice
+                chosen={target === 'issue'}
+                onChoose={() => setWanted('issue')}
+                label={`Issue #${issue.issueNumber}`}
+                detail="Next sweep — about a day"
+              />
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            {target === 'issue' ? (
+              <>Goes on the report itself, where a remark about what you asked for belongs.</>
+            ) : siblings.length > 0 ? (
+              <>
+                Goes on {pr ? shortPr(pr) : 'the pull request'} only. The comment names{' '}
+                {siblings.map(shortPr).join(', ')} as part of the same fix — commenting on all of them
+                would start one agent per comment.
+              </>
+            ) : (
+              <>Goes on {pr ? shortPr(pr) : 'the pull request'}, where it is read straight away.</>
+            )}
+          </p>
+
+          <Textarea
+            aria-label="Your feedback"
+            rows={3}
+            value={text}
+            disabled={sending}
+            onChange={(event) => setText(event.target.value)}
+          />
+
+          <Button
+            type="button"
+            className="w-full"
+            disabled={sending || text.trim().length === 0}
+            onClick={() => void send()}
+          >
+            {sending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending&hellip;
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                Send
+              </>
+            )}
+          </Button>
+        </>
+      )}
+
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    </section>
+  );
+}
+
+/** One of the two doors: what it is, and how long it waits to be read. */
+function TargetChoice(
+  { chosen, onChoose, label, detail }: {
+    chosen: boolean; onChoose: () => void; label: string; detail: string;
+  },
+) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={chosen}
+      onClick={onChoose}
+      className={`min-w-0 rounded-md border p-2 text-left transition-colors ${
+        chosen ? 'border-primary bg-primary/10' : 'hover:bg-muted/50'
+      }`}
+    >
+      <span className="block truncate text-sm">{label}</span>
+      <span className="block truncate text-[11px] text-muted-foreground">{detail}</span>
+    </button>
   );
 }
 

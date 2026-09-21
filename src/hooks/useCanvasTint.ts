@@ -20,8 +20,10 @@
  * The colour decision itself is in lib/canvas-tint.ts, which is pure and tested.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { resolveCanvasTint } from '@/lib/canvas-tint';
+import { useTotalOverlayDim } from '@/hooks/useOverlayDim';
+import { dimColour } from '@/lib/overlay-dim';
 import { isIOSBrowser } from '@/lib/platform';
 import type { BackgroundSettings } from '@/lib/graphql/types';
 
@@ -57,6 +59,23 @@ export function useCanvasTint({ background, sampledTopColor, isDark, wallpaperLu
     }),
     [background, sampledTopColor, isDark, wallpaperLuminance, isNativeShell],
   );
+
+  // How dark the overlays currently on screen have made the page. The canvas
+  // is only ever seen at the edges — the overscroll strip, iOS 26 Safari's two
+  // glass bands, Android Chrome's toolbar — and while a scrim is up those
+  // edges border a dimmed page. Left at the wallpaper's own brightness they
+  // read as two lit bars around a dark screen (parob/homecast-cloud#165). The
+  // scrims declare this through `EdgeSampleSlivers`; see lib/overlay-dim.
+  const overlayDim = useTotalOverlayDim();
+
+  // The colour the root actually ended up painted, recorded by the effect
+  // below at the moment it applied it — and recorded UNDIMMED. The effect
+  // after it paints the dim ON TOP of this value and re-runs whenever the dim
+  // changes, so it cannot read the root back for itself: it would compound its
+  // own output every time an overlay opened. A ref rather than state because
+  // effects run in order within one commit, so the second effect sees this
+  // commit's value with no extra render and no frame at the previous colour.
+  const paintedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isNativeShell) {
@@ -95,6 +114,7 @@ export function useCanvasTint({ background, sampledTopColor, isDark, wallpaperLu
     // bar in a colour other than the bar's own.
     document.documentElement.style.backgroundColor = tint;
     document.body.style.backgroundColor = isIOSBrowser() ? 'transparent' : tint;
+    paintedRef.current = getComputedStyle(document.documentElement).backgroundColor;
     return () => {
       document.documentElement.style.removeProperty('background-color');
       document.body.style.removeProperty('background-color');
@@ -114,12 +134,24 @@ export function useCanvasTint({ background, sampledTopColor, isDark, wallpaperLu
   // effect above has applied it gives a plain rgb() every time.
   useEffect(() => {
     if (isNativeShell) return;
-    const painted = getComputedStyle(document.documentElement).backgroundColor;
+    const painted = paintedRef.current;
     const colour = painted && painted !== 'rgba(0, 0, 0, 0)' ? painted : tint;
     // The same colour for the app shells' edge strips (`.scroll-scrim`) and
     // the phone browser's wallpaper-top scrim (`.sticky-top-scrim`), so
     // content fades into the bars' colour rather than being cut by them.
+    //
+    // UNDIMMED, deliberately, and the one value here that is. `EdgeSampleSlivers`
+    // mixes its own scrim's dim into this variable, so handing it a dimmed
+    // colour would darken every sliver twice over. The variable is what a
+    // surface fades INTO; the dim belongs to whatever is covering it.
     document.documentElement.style.setProperty('--canvas-tint', colour);
+
+    // The canvas, though, is behind the scrim and has to match it. A sliver
+    // cannot reach the overscroll strip or the band past the end of a
+    // scroll-locked document — a fixed layer is not painted past the
+    // viewport's edges — so those surfaces are the root's own colour, and this
+    // is where they get the dim.
+    document.documentElement.style.backgroundColor = dimColour(colour, overlayDim);
 
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (!meta) {
@@ -144,12 +176,12 @@ export function useCanvasTint({ background, sampledTopColor, isDark, wallpaperLu
         document.documentElement.style.removeProperty('--canvas-tint');
       };
     }
-    meta.content = colour;
+    meta.content = dimColour(colour, overlayDim);
     return () => {
       meta.content = previous;
       document.documentElement.style.removeProperty('--canvas-tint');
     };
-  }, [tint, isNativeShell]);
+  }, [tint, isNativeShell, overlayDim]);
 
 
   return tint;

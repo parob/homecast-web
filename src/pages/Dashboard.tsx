@@ -113,6 +113,7 @@ import { LazyWidget } from '@/components/shared/LazyWidget';
 import { AppBootFallback, SidebarRowsSkeleton, AccessoryGridSkeleton } from '@/components/LoadingSkeletons';
 import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGrid';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
+import { EdgeSampleSlivers } from '@/components/shared/EdgeSampleSlivers';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { DealsProvider, useDeals } from '@/contexts/DealsContext';
 import { HistoryProvider, useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
@@ -10930,6 +10931,10 @@ const Dashboard = () => {
         "fixed inset-0 z-[99999] flex items-center justify-center backdrop-blur-sm bg-black/20 transition-[opacity,visibility] duration-300 touch-none overscroll-contain",
         isConnectingOverlay ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
       )}>
+      {/* Only while it is actually up: this box is always mounted so it can
+          fade, and a dim registered for an invisible overlay would darken the
+          canvas for the life of the page. See EdgeSampleSlivers. */}
+      {isConnectingOverlay && <EdgeSampleSlivers dim={0.2} />}
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
         <p className="text-white/80 text-sm">{isManualRefreshing ? 'Refreshing…' : 'Connecting…'}</p>
@@ -10958,6 +10963,8 @@ const Dashboard = () => {
     {/* Hard reload countdown */}
     {hardReloadCountdown !== null && (
       <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        {/* Above this box's own backdrop, below the card — DOM order. */}
+        <EdgeSampleSlivers dim={0.5} />
         <div className="bg-background border rounded-xl shadow-2xl p-6 mx-4 max-w-xs w-full text-center space-y-4">
           <RotateCcw className="h-8 w-8 text-primary mx-auto" />
           <div>

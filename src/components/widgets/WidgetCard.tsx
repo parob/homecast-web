@@ -27,7 +27,7 @@ import { useDragHandle } from '@/components/shared/SortableItem';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
 import { useHistory } from '@/contexts/HistoryContext';
-import { usePinnedTabs, usePinAction } from '@/contexts/PinnedTabsContext';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { WidgetWrapper } from './WidgetWrapper';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
 import { WIDGET_SIZE_LABELS, type WidgetSize } from '@/lib/widget-sizes';
@@ -669,9 +669,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Actions offered in the expanded panel: what the context menu already
   // offers, surfaced where a person is actually studying the accessory.
-  const pinAction = usePinAction(
-    accessory ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId } : null,
-  );
   const expandedActions: ExpandedAction[] = [];
   if (canShowHistory && accessory) {
     expandedActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openHistory(accessory) });
@@ -688,32 +685,25 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   if (onShare) {
     expandedActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
   }
-  // Pinning was a context-menu item, and on touch there is no longer a menu to
-  // put it in. Edit Layout's badge is the only other route, and reaching it to
-  // pin one accessory means entering a mode for it.
+  // Pin is deliberately NOT here, for the same reason Size is not: it was a
+  // third route to one setting. On a phone — the only place pinning is offered
+  // at all, `Dashboard`'s `enabled: isPhone` — Edit Layout's badge already
+  // carries Pin/Unpin beside Hide (`EditActions`' `pinButton`), and the tab bar
+  // carries its own unpin badge. Reported as homecast-cloud#173: "Remove pin
+  // from the options when you expand any widget ... this should only be
+  // accessible in editing mode and that's enough".
   //
-  // Through `usePinAction`, not a hand-rolled toggle: it is the same hook the
-  // edit badge uses, so the pinned/full/pinnable wording cannot drift between
-  // the two places that offer the same job. It answers null when pinning is not
-  // on offer at all (no tab bar), which is the gate.
-  // Size is deliberately NOT here. It was, and by the time #197 had also put
-  // the same cycle on Edit Layout's badge beside Hide and Pin, the panel was
+  // Removing it closes no door, and it makes an accessory tile agree with the
+  // scene and shortcut cards, which have pinned from the badge alone since
+  // touch lost its context menus (`ShortcutCards.test.tsx`).
+  //
+  // Size is deliberately NOT here either. It was, and by the time #197 had also
+  // put the same cycle on Edit Layout's badge beside Hide and Pin, the panel was
   // the third route to one setting — reported as redundant in
   // homecast-cloud#162. `nextSize` stays because `sizeEditAction` above is
   // that badge, driving the identical cycle, and the desktop context menu
   // below still lists all three sizes with the current one ticked. One route
   // per platform, which is the rule that matters.
-  if (pinAction && !pinAction.full) {
-    expandedActions.push({
-      key: 'pin',
-      icon: pinAction.pinned ? 'unpin' : 'pin',
-      // `Pin`/`Unpin` is the word Edit Layout's badge uses for the same job;
-      // `pinAction.label` is the phrasing that says which bar it means.
-      label: pinAction.pinned ? 'Unpin' : 'Pin',
-      ariaLabel: pinAction.label,
-      onClick: pinAction.toggle,
-    });
-  }
   // Deleting a virtual accessory, and only that.
   //
   // It shares WidgetCard's `onRemove` slot with a collection's "remove from

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
-  fetchResolution, fixStatus, mergeLabel, mergeOutstanding, mergeResolution, mergesNow, offersResolution,
-  planStatus, shortPr, type MergePlanEntry, type Resolution,
+  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus, mergeLabel,
+  mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, offersResolution,
+  planStatus, sendFeedback, shortPr, type MergePlanEntry, type Resolution,
 } from '../resolution';
 
 /**
@@ -39,6 +40,46 @@ describe('fixStatus — the word on a row', () => {
     expect(fixStatus(row(['bug', 'claude-attempted'], 'closed'))).toBe('Fixed');
     expect(fixStatus(row(['bug', 'claude-attempted']))).toBeNull();
     expect(fixStatus(row([]))).toBeNull();
+  });
+});
+
+describe('conflictsIn — the one block a tap can act on', () => {
+  const entry = (over: Partial<MergePlanEntry>): MergePlanEntry => ({
+    repo: 'parob/homecast-web', number: 214, url: 'https://github.com/parob/homecast-web/pull/214',
+    title: null, state: 'open', merged: false, mergeSha: null, mergeable: true, checks: 'success',
+    action: 'merge', reason: null, ...over,
+  });
+
+  it('picks out only the conflicts, not other blocks', () => {
+    const plan = [
+      entry({ action: 'blocked', reason: 'merge conflict' }),
+      entry({ number: 215, action: 'blocked', reason: 'checks failing' }),
+      entry({ number: 216, action: 'after', reason: 'after homecast-cloud#170' }),
+    ];
+    expect(conflictsIn(plan).map((e) => e.number)).toEqual([214]);
+  });
+});
+
+describe('nudgeConflicts', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('posts to the nudge endpoint and hands back the plan with the ask', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      configured: true, servingSha: 'x', plan: [],
+      nudge: { asked: true, conflicts: ['https://github.com/parob/homecast-web/pull/214'], on: 'https://github.com/parob/homecast-cloud/pull/170', comment: 'https://github.com/parob/homecast-cloud/pull/170#issuecomment-1' },
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const state = await nudgeConflicts(169, 'tok');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/169/resolution/nudge',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(state.nudge?.asked).toBe(true);
+  });
+
+  it('says so when merging is not set up', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 409 })));
+    await expect(nudgeConflicts(169, 'tok')).rejects.toThrow("Merging isn't set up on this server.");
   });
 });
 
@@ -154,5 +195,94 @@ describe('mergeResolution', () => {
     await expect(mergeResolution(169, 'tok')).rejects.toThrow('Could not reach GitHub');
     answer(403);
     await expect(mergeResolution(169, 'tok')).rejects.toThrow('admin');
+  });
+});
+
+/**
+ * Where feedback can go, and where one comment would land.
+ *
+ * Two rules, both of which the view reads before it offers anything. The pull
+ * request is only a door while one is open to put a comment on — the server
+ * refuses it otherwise rather than quietly retargeting the words. And exactly
+ * one pull request receives it: the primary while it is open, else the first
+ * open one, which is the same choice the server makes.
+ */
+describe('where feedback can go', () => {
+  const cloud = planEntry('parob/homecast-cloud', 180, {});
+  const web = planEntry('parob/homecast-web', 217, {});
+
+  const withPlan = (plan: MergePlanEntry[], over: Partial<Resolution> = {}): Resolution => ({
+    issueNumber: 179, title: null, state: 'open', url: null, labels: [], summary: null, reach: null,
+    primary: cloud, prs: [cloud, web], evidence: [], reported: [],
+    merge: { configured: true, servingSha: 'abc', plan },
+    feedback: { configured: true },
+    ...over,
+  });
+
+  it('offers nothing at all on a server that predates feedback, or one with it unset', () => {
+    const { feedback: _f, ...older } = withPlan([cloud, web]);
+    expect(feedbackTargets(older as Resolution)).toEqual([]);
+    expect(feedbackTargets(withPlan([cloud, web], { feedback: { configured: false } }))).toEqual([]);
+  });
+
+  it('offers the pull request only while one is open', () => {
+    expect(feedbackTargets(withPlan([cloud, web]))).toEqual(['pr', 'issue']);
+    expect(feedbackTargets(withPlan([
+      { ...cloud, state: 'closed', merged: true }, { ...web, state: 'closed', merged: true },
+    ]))).toEqual(['issue']);
+    expect(feedbackTargets(withPlan([]))).toEqual(['issue']);
+  });
+
+  it('lands the comment on the primary, and falls to the first open one when it is closed', () => {
+    expect(feedbackPr(withPlan([cloud, web]))?.number).toBe(180);
+    expect(feedbackPr(withPlan([{ ...cloud, state: 'closed', merged: true }, web]))?.number).toBe(217);
+    expect(feedbackPr(withPlan([]))).toBeNull();
+  });
+
+  it('names the ones that will not be commented on, so the view can say so', () => {
+    expect(feedbackSiblings(withPlan([cloud, web])).map((e) => e.number)).toEqual([217]);
+    expect(feedbackSiblings(withPlan([cloud]))).toEqual([]);
+    expect(feedbackSiblings(withPlan([]))).toEqual([]);
+  });
+});
+
+describe('sendFeedback', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const answer = (status: number, body?: unknown) => {
+    const fetchMock = vi.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('posts the words and the target, and returns where they landed', async () => {
+    const result = {
+      posted: true, target: 'pr', on: 'https://github.com/parob/homecast-cloud/pull/180',
+      comment: 'https://github.com/parob/homecast-cloud/pull/180#issuecomment-1',
+      named: ['https://github.com/parob/homecast-web/pull/217'],
+    };
+    const fetchMock = answer(200, result);
+    await expect(sendFeedback(179, 'tok', 'pr', 'Still wrong.')).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/179/resolution/feedback',
+      {
+        method: 'POST',
+        headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
+        body: JSON.stringify({ target: 'pr', body: 'Still wrong.' }),
+      },
+    );
+  });
+
+  it("relays the server's own reason, which is how a token missing issues write shows up", async () => {
+    answer(502, { error: 'GitHub refused the comment (403): Resource not accessible by integration' });
+    await expect(sendFeedback(179, 'tok', 'issue', 'hi')).rejects.toThrow('Resource not accessible');
+    answer(409, { error: 'No open pull request to comment on — send it to the issue instead.' });
+    await expect(sendFeedback(179, 'tok', 'pr', 'hi')).rejects.toThrow('send it to the issue');
+    answer(403);
+    await expect(sendFeedback(179, 'tok', 'pr', 'hi')).rejects.toThrow('admin');
   });
 });

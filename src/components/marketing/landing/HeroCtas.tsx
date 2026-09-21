@@ -3,12 +3,18 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Home } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { EdgeSampleSlivers } from '@/components/shared/EdgeSampleSlivers';
 import { HERO, APP_STORE_URL, PLAY_STORE_URL } from './features';
 
 export function AndroidModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      {/* iOS Safari's bar bands, matched to the backdrop above (black at 50%),
+          and the canvas behind them — see EdgeSampleSlivers. After the
+          backdrop and before the card, with no z-index: paint order in one
+          stacking context is DOM order. */}
+      <EdgeSampleSlivers dim={0.5} />
       <div className="relative bg-background rounded-2xl border border-border shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center gap-3 mb-4">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-500/10">
