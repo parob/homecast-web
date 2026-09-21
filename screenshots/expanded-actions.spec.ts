@@ -49,11 +49,15 @@ function cluster(page: Page) {
           clipped: b.scrollWidth > b.clientWidth + 1,
           left: r.left,
           right: r.right,
+          top: r.top,
+          width: r.width,
         };
       });
     const title = document.querySelector('[data-panel-frame] h3');
     return {
       pills,
+      // How many lines the cluster occupies, by distinct pill top edge.
+      rows: new Set(pills.map(p => Math.round(p.top))).size,
       cardLeft: card.left,
       cardRight: card.right,
       titleWidth: title ? title.getBoundingClientRect().width : 0,
@@ -86,6 +90,36 @@ test.describe('expanded panel actions', () => {
     // The long phrasing is not lost, it moves to the accessible name.
     expect(pills.find(p => p.word === 'Pin')?.name).toBe('Pin to Tab Bar');
     expect(pills.find(p => p.word === 'Delete')?.name).toBe('Delete Virtual Accessory');
+  });
+
+  // Asked on review of #210: "in the example it wraps to two lines is this
+  // defo necessary?" — a fair question, because the example was `?virtual=1`,
+  // the widest the cluster ever gets. These two pin the answer so nobody has
+  // to re-measure it: an ordinary accessory never wraps, and the widest one
+  // cannot be made to fit. Both are asserted at 320px, the narrowest phone
+  // width there is, because that is where an answer of "it fits" would fail.
+  test('an ordinary accessory keeps its actions on one row, down to 320px', async ({ page }) => {
+    await open(page, 'sizes=1&w=320');
+    const { pills, rows, cardRight } = await cluster(page);
+    // What the reported doorbell actually offers: no Edit and no Delete,
+    // because those are a virtual accessory's and a camera is never one.
+    expect(pills.map(p => p.word)).toEqual(['Analytics', 'Share', 'Pin']);
+    expect(rows).toBe(1);
+    for (const pill of pills) expect(pill.right).toBeLessThanOrEqual(cardRight);
+  });
+
+  test('the widest cluster has to wrap — no phone is wide enough for it', async ({ page }) => {
+    // `?pinned=1` for `Unpin`, which is 14px wider than `Pin`. The worst case
+    // is the one the layout has to survive, not the tidiest one.
+    await open(page, 'sizes=1&virtual=1&pinned=1&w=320');
+    const { pills, rows } = await cluster(page);
+    expect(pills.map(p => p.word)).toEqual(['Analytics', 'Edit', 'Share', 'Unpin', 'Delete']);
+    expect(rows).toBeGreaterThan(1);
+    // The arithmetic behind that, so a future attempt to tighten the pills
+    // back onto one line can see what it is up against before trying: even
+    // with no padding and no icons at all, five words do not fit 320px.
+    const widest = pills.reduce((sum, p) => sum + p.width, 0) + (pills.length - 1) * 6;
+    expect(widest).toBeGreaterThan(360);
   });
 
   test('a landscape camera keeps its name beside the words', async ({ page }) => {

@@ -25,12 +25,16 @@ import '../../src/index.css';
  * the row on the screen this fixture is a picture of.
  * `?immersive=1` is the landscape camera, where the row shares its line with
  * the accessory's name and the close control rather than sitting under a hero.
+ * `?pinned=1` swaps `Pin` for the wider `Unpin`, which is what the row has to
+ * fit in its worst case rather than its nicest one.
  */
 
 const params = new URLSearchParams(location.search);
 const virtual = params.get('virtual') === '1';
 const sizes = params.get('sizes') === '1';
 const immersive = params.get('immersive') === '1';
+// `?pinned=1` is the wider of the two pin words: `Unpin`, not `Pin`.
+const alreadyPinned = params.get('pinned') === '1';
 
 const accessory: HomeKitAccessory = {
   id: 'front-door',
@@ -68,7 +72,7 @@ const virtualActions = {
 
 const pinned = {
   enabled: true,
-  isPinned: () => false,
+  isPinned: () => alreadyPinned,
   isFull: false,
   toggle: () => {},
 };
@@ -114,7 +118,7 @@ createRoot(document.getElementById('root')!).render(
       <VirtualAccessoryEditProvider value={virtualActions}>
         {/* 440px was the reported viewport; the panel's own inset is the
             dashboard's, so the content box here is the one on that phone. */}
-        <main style={{ padding: 16, width: immersive ? Number(params.get('w') ?? 844) : 440 }} data-panel-frame>
+        <main style={{ padding: 16, width: Number(params.get('w') ?? (immersive ? 844 : 440)) }} data-panel-frame>
           <Panel />
         </main>
       </VirtualAccessoryEditProvider>

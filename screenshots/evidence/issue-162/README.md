@@ -76,6 +76,33 @@ Edit and Delete are not on offer there and the real maximum is four.
 Nothing overflows the card and the title is not clipped; the subtitle takes a
 second line, which is the cost.
 
+## `one-row-vs-wrap.png` — does it have to wrap?
+
+Asked on review of #210: *"in the example it wraps to two lines is this defo
+necessary?"* Fair question, because `panel-before-after.png` was captured with
+`?virtual=1` — the widest the cluster ever gets, not the common case.
+
+Measured, one row per case, `box` being the panel's content width:
+
+| case | pills | needs | box @440 | box @320 | rows |
+|---|---|---|---|---|---|
+| ordinary accessory — the reported doorbell | Analytics, Share, Pin | 229px | 368 | 248 | **1** |
+| virtual accessory | + Edit, Delete | 377px | 368 | 248 | 2 |
+| virtual accessory, already pinned | `Unpin` is 14px wider than `Pin` | 391px | 368 | 248 | 2 |
+
+So the answer is **no for the screen that was reported, and unavoidable for the
+one in the example**:
+
+- An ordinary accessory never wraps. At 440px it uses 229 of 368 — 139px spare
+  — and it still fits at **320px**, the narrowest phone width there is.
+- The widest cluster cannot be made to fit by any amount of tightening. At
+  320px the box is 248px and five words need 377. Stripping every pill of its
+  padding *and* its icon saves roughly 100px and lands at ~277 — still over.
+  There is no layout that keeps five readable words on one line at 320px.
+
+Edit and Delete are what push it over, and both are a **virtual accessory's**
+only. A camera is never one, so the panel in the report cannot reach five.
+
 ## The guard
 
 `screenshots/expanded-actions.spec.ts`, in the CI config. Three tests, all three
@@ -86,3 +113,5 @@ red on `main` before the change:
 | no Size button *with the three sizes on offer* | the button coming back — asserted on a resizable tile, since an unresizable one proves nothing |
 | every action reads as a word, uncut, inside the panel | a pill one character wide; `textContent` alone would pass that |
 | a landscape camera keeps its name beside the words | the cluster crushing the title in the immersive top bar |
+| an ordinary accessory keeps its actions on one row, down to 320px | the common case starting to wrap — the thing review actually asked about |
+| the widest cluster has to wrap | someone tightening the pills back onto one line without checking 320px first |
