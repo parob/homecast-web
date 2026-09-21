@@ -36,6 +36,8 @@ import {
   NATIVE_HEADER_COVER_ATTR,
   publishRefreshDone,
   nativeHeaderRowCenter,
+  nativeHeaderToastTop,
+  NATIVE_HEADER_TOAST_GAP,
   nativeHeaderContentInset,
   isNativePageHeading,
   NATIVE_HEADER_EVENT,
@@ -356,6 +358,37 @@ describe("where the bar's controls sit", () => {
     // sidebar layout: no band, a standard 54pt row of buttons
     w().homecastNativeHeaderInsets = { bar: 59, status: 59 };
     expect(nativeHeaderRowCenter()).toBe(86);
+  });
+
+  /**
+   * parob/homecast-cloud#164. The bar is a UINavigationBar outside the web
+   * view, so anything the page draws on its line is painted over by it and no
+   * `z-index` reaches. A toast therefore clears the bar's WHOLE band — the
+   * controls AND the large title, which the bar draws too — rather than
+   * sitting on the controls' line the way it does under the web header.
+   */
+  it('puts a toast below the whole band, never on the controls the bar draws', () => {
+    installNativeBuild();
+    // A newer shell on a room page: compact bar 59..103, large title band to
+    // 155, plus the room's 18pt eyebrow = 173.
+    w().homecastNativeHeaderInsets = { bar: 173, status: 59, base: 155, eyebrow: 18 };
+    expect(nativeHeaderToastTop(true)).toBe(173 + NATIVE_HEADER_TOAST_GAP);
+    // Popping to the home drops the eyebrow, and the toast comes up with it.
+    expect(nativeHeaderToastTop(false)).toBe(155 + NATIVE_HEADER_TOAST_GAP);
+    // The regression itself: the pill's top used to be the controls' line
+    // less half a pill, which put all 40px of it inside the 59..103 row.
+    const wasTop = nativeHeaderRowCenter() - 40 / 2;
+    expect(wasTop).toBeLessThan(103);
+    expect(nativeHeaderToastTop(true)).toBeGreaterThanOrEqual(103);
+
+    // An older shell reports only what it measured, eyebrow included.
+    w().homecastNativeHeaderInsets = { bar: 173, status: 59 };
+    expect(nativeHeaderToastTop(true)).toBe(173 + NATIVE_HEADER_TOAST_GAP);
+    expect(nativeHeaderToastTop(false)).toBe(173 + NATIVE_HEADER_TOAST_GAP);
+
+    // Sidebar layout: no band to clear, just the floating buttons' own row.
+    w().homecastNativeHeaderInsets = { bar: 59, status: 59 };
+    expect(nativeHeaderToastTop(true)).toBe(59 + 54 + NATIVE_HEADER_TOAST_GAP);
   });
 });
 
