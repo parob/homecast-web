@@ -60,6 +60,25 @@ const RESOLUTION = {
   prs: [{ repo: 'parob/homecast-web', number: 208, url: 'https://github.com/parob/homecast-web/pull/208' }],
   evidence: [{ url: PAIR, alt: 'Before: Battery 100% invisible at 1.03:1. After: legible at 9.55:1.' }],
   reported: [{ url: REPORT, alt: 'screenshot.jpg' }],
+  // Merging is set up on this server and the one PR is ready: what the
+  // button looks like, and what it says before it acts.
+  merge: {
+    configured: true,
+    servingSha: '4ae7930',
+    plan: [{
+      repo: 'parob/homecast-web', number: 208, url: 'https://github.com/parob/homecast-web/pull/208',
+      title: "The battery line on an expanded lock takes the tile's ink", state: 'open', merged: false,
+      mergeSha: null, mergeable: true, checks: 'success', action: 'merge', reason: null,
+    }],
+  },
+};
+
+/** What the server answers once that PR has merged. */
+const MERGED = {
+  configured: true,
+  servingSha: '4ae7930',
+  merged: [{ url: 'https://github.com/parob/homecast-web/pull/208', sha: 'f8409182628dcd0d' }],
+  plan: [{ ...RESOLUTION.merge.plan[0], state: 'closed', merged: true, mergeSha: 'f8409182628dcd0d', action: 'merged' }],
 };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -83,6 +102,13 @@ async function asAdminReporter(page: Page) {
   await page.route(/\/rest\/issue-report\/167\/resolution$/, async (route) => {
     await route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(RESOLUTION),
+    });
+  });
+
+  await page.route(/\/rest\/issue-report\/167\/resolution\/merge$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    await route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(MERGED),
     });
   });
 
@@ -140,8 +166,34 @@ test('the resolution view shows the picture, the line and the pull request', asy
   // Rendered, not a broken image: a natural width means the bytes arrived.
   await expect.poll(() => picture.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect(page.getByText("the battery line now takes the tile's white ink", { exact: false })).toBeVisible();
-  await expect(page.getByRole('button', { name: /homecast-web#208/ })).toBeVisible();
+  // `^`: the Merge button below the list carries the same PR in its name.
+  await expect(page.getByRole('button', { name: /^homecast-web#208/ })).toBeVisible();
   await page.waitForTimeout(500);
 
   await sheet(page).screenshot({ path: 'screenshots/output/resolution-view.png' });
+});
+
+test('Merge names what it merges, asks once, and shows what happened', async ({ page }) => {
+  await asAdminReporter(page);
+  await openPrevious(page);
+  await page.getByRole('button', { name: 'See the resolution for #167' }).click();
+
+  const merge = page.getByRole('button', { name: 'Merge homecast-web#208' });
+  await expect(merge).toBeVisible();
+  await expect(page.getByRole('button', { name: /^homecast-web#208/ })).toContainText('Ready');
+  await merge.click();
+
+  // The confirmation is the gate: it says what ships and where.
+  const confirm = page.getByRole('button', { name: 'Confirm merge' });
+  await expect(confirm).toBeVisible();
+  await expect(page.getByText(/Merges homecast-web#208 to main/)).toContainText('ships to production');
+  await page.waitForTimeout(300);
+  await sheet(page).screenshot({ path: 'screenshots/output/resolution-merge-confirm.png' });
+
+  await confirm.click();
+  await expect(page.getByText('Merged homecast-web#208.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^homecast-web#208/ })).toContainText('Merged');
+  await expect(page.getByRole('button', { name: /^Merge / })).toHaveCount(0);
+  await page.waitForTimeout(300);
+  await sheet(page).screenshot({ path: 'screenshots/output/resolution-merged.png' });
 });

@@ -28,6 +28,42 @@ export interface ResolutionImage {
   alt: string;
 }
 
+/**
+ * What a merge would do with one pull request, decided server-side:
+ *
+ *   merged       already merged; `serving` says whether production carries it
+ *   merge        next in line and mergeable now
+ *   wait_deploy  a cloud PR ahead of it is merged but not yet serving
+ *   after        waits for an earlier PR in the plan
+ *   blocked      cannot merge as it stands — `reason` says why
+ */
+export type MergeAction = 'merged' | 'merge' | 'wait_deploy' | 'after' | 'blocked';
+
+export interface MergePlanEntry extends ResolutionPr {
+  title: string | null;
+  state: string | null;
+  merged: boolean;
+  mergeSha: string | null;
+  mergeable: boolean | null;
+  checks: 'success' | 'failure' | 'pending' | 'none';
+  action: MergeAction;
+  reason: string | null;
+  serving?: boolean | null;
+}
+
+export interface MergeState {
+  /** Whether this server holds a credential that can merge. */
+  configured: boolean;
+  /** The commit the server is running — what a cloud PR has to reach. */
+  servingSha: string;
+  /** In merge order: cloud → web → native → the rest. Empty when not configured. */
+  plan: MergePlanEntry[];
+  /** Set when the plan could not be read; the rest of the resolution stands. */
+  error?: string;
+  /** After a merge request: what that request merged. */
+  merged?: { url: string; sha: string | null }[];
+}
+
 export interface Resolution {
   issueNumber: number;
   title: string | null;
@@ -45,6 +81,48 @@ export interface Resolution {
   evidence: ResolutionImage[];
   /** The report's own screenshots — what was reported, not what fixed it. */
   reported: ResolutionImage[];
+  /** Absent on a server that predates merging. */
+  merge?: MergeState;
+}
+
+/** The PRs one tap of Merge would merge right now, in order. */
+export function mergesNow(plan: MergePlanEntry[]): MergePlanEntry[] {
+  return plan.filter((entry) => entry.action === 'merge');
+}
+
+/** Whether the plan has anything left that is not merged. */
+export function mergeOutstanding(plan: MergePlanEntry[]): boolean {
+  return plan.some((entry) => entry.action !== 'merged');
+}
+
+/**
+ * The label on the Merge button, or null when there is nothing to merge now.
+ * Names the PR when it is one, counts them when it is more: what the tap
+ * ships is the one thing the button must not be vague about.
+ */
+export function mergeLabel(plan: MergePlanEntry[]): string | null {
+  const now = mergesNow(plan);
+  if (now.length === 0) return null;
+  if (now.length === 1) return `Merge ${shortPr(now[0])}`;
+  return `Merge ${now.length} pull requests`;
+}
+
+/** One short phrase for a PR's place in the plan, for the pill beside it. */
+export function planStatus(entry: MergePlanEntry): string {
+  switch (entry.action) {
+    case 'merged':
+      if (entry.serving === true) return 'Merged · serving';
+      if (entry.serving === false) return 'Merged · deploying';
+      return 'Merged';
+    case 'merge':
+      return 'Ready';
+    case 'wait_deploy':
+      return 'Waits for deploy';
+    case 'after':
+      return entry.reason ?? 'Waits';
+    case 'blocked':
+      return entry.reason ?? 'Blocked';
+  }
 }
 
 /** The label the routine puts on an issue while it has a PR open for it. */
@@ -90,4 +168,35 @@ export async function fetchResolution(
     throw new Error('Could not load the resolution right now.');
   }
   return (await response.json()) as Resolution;
+}
+
+/**
+ * Merge the resolution's pull requests, in order, up to the first deploy gate.
+ *
+ * The server decides what merges: one request merges the cloud PR and reports
+ * the web PR as waiting for that deploy, rather than merging both 23 seconds
+ * apart. The answer is the plan as GitHub holds it afterwards, so the view
+ * re-renders from what actually happened rather than from what was asked.
+ */
+export async function mergeResolution(
+  issueNumber: number,
+  token: string,
+): Promise<MergeState> {
+  const response = await fetch(
+    `${config.apiUrl}/rest/issue-report/${issueNumber}/resolution/merge`,
+    { method: 'POST', headers: { authorization: `Bearer ${token}` } },
+  );
+
+  if (!response.ok) {
+    if (response.status === 403) throw new Error('Reporting is limited to admin accounts.');
+    if (response.status === 409) throw new Error("Merging isn't set up on this server.");
+    let detail = '';
+    try {
+      detail = ((await response.json()) as { error?: string }).error ?? '';
+    } catch {
+      // A body that is not JSON says nothing more than the status did.
+    }
+    throw new Error(detail || 'Could not merge right now.');
+  }
+  return (await response.json()) as MergeState;
 }
