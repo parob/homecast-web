@@ -9239,8 +9239,21 @@ const Dashboard = () => {
                 {/* On a phone the heading is the iOS bar's large title, 34pt
                     bold — the same size the native bar draws, so the two
                     builds read alike. A room or group page keeps its path,
-                    small, on a line above the big name. */}
-                <h2 ref={headingRef} className={`font-bold mb-[4px] ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                    small, on a line above the big name.
+
+                    `pl-1` puts it on the HEADER ROW's leading margin rather
+                    than the page's. Native draws the back button and the large
+                    title from one margin (`NativeHeaderBar.swift`:
+                    `max(view.layoutMargins.left, 16)`); the web has two — the
+                    header row's `px-4` and this container's `px-3` — so the
+                    name sat 0.25rem left of the chevron above it
+                    (parob/homecast-cloud#163). 1rem − 0.75rem is exactly that
+                    gap, at any root font size.
+
+                    Only the title moves. The content below keeps the page's
+                    `px-3`, which is what native does and what keeps the tile
+                    grid where the reporter's two screenshots agree. */}
+                <h2 ref={headingRef} className={`font-bold mb-[4px] ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight pl-1' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
