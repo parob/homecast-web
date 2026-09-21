@@ -112,15 +112,23 @@ export function SceneCard({
   // mode swapped one element tree for another and remounted the card — and the
   // mode now flips *during* a drag, on the press that started it. A remount
   // mid-drag takes the node dnd-kit is tracking out from under it.
+  // Whether this card is about to carry an "Unhide" badge — the same condition
+  // TileEditActions renders one under, kept in one place so the pill below and
+  // the badge cannot both appear. Not simply `editMode`: the badge also needs
+  // somewhere to write the change to.
+  const unhideOffered = editMode && !!onToggleHidden;
+
   const editable = (
     <div className="relative">
       {card}
       {/* Outside the card, so dimming a hidden one does not also grey out
-          the button that brings it back. Not gated on `editMode`: a desktop
-          reveals hidden cards through Show Hidden Items without ever entering
-          it, and a dimmed card with nothing saying why is just a mysterious
-          one. */}
-      {isHidden && <HiddenLabel />}
+          the button that brings it back. The fallback only: it says what the
+          Unhide badge would have said, for a card that has no badge — a shared
+          home or a view-only member, where a dimmed card with nothing saying
+          why is just a mysterious one. Where the badge IS offered the pill was
+          a third copy of the same fact, and being centred it sat across the
+          scene's own name. See homecast-cloud#160. */}
+      {isHidden && !unhideOffered && <HiddenLabel />}
       {/* Gated by `visible`, not by whether it renders: the badges stay put
           for the length of their exit animation. */}
       <TileEditActions

@@ -572,12 +572,18 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // cannot animate away.
   const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} size={sizeEditAction} visible={showEditActions} />;
 
-  // A hidden tile with no way to act on it still has to say why it is greyed out.
-  // Named outside edit mode, where there is no legend explaining what a bare eye
-  // icon means — desktop reveals hidden tiles from the context menu and never
-  // enters edit mode. Inside edit mode the bar spells the icons out, and a pill
-  // across the middle would cover the name again.
-  const hiddenLabel = isHidden && !editMode ? <HiddenLabel /> : null;
+  // A hidden tile with no way to act on it still has to say why it is greyed
+  // out. The badge says it whenever there is one, and a pill across the middle
+  // covers the name — so this is the fallback for a tile that has no badge at
+  // all: no `onHide`, which is a shared home or a view-only member.
+  //
+  // This was `!editMode`, which was right for the mode and wrong for the
+  // desktop: `editPrimaryAction` above stands on `isHidden` alone precisely so
+  // Show Hidden Items can offer Unhide without entering a mode, and outside
+  // edit mode that left the badge and the pill on the same tile.
+  // homecast-cloud#160 reported the pair on the scene cards; this is the same
+  // thing on a tile.
+  const hiddenLabel = isHidden && !onHide ? <HiddenLabel /> : null;
 
   /**
    * Virtual accessories are indistinguishable from real ones by design — a

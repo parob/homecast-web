@@ -243,13 +243,20 @@ export function ActionCard({
   // The wrapper is unconditional and only the badges are behind `editMode` —
   // the mode now flips mid-drag, and swapping element trees at that moment
   // would remount the card dnd-kit is tracking. See SceneCard.
+  // The same condition TileEditActions renders an "Unhide" badge under, named
+  // once so the pill below and the badge cannot both appear.
+  const unhideOffered = !!(editMode && homeId && onToggleHidden);
+
   const editable = (
     <div className="relative">
       {card}
-      {/* Not gated on `editMode`: a desktop reveals hidden cards through Show
-          Hidden Items without ever entering edit mode, and a dimmed card with
-          nothing saying why is just a mysterious one. */}
-      {isHidden && <HiddenLabel />}
+      {/* The fallback only — it says what the Unhide badge would have said, for
+          a card that has no badge (a shared home, a view-only member), where a
+          dimmed card with nothing saying why is just a mysterious one. Where
+          the badge IS offered the pill was a third copy of the same fact, and
+          being centred it sat across the shortcut's own name. See
+          homecast-cloud#160. */}
+      {isHidden && !unhideOffered && <HiddenLabel />}
       {/* Gated by `visible` so it can animate away — see SceneCard. The props
           are only meaningful when there is a home to hide it from, so they are
           built defensively rather than under the render condition. */}
