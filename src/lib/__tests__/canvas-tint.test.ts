@@ -242,3 +242,42 @@ describe('setLuminanceHex', () => {
     expect(setLuminanceHex('rebeccapurple', 0.3)).toBe('rebeccapurple');
   });
 });
+
+/**
+ * parob/homecast-cloud#161: the two adjustments above are for iOS 26 Safari's
+ * glass bars. An app shell has no bars — it is asking what to paint the
+ * WKWebView's backdrop, which is only ever seen against the wallpaper's own
+ * top rows — so it gets the sample as sampled.
+ */
+describe('resolveCanvasTint for an app shell backdrop', () => {
+  const background = { type: 'custom' as const, customUrl: 'https://example.test/night.jpg', blur: 0, brightness: 50 };
+
+  it('returns the sampled edge colour untouched', () => {
+    const tint = resolveCanvasTint({
+      background,
+      sampledTopColor: '#231d2e',
+      isDark: true,
+      wallpaperLuminance: 0.28,
+      surface: 'backdrop',
+    });
+    expect(tint.toLowerCase()).toBe('#231d2e');
+  });
+
+  it('differs from the bars answer on the same wallpaper', () => {
+    const input = { background, sampledTopColor: '#231d2e', isDark: true, wallpaperLuminance: 0.28 };
+    expect(resolveCanvasTint({ ...input, surface: 'backdrop' }))
+      .not.toBe(resolveCanvasTint({ ...input, surface: 'bars' }));
+    // Absent means bars, so every existing caller is unchanged.
+    expect(resolveCanvasTint(input)).toBe(resolveCanvasTint({ ...input, surface: 'bars' }));
+  });
+
+  it('still applies the wallpaper\'s own brightness setting', () => {
+    const dimmed = resolveCanvasTint({
+      background: { ...background, brightness: 20 },
+      sampledTopColor: '#808080',
+      isDark: true,
+      surface: 'backdrop',
+    });
+    expect(dimmed.toLowerCase()).not.toBe('#808080');
+  });
+});
