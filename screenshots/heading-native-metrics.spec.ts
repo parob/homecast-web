@@ -1,5 +1,9 @@
 /**
- * The home name and the room name start on the header row's leading margin.
+ * The phone heading's geometry, against the numbers the native bar uses.
+ *
+ * Both axes, because both were out and for the same underlying reason: the web
+ * heading was built to the page's own spacing rather than to
+ * `NativeHeaderBar.swift`'s figures.
  *
  * parob/homecast-cloud#163: on a phone the web's big heading sat ~5px left of
  * the back chevron above it, where the native iOS build has the two flush.
@@ -34,6 +38,19 @@ const OUT = path.resolve(HERE, 'evidence', 'issue-163');
  * (with the fix stashed), then again with the default label.
  */
 const LABEL = process.env.H163_LABEL || 'after';
+
+/**
+ * Native's own layout of the heading band, read off `NativeHeaderBar.swift`
+ * (`WebHostingLayout.eyebrowHeight`, `.largeTitleHeight`, and `layoutLargeTitle`):
+ *
+ *   eyebrow  frame y = 2, height = 18          -> bottom 20
+ *   title    height 41, y = 18 + (52 - 41) / 2 -> 23.5 .. 64.5
+ *   band     eyebrow(18) + largeTitleHeight(52) = 70
+ *
+ * These are absolute point values in the native build, so the web pins them in
+ * literal px rather than rem — a root font size change must not move them.
+ */
+const NATIVE = { eyebrowBottom: 20, titleTop: 23.5, titleBottom: 64.5, band: 70 };
 
 /** The reporter's device, from the context blob on the issue. */
 const IPHONE_UA =
@@ -153,6 +170,53 @@ for (const where of ['home', 'room'] as const) {
   });
 }
 
+/**
+ * Vertical geometry, measured relative to the heading block's own top so it is
+ * comparable regardless of where the block starts — the web runs under Safari's
+ * bars and the native build under its own, and those offsets are not the
+ * heading's business.
+ */
+async function verticalMetrics(page: Page) {
+  return page.evaluate(() => {
+    const h2 = document.querySelector('h2');
+    if (!h2) throw new Error('no heading');
+    const top = h2.getBoundingClientRect().top;
+    const crumbs = h2.querySelector('span');
+    if (!crumbs) throw new Error('no path line — open a room, not the home');
+    const crumbsBox = crumbs.getBoundingClientRect();
+    const next = h2.nextElementSibling;
+    return {
+      eyebrowBottom: +(crumbsBox.bottom - top).toFixed(2),
+      titleTop: +(crumbsBox.bottom - top + parseFloat(getComputedStyle(crumbs).marginBottom)).toFixed(2),
+      titleBottom: +(h2.getBoundingClientRect().bottom - top).toFixed(2),
+      band: next ? +(next.getBoundingClientRect().top - top).toFixed(2) : null,
+    };
+  });
+}
+
+test('the heading band matches the native bar, line for line', async ({ page }) => {
+  await openHome(page);
+  await page.locator('main').getByRole('button', { name: 'Bedroom', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: /Bedroom/ })).toBeVisible();
+  await page.evaluate(() => {
+    const s = document.scrollingElement || document.documentElement;
+    s.scrollTop = 0;
+  });
+  await page.waitForTimeout(700);
+
+  const m = await verticalMetrics(page);
+  console.log('[vertical] ' + JSON.stringify(m));
+
+  // The one the report is about: the big name started 4px below where native
+  // puts it, because the path line's box was 25px rather than native's 18.
+  expect(m.titleTop).toBeCloseTo(NATIVE.titleTop, 1);
+  expect(m.eyebrowBottom).toBeCloseTo(NATIVE.eyebrowBottom, 1);
+  expect(m.titleBottom).toBeCloseTo(NATIVE.titleBottom, 1);
+  // And the whole band is the height native reserves, so what follows starts
+  // where it does there too.
+  expect(m.band).toBeCloseTo(NATIVE.band, 1);
+});
+
 test('the room page keeps the heading flush with the back chevron', async ({ page }) => {
   await openHome(page);
   await page.locator('main').getByRole('button', { name: 'Bedroom', exact: true }).first().click();
@@ -175,16 +239,43 @@ test('the room page keeps the heading flush with the back chevron', async ({ pag
   console.log('[chevron] ' + JSON.stringify({ chevron, heading: m.headingTextLeft }));
   expect(Math.abs(m.headingTextLeft - chevron)).toBeLessThanOrEqual(1);
 
-  // The picture, with a guide drawn on the margin the title should start on.
-  // A number in a log line does not show a reviewer the thing the reporter saw.
+});
+
+/**
+ * The picture. Assertion-free on purpose: it must be runnable on `main` too,
+ * to get the "before" half, and the assertions above are red there.
+ *
+ *   H163_LABEL=before  npx playwright test heading-native-metrics.spec.ts --project=screenshots
+ *
+ * Both guides are drawn from measured positions, not constants: the red one at
+ * the back chevron's own left edge, the cyan one where native would put the
+ * title's top (the heading block's top + 23.5).
+ */
+test('capture: the heading against the native guides', async ({ page }) => {
+  await openHome(page);
+  await page.locator('main').getByRole('button', { name: 'Bedroom', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: /Bedroom/ })).toBeVisible();
+  await page.evaluate(() => {
+    const s = document.scrollingElement || document.documentElement;
+    s.scrollTop = 0;
+  });
+  await page.waitForTimeout(700);
+
   fs.mkdirSync(OUT, { recursive: true });
-  await page.evaluate((x) => {
-    const g = document.createElement('div');
-    g.style.cssText =
-      `position:fixed;left:${x}px;top:0;width:1px;height:100vh;` +
-      'background:#ff2d55;z-index:2147483647;pointer-events:none';
-    document.body.appendChild(g);
-  }, chevron);
+  await page.evaluate((titleTop) => {
+    const back = document.querySelector('[data-testid="header-back"]');
+    const h2 = document.querySelector('h2');
+    if (!back || !h2) throw new Error('nothing to measure');
+    const x = (back.closest('div') ?? back).getBoundingClientRect().left;
+    const y = h2.getBoundingClientRect().top + titleTop;
+    const line = (css: string) => {
+      const g = document.createElement('div');
+      g.style.cssText = `position:fixed;z-index:2147483647;pointer-events:none;${css}`;
+      document.body.appendChild(g);
+    };
+    line(`left:${x}px;top:0;width:1px;height:100vh;background:#ff2d55`);
+    line(`left:0;top:${y}px;height:1px;width:100vw;background:#32ffd0`);
+  }, NATIVE.titleTop);
   await page.waitForTimeout(150);
   await page.screenshot({
     path: path.join(OUT, `room-heading-${LABEL}.png`),

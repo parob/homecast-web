@@ -7458,7 +7458,15 @@ const Dashboard = () => {
   // above and only the page's own name is large; the separator before that
   // name is then a line break, not a slash.
   const largeHeading = isMobile && !nativeHeaderActive;
-  const crumbsClass = largeHeading ? 'block text-[15px] leading-5 tracking-normal opacity-80 mb-0.5 truncate' : 'contents';
+  const crumbsClass = largeHeading
+    // The path line's box is native's eyebrow: a 18pt frame at y=2, with the
+    // big name's 41pt line starting at 23.5 (NativeHeaderBar.swift — `eyebrow`
+    // = WebHostingLayout.eyebrowHeight, `titleY` = eyebrow + (52 - 41) / 2).
+    // `leading-5` + `mb-0.5` came to 27.5, so the name sat 4px low against the
+    // native build. Literal px, not rem: native's figures are absolute, so they
+    // must not drift with the root font size.
+    ? 'block text-[15px] leading-[18px] pt-[2px] tracking-normal opacity-80 mb-[3.5px] truncate'
+    : 'contents';
   const crumbNameClass = largeHeading ? 'block truncate' : '';
   const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
     const Icon = item.icon;
@@ -9254,7 +9262,7 @@ const Dashboard = () => {
                     Only the title moves. The content below keeps the page's
                     `px-3`, which is what native does and what keeps the tile
                     grid where the reporter's two screenshots agree. */}
-                <h2 ref={headingRef} className={`font-bold mb-[4px] ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight pl-1' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                <h2 ref={headingRef} className={`font-bold ${largeHeading ? 'mb-[5.5px] text-[34px] leading-[41px] tracking-tight pl-1' : 'mb-[4px] text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));

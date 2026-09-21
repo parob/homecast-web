@@ -46,7 +46,7 @@ export default defineConfig({
     'native-backdrop-colour.spec.ts',
     'lock-battery-ink.spec.ts',
     'overlay-band-colour.spec.ts',
-    'heading-leading-margin.spec.ts',
+    'heading-native-metrics.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,
