@@ -152,8 +152,21 @@ describe('widgetSizeStyle', () => {
   });
 
   it('spans the cells the size claims', () => {
-    expect(widgetSizeStyle('large')).toEqual({ gridColumn: 'span 2', gridRow: 'span 2', alignSelf: 'stretch' });
-    expect(widgetSizeStyle('tall')).toEqual({ gridColumn: 'span 1', gridRow: 'span 2', alignSelf: 'stretch' });
+    expect(widgetSizeStyle('large')).toEqual({ gridColumn: 'span 2', gridRow: 'span 2', alignSelf: 'stretch', display: 'grid' });
+    expect(widgetSizeStyle('tall')).toEqual({ gridColumn: 'span 1', gridRow: 'span 2', alignSelf: 'stretch', display: 'grid' });
+  });
+
+  it('makes the cell a container, so the height reaches the card through any wrapper', () => {
+    // issue #159. `alignSelf: stretch` sizes this element and nothing below it,
+    // and the card's height comes down an `h-full` chain — `height: 100%`, which
+    // dies at the first ancestor with `height: auto`. The dashboard has one:
+    // the `relative` div holding the deal badge and the expanded overlay. As a
+    // grid container the cell stretches its child instead of asking it to
+    // measure itself against an auto-height parent, so no wrapper can break it.
+    expect(widgetSizeStyle('large')?.display).toBe('grid');
+    expect(widgetSizeStyle('tall')?.display).toBe('grid');
+    // Never for regular: an untouched tile must stay on its old code path.
+    expect(widgetSizeStyle('regular')).toBeUndefined();
   });
 
   it('stretches, because both grids are items-start', () => {
