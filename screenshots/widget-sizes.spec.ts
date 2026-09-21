@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const evidence = (name: string) => path.join(__dirname, 'evidence', 'issue-154', name);
+// The regression in that feature, photographed separately so the before/after
+// pair for #159 is not mixed in with the pictures that argued for #154.
+const evidence159 = (name: string) => path.join(__dirname, 'evidence', 'issue-159', name);
 
 
 /**
@@ -32,6 +35,11 @@ async function measure(page: import('@playwright/test').Page) {
       camera: box(camera)!,
       // The picture itself, not the card: the thing the user asked to be bigger.
       preview: box(camera.querySelector('[data-camera-tile-preview]')),
+      // The dashboard's `relative` div, when the fixture is rendering it, and
+      // the painted card under it. A cell can be the right size while both of
+      // these stay one row tall inside it.
+      wrapper: box(camera.querySelector('[data-dashboard-wrapper]')),
+      card: box(camera.querySelector('.backdrop-blur-xl') ?? camera.firstElementChild),
       lights: box(tile('lights'))!,
       lock: box(tile('lock'))!,
       thermostat: box(tile('thermostat'))!,
@@ -190,5 +198,62 @@ test.describe('camera tile sizes', () => {
     expect(slop.content).not.toBe('none');   // the pseudo-element target exists
 
     await page.locator('[data-size-grid]').screenshot({ path: evidence('widget-size-edit-badges.png') });
+  });
+
+  /**
+   * The dashboard does not put the card straight into the grid cell.
+   *
+   * Between the two sit `LazyWidget` and a `relative` div that positions the
+   * deal badge and the expanded overlay — and `h-full` is `height: 100%`, so a
+   * single wrapper with auto height is enough to break the whole chain. That is
+   * exactly what issue #159 reported: "stretched horizontally but not
+   * vertically". The tile claimed its two columns and two rows, and the card
+   * went on drawing at one row inside them.
+   *
+   * Every other test here renders the card as the grid cell's only child, so
+   * none of them could see it. This one renders what production renders.
+   */
+  test('Large fills the cell through the dashboard\'s own wrapper', async ({ page }) => {
+    await page.goto('/screenshots/fixtures/widget-sizes.html?size=large&wrapped=1');
+    await expect(page.locator('[data-camera-tile-preview] img')).toBeVisible();
+    const m = await measure(page);
+    await page.locator('[data-size-grid]').screenshot({ path: evidence159('wrapped-large.png') });
+
+    // The cell itself is fine — it always was. Two columns wide, two rows tall.
+    expect(m.camera.width).toBeCloseTo(m.lights.width * 2 + m.gap, 0);
+    expect(m.camera.height).toBeCloseTo(m.lights.height * 2 + m.gap, 0);
+
+    // The card inside it is the part that was one row tall in a two-row cell.
+    expect(m.wrapper).not.toBeNull();
+    expect(m.wrapper!.height).toBeCloseTo(m.camera.height, 0);
+    expect(m.card!.height).toBeCloseTo(m.camera.height, 0);
+    expect(m.preview!.height).toBeGreaterThan(m.camera.height * 0.8);
+  });
+
+  test('Tall fills the cell through the dashboard\'s own wrapper', async ({ page }) => {
+    await page.goto('/screenshots/fixtures/widget-sizes.html?size=tall&portrait=1&wrapped=1');
+    await expect(page.locator('[data-camera-tile-preview] img')).toBeVisible();
+    const m = await measure(page);
+
+    expect(m.camera.height).toBeCloseTo(m.lights.height * 2 + m.gap, 0);
+    expect(m.card!.height).toBeCloseTo(m.camera.height, 0);
+    expect(m.preview!.height).toBeGreaterThan(m.camera.height * 0.8);
+  });
+
+  test('a Regular tile in that wrapper is still exactly a regular tile', async ({ page }) => {
+    // The other half of the blast radius: the wrapper is on every tile in the
+    // grid, sized or not, so whatever makes the sized one stretch must leave
+    // the unsized one alone.
+    await page.goto('/screenshots/fixtures/widget-sizes.html?size=regular');
+    await expect(page.locator('[data-camera-tile-preview] img')).toBeVisible();
+    const bare = await measure(page);
+
+    await page.goto('/screenshots/fixtures/widget-sizes.html?size=regular&wrapped=1');
+    await expect(page.locator('[data-camera-tile-preview] img')).toBeVisible();
+    const wrapped = await measure(page);
+
+    expect(wrapped.camera.width).toBeCloseTo(bare.camera.width, 0);
+    expect(wrapped.camera.height).toBeCloseTo(bare.camera.height, 0);
+    expect(wrapped.lights.height).toBeCloseTo(bare.lights.height, 0);
   });
 });

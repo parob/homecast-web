@@ -174,6 +174,22 @@ export function withWidgetSize(
  * given an explicit row track — see `gridRowUnitStyle` — and the two go
  * together: neither does the job without the other.
  *
+ * **`display: grid` is what carries the height past the wrappers**, and it is
+ * here rather than in the caller on purpose. `alignSelf: stretch` sizes this
+ * element alone; the card below gets its height from an `h-full` chain, and
+ * `h-full` is `height: 100%`, so one ancestor with `height: auto` ends it. The
+ * dashboard has exactly one — the `relative` div that positions the deal badge
+ * and the expanded overlay, between `SortableItem` and the card. Issue #159 was
+ * that div: the cell was the right size, the card inside it stayed one row
+ * tall, and it read as a tile stretched horizontally but not vertically.
+ *
+ * As a grid container this cell *stretches* its child to the row it was given
+ * rather than asking the child to resolve a percentage against it, so the
+ * height survives however many wrappers a call site puts in the way — including
+ * ones added later, which is the half an `h-full` on `Dashboard.tsx` would not
+ * have covered. Width never needed any of this: a grid item fills its column
+ * span on its own, which is why the fault was horizontal-only.
+ *
  * This replaced a fixed `aspect-ratio`, which was wrong in a way worth
  * recording because it *looked* right. 16/9 of a 358px phone column is 201px
  * and two rows plus the gap is 202px, so it matched at the one width it was
@@ -185,6 +201,7 @@ export function widgetSizeStyle(size: WidgetSize): {
   gridColumn: string;
   gridRow: string;
   alignSelf: 'stretch';
+  display: 'grid';
 } | undefined {
   if (size === 'regular') return undefined;
   const span = widgetSpan(size);
@@ -192,6 +209,7 @@ export function widgetSizeStyle(size: WidgetSize): {
     gridColumn: `span ${span.columns}`,
     gridRow: `span ${span.rows}`,
     alignSelf: 'stretch',
+    display: 'grid',
   };
 }
 
