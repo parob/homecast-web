@@ -7457,6 +7457,25 @@ const Dashboard = () => {
   // above and only the page's own name is large; the separator before that
   // name is then a line break, not a slash.
   const largeHeading = isMobile && !nativeHeaderActive;
+  // Line the heading up with the bar's leading control — the back chevron on a
+  // room page, the ☰ on the home (parob/homecast-cloud#163).
+  //
+  // Native draws both from ONE margin: `NativeHeaderBar.swift` places the
+  // eyebrow and the large title at `max(view.layoutMargins.left, 16)`, which is
+  // the same margin UIKit puts the bar's back button on. The web draws them
+  // from two: the header row is `px-4` and this heading's container is `px-3`,
+  // so the name sat 0.25rem left of the button above it and the reporter could
+  // see the step.
+  //
+  // `pl-1` IS that difference (`px-4` − `px-3`), stated in the same rem the
+  // two gutters are stated in — so it stays exact at any root size rather than
+  // being a 5px number that happens to be right on one device.
+  //
+  // The page's own gutter is deliberately NOT widened to close this. Native
+  // steps the title in while the content beneath it keeps the page's 15px
+  // gutter, and the two screenshots on the issue agree on the tile grid to the
+  // pixel; moving the container would shift every tile and lose that.
+  const headingBarInset = largeHeading ? 'pl-1' : '';
   const crumbsClass = largeHeading ? 'block text-[15px] leading-5 tracking-normal opacity-80 mb-0.5 truncate' : 'contents';
   const crumbNameClass = largeHeading ? 'block truncate' : '';
   const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
@@ -9240,7 +9259,7 @@ const Dashboard = () => {
                     bold — the same size the native bar draws, so the two
                     builds read alike. A room or group page keeps its path,
                     small, on a line above the big name. */}
-                <h2 ref={headingRef} className={`font-bold mb-[4px] ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                <h2 ref={headingRef} className={`font-bold mb-[4px] ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${headingBarInset} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
