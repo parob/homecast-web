@@ -55,6 +55,13 @@ export const CircleControl: React.FC<CircleControlProps> = ({
     >
       <Icon style={{ width: size * 0.36, height: size * 0.36 }} strokeWidth={1.75} />
     </button>
-    {detail && <div className="text-[12px] opacity-70 text-center">{detail}</div>}
+    {/* `tile-ink` is load-bearing, not decoration. WidgetWrapper flips a tile
+        over a dark wallpaper to white ink with a list of ELEMENT names —
+        h3, p, span — plus that class for anything else. A bare div matched
+        none of them, so on a dark wallpaper the title and subtitle beside this
+        line went white and the line itself kept the card's dark foreground:
+        rgb(2,8,23) on a tile filled rgba(0,0,0,.2). The battery reading on an
+        expanded lock was invisible (homecast-cloud#167). */}
+    {detail && <div className="tile-ink text-[12px] opacity-70 text-center">{detail}</div>}
   </div>
 );
