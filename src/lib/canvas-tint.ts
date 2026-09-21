@@ -53,6 +53,25 @@ function withBrightness(luminance: number, brightness: number): number {
 }
 
 /**
+ * What the colour is being asked for, because the two answers differ.
+ *
+ * `bars` — iOS 26 Safari's glass bars, and the scrims the wallpaper fades into
+ * on its way to them. A band the depth of the status bar, sitting beside a
+ * whole screen of wallpaper and read as chrome. Both adjustments below exist
+ * for it and only for it.
+ *
+ * `backdrop` — the WKWebView's own background in an app shell, which is seen
+ * in one place: the strip the page is pulled away from on a rubber-band
+ * overscroll, immediately against the wallpaper's own top rows (and, on
+ * iOS 26, what the scroll view's `topEdgeEffect` runs out into). Nothing there
+ * reads as chrome and there is nothing to match but that edge, so the sample
+ * is used as sampled. Adjusting it for a bar the shell does not have is what
+ * put a band four times brighter than the wallpaper it borders on top of the
+ * iOS app — parob/homecast-cloud#161.
+ */
+export type CanvasTintSurface = 'bars' | 'backdrop';
+
+/**
  * A sampled colour, made the canvas.
  *
  * The sample is an average of the wallpaper's outermost rows, and it decides
@@ -73,9 +92,18 @@ function withBrightness(luminance: number, brightness: number): number {
  * With no whole-image luminance yet (it lands with the sample, but a caller
  * that tracks neither passes null) this is the old behaviour exactly — the
  * sample's own brightness, lifted.
+ *
+ * Both of those are for the bars. A `backdrop` gets neither: see
+ * `CanvasTintSurface`.
  */
-function sampledTint(sampled: string, brightness: number, wallpaperLuminance: number | null | undefined): string {
+function sampledTint(
+  sampled: string,
+  brightness: number,
+  wallpaperLuminance: number | null | undefined,
+  surface: CanvasTintSurface,
+): string {
   const adjusted = applyBrightnessToHex(sampled, brightness);
+  if (surface === 'backdrop') return adjusted;
   const matched = wallpaperLuminance == null
     ? adjusted
     : setLuminanceHex(adjusted, withBrightness(wallpaperLuminance, brightness));
@@ -96,6 +124,12 @@ export interface CanvasTintInput {
    * keeps the pre-#157 behaviour, so a caller that tracks no image is safe.
    */
   wallpaperLuminance?: number | null;
+  /**
+   * What the colour is for — see `CanvasTintSurface`. Absent means `bars`,
+   * which is what every browser caller wants and what this module did before
+   * an app shell was told apart from one.
+   */
+  surface?: CanvasTintSurface;
 }
 
 /**
@@ -104,7 +138,7 @@ export interface CanvasTintInput {
  * Returns `THEME_CANVAS` when there is no wallpaper — the page really is the
  * theme colour then, and hardcoding a hex would fight a future dark mode.
  */
-export function resolveCanvasTint({ background, sampledTopColor, isDark, wallpaperLuminance }: CanvasTintInput): string {
+export function resolveCanvasTint({ background, sampledTopColor, isDark, wallpaperLuminance, surface = 'bars' }: CanvasTintInput): string {
   const bg = background;
   if (!bg || bg.type === 'none') return THEME_CANVAS;
 
@@ -117,17 +151,17 @@ export function resolveCanvasTint({ background, sampledTopColor, isDark, wallpap
     }
     if (PRESET_IMAGES[bg.presetId]) {
       return sampledTopColor
-        ? sampledTint(sampledTopColor, brightness, wallpaperLuminance)
+        ? sampledTint(sampledTopColor, brightness, wallpaperLuminance, surface)
         : pendingTint(isDark);
     }
     // A preset id we do not recognise: treat it as an image awaiting its sample
     // rather than falling through to the theme colour, which would flash.
-    return sampledTopColor ? sampledTint(sampledTopColor, brightness, wallpaperLuminance) : pendingTint(isDark);
+    return sampledTopColor ? sampledTint(sampledTopColor, brightness, wallpaperLuminance, surface) : pendingTint(isDark);
   }
 
   if (bg.type === 'custom') {
     return sampledTopColor
-      ? sampledTint(sampledTopColor, brightness, wallpaperLuminance)
+      ? sampledTint(sampledTopColor, brightness, wallpaperLuminance, surface)
       : pendingTint(isDark);
   }
 
