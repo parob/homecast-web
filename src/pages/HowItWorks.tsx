@@ -12,7 +12,7 @@ const HowItWorks = () => {
       {/* Page-level background for hero - extends above fold for elastic scroll */}
       <div className="absolute inset-x-0 top-0 h-[800px] -mt-[200px] pt-[200px] overflow-hidden">
         <img
-          src="/backgrounds/abstract_mountains.png"
+          src="/backgrounds/abstract_mountains.webp"
           alt=""
           className="w-full h-full object-cover opacity-15 dark:opacity-10"
         />

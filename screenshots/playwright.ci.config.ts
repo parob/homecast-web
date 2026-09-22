@@ -50,6 +50,13 @@ export default defineConfig({
     'native-backdrop-colour.spec.ts',
     'lock-battery-ink.spec.ts',
     'overlay-band-colour.spec.ts',
+    // A room entered from a scrolled home opens at the top. homecast-cloud#175.
+    // In the CI subset from day one on purpose: #192 and #193 are both specs
+    // that no check ran, found red months later by a hand-run.
+    'room-opens-scrolled.spec.ts',
+    // The background picker fills the dialog and still scrolls to its end,
+    // and each slider is one line. homecast-cloud#178.
+    'background-dialog-space.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,
