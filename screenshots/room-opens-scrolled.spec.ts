@@ -50,27 +50,44 @@ async function openHome(page: Page) {
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
   await waitForDashboard(page);
-  await page.waitForTimeout(600);
+  // Wait for the page to actually BE scrollable rather than sleeping and
+  // hoping. On a slow runner the tiles land late, and scrolling a document
+  // that is still one viewport tall silently does nothing — which would make
+  // this spec pass for the wrong reason.
+  await expect
+    .poll(() => page.evaluate(() => {
+      const el = document.scrollingElement || document.documentElement;
+      return el.scrollHeight - el.clientHeight;
+    }), { message: 'the home view has something to scroll', timeout: 15_000 })
+    .toBeGreaterThan(500);
+}
+
+/** Scroll the home down the way someone does to reach the room they want. */
+async function scrollHome(page: Page, to: number) {
+  await page.evaluate((y) => {
+    const el = document.scrollingElement || document.documentElement;
+    el.scrollTop = y;
+  }, to);
+  await expect
+    .poll(() => scrollTop(page), { message: 'the home view really is scrolled', timeout: 5_000 })
+    .toBeGreaterThan(200);
+  return scrollTop(page);
 }
 
 test('a room entered from a scrolled home opens at the top', async ({ page }) => {
   await openHome(page);
 
-  // Scroll the home view down, the way someone does to reach the room they
-  // want. 400px is well short of the bottom — this is an ordinary scroll, not
-  // an extreme one.
-  await page.evaluate(() => {
-    const el = document.scrollingElement || document.documentElement;
-    el.scrollTop = 400;
-  });
-  await page.waitForTimeout(300);
-  const beforeTap = await scrollTop(page);
-  expect(beforeTap, 'the home view really is scrolled before the tap').toBeGreaterThan(200);
+  // 400px is well short of the bottom — an ordinary scroll, not an extreme one.
+  const beforeTap = await scrollHome(page, 400);
 
   await page.locator('main').getByRole('button', { name: 'Bedroom', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: /Bedroom/ })).toBeVisible();
-  await page.waitForTimeout(700);
 
+  // Poll rather than sleep: the reset lands in an effect after the room's own
+  // paint, and how long that takes is the runner's business, not the spec's.
+  await expect
+    .poll(() => scrollTop(page), { message: 'the room page settles at the top', timeout: 10_000 })
+    .toBe(0);
   const afterTap = await scrollTop(page);
   console.log(`[#175] home scrolled to ${beforeTap}px → room opened at ${afterTap}px`);
 
@@ -85,16 +102,14 @@ test('a room entered from a scrolled home opens at the top', async ({ page }) =>
 test('the room heading is not clipped by the top of the viewport', async ({ page }) => {
   await openHome(page);
 
-  await page.evaluate(() => {
-    const el = document.scrollingElement || document.documentElement;
-    el.scrollTop = 400;
-  });
-  await page.waitForTimeout(300);
+  await scrollHome(page, 400);
 
   await page.locator('main').getByRole('button', { name: 'Bedroom', exact: true }).first().click();
   const heading = page.getByRole('heading', { name: /Bedroom/ });
   await expect(heading).toBeVisible();
-  await page.waitForTimeout(700);
+  await expect
+    .poll(() => scrollTop(page), { message: 'the room page settles at the top', timeout: 10_000 })
+    .toBe(0);
 
   const box = await heading.boundingBox();
   console.log(`[#175] heading top = ${box?.y}px`);

@@ -36,13 +36,28 @@ async function openBackgroundDialog(page: Page) {
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
   await waitForDashboard(page);
-  await page.waitForTimeout(600);
 
-  await page.locator('[data-tour="header-menu"]').first().tap();
-  await page.waitForTimeout(500);
-  await page.getByRole('menuitem', { name: 'Background', exact: true }).first().click();
+  const menu = page.locator('[data-tour="header-menu"]').first();
+  await expect(menu).toBeVisible();
+  await menu.tap();
+
+  const item = page.getByRole('menuitem', { name: 'Background', exact: true }).first();
+  await expect(item).toBeVisible();
+  await item.click();
+
   await expect(page.getByRole('dialog').last()).toBeVisible();
-  await page.waitForTimeout(800);
+  // Wait for the dialog to have SETTLED at its height rather than sleeping and
+  // hoping: it animates in, and measuring mid-animation is how a geometry spec
+  // becomes flaky on a slow runner. Two equal reads a frame apart mean it has
+  // stopped moving.
+  await expect
+    .poll(async () => {
+      const h = await page.getByRole('dialog').last().evaluate((el) => el.getBoundingClientRect().height);
+      await new Promise((r) => setTimeout(r, 120));
+      const again = await page.getByRole('dialog').last().evaluate((el) => el.getBoundingClientRect().height);
+      return h > 0 && Math.abs(h - again) < 1 ? Math.round(h) : -1;
+    }, { message: 'the dialog settles at a height', timeout: 15_000 })
+    .toBeGreaterThan(0);
 }
 
 test('the picker fills the space the dialog has', async ({ page }) => {
