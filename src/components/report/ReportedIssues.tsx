@@ -28,7 +28,19 @@ import { Button } from '@/components/ui/button';
 import {
   fetchReportedIssues, relativeAge, type IssueFilter, type ReportedIssue,
 } from '@/lib/report/issues';
-import { fixStatus } from '@/lib/report/resolution';
+import { fixStatus, fixStatusTone } from '@/lib/report/resolution';
+
+/**
+ * How each status reads. Muted for `idle` on purpose: "not picked up yet" is
+ * the absence of news, and it should be legible without competing with the
+ * rows that actually have some.
+ */
+const STATUS_TONE: Record<ReturnType<typeof fixStatusTone>, string> = {
+  done: 'bg-green-600/15 text-green-700 dark:text-green-400',
+  active: 'bg-primary/15 text-primary',
+  waiting: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  idle: 'bg-muted text-muted-foreground',
+};
 
 const FILTERS: { value: IssueFilter; label: string }[] = [
   { value: 'open', label: 'Open' },
@@ -168,26 +180,25 @@ export function ReportedIssues({ onAddTo, onOpen }: ReportedIssuesProps = {}) {
                     almost every real issue title; a bug report's title is where
                     the information is, so give it the room to be read. */}
                 <div className="line-clamp-2 break-words text-sm">{issue.title}</div>
-                <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                {/* Wraps: the status word is additive, and on a narrow row it must
+                    take its own line rather than eat the comment count beside it. */}
+                <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
                   <span className="truncate">
                     #{issue.issueNumber}
                     {age && ` · ${age}`}
                     {issue.commentCount > 0 &&
                       ` · ${issue.commentCount} ${issue.commentCount === 1 ? 'comment' : 'comments'}`}
                   </span>
-                  {status && (
-                    // A word, not a button: where the fix stands is a fact
-                    // about the row, and the row itself is what opens it.
-                    <span
-                      className={`shrink-0 rounded-full px-1.5 py-px text-[11px] ${
-                        status === 'Fixed'
-                          ? 'bg-green-600/15 text-green-700 dark:text-green-400'
-                          : 'bg-primary/15 text-primary'
-                      }`}
-                    >
-                      {status}
-                    </span>
-                  )}
+                  {/* A word, not a button: where the report stands is a fact
+                      about the row, and the row itself is what opens it. Every
+                      open row carries one — a row with no news used to render
+                      blank, which read as "being worked on" and was the whole
+                      of homecast-cloud#181. */}
+                  <span
+                    className={`shrink-0 rounded-full px-1.5 py-px text-[11px] ${STATUS_TONE[fixStatusTone(status)]}`}
+                  >
+                    {status}
+                  </span>
                 </div>
               </div>
               {onOpen && (

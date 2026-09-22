@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
-  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus, mergeLabel,
+  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus,
+  fixStatusTone, mergeLabel,
   mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, offersResolution,
   planStatus, sendFeedback, shortPr, type MergePlanEntry, type Resolution,
 } from '../resolution';
@@ -34,12 +35,59 @@ describe('offersResolution', () => {
 });
 
 describe('fixStatus — the word on a row', () => {
-  it('reads Fix proposed while a PR is open, Fixed once closed, and nothing otherwise', () => {
+  it('reads Fix proposed while a PR is open, and Fixed once closed', () => {
     expect(fixStatus(row(['bug', 'claude-pr-open']))).toBe('Fix proposed');
     expect(fixStatus(row(['bug', 'claude-pr-open'], 'closed'))).toBe('Fixed');
     expect(fixStatus(row(['bug', 'claude-attempted'], 'closed'))).toBe('Fixed');
-    expect(fixStatus(row(['bug', 'claude-attempted']))).toBeNull();
-    expect(fixStatus(row([]))).toBeNull();
+  });
+
+  it('names the state a row is actually in, rather than going quiet', () => {
+    expect(fixStatus(row(['bug', 'claude-attempted']))).toBe('Investigating');
+    expect(fixStatus(row(['bug', 'blocked-upstream']))).toBe('Blocked upstream');
+    expect(fixStatus(row(['bug', 'needs-human']))).toBe('Needs review');
+  });
+
+  /**
+   * homecast-cloud#181. These two rows are the whole issue: on 21 Sep the
+   * first was worked in depth and the second was never opened by anything,
+   * and the list rendered them identically because both answered null.
+   */
+  it('tells an untouched report apart from one being worked on', () => {
+    const investigating = row(['bug', 'issue-reporter', 'claude-attempted']);
+    const untouched = row(['bug', 'issue-reporter', 'app-homecast', 'fp-cefd17ceb60c0a9e']);
+
+    expect(fixStatus(untouched)).toBe('Not picked up yet');
+    expect(fixStatus(investigating)).not.toBe(fixStatus(untouched));
+  });
+
+  it('says so for a bare report, rather than leaving the row blank', () => {
+    expect(fixStatus(row([]))).toBe('Not picked up yet');
+  });
+
+  /**
+   * Order, not membership: a report carries several of these at once and the
+   * most-resolved one is the one worth reading. #163 held attempted AND
+   * pr-open together for three days.
+   */
+  it('reads the most resolved label a row carries', () => {
+    expect(fixStatus(row(['claude-attempted', 'claude-pr-open']))).toBe('Fix proposed');
+    expect(fixStatus(row(['claude-attempted', 'blocked-upstream']))).toBe('Blocked upstream');
+    expect(fixStatus(row(['claude-attempted', 'needs-human', 'claude-pr-open'], 'closed')))
+      .toBe('Fixed');
+  });
+});
+
+describe('fixStatusTone — how loudly each word reads', () => {
+  it('mutes the absence of news and greens a fix', () => {
+    expect(fixStatusTone('Not picked up yet')).toBe('idle');
+    expect(fixStatusTone('Fixed')).toBe('done');
+  });
+
+  it('groups the two that mean someone is on it, and the two that mean waiting', () => {
+    expect(fixStatusTone('Investigating')).toBe('active');
+    expect(fixStatusTone('Fix proposed')).toBe('active');
+    expect(fixStatusTone('Blocked upstream')).toBe('waiting');
+    expect(fixStatusTone('Needs review')).toBe('waiting');
   });
 });
 

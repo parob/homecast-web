@@ -213,6 +213,15 @@ export function planStatus(entry: MergePlanEntry): string {
 /** The label the routine puts on an issue while it has a PR open for it. */
 export const PR_OPEN_LABEL = 'claude-pr-open';
 
+/** The label that means an agent has read the issue — "someone is on this". */
+export const ATTEMPTED_LABEL = 'claude-attempted';
+
+/** Waiting on a fix in a repository this product does not own. */
+export const BLOCKED_LABEL = 'blocked-upstream';
+
+/** Deliberately parked for a person to decide. */
+export const NEEDS_HUMAN_LABEL = 'needs-human';
+
 /**
  * Whether a row should offer its resolution at all.
  *
@@ -226,14 +235,65 @@ export function offersResolution(issue: Pick<ReportedIssue, 'labels' | 'state'>)
 }
 
 /**
- * The word on a row for where its fix stands, or null for a row with nothing
- * to say. Closed reads as fixed — the label comes off once the PR has merged,
- * and a closed report is usually a fixed one.
+ * Where a report stands, in one word.
+ *
+ * Every open row gets one, and the reason is homecast-cloud#181. This used to
+ * answer `null` for anything without a pull request, which made two very
+ * different rows render identically: one an agent was part-way through
+ * investigating, and one that nothing had ever opened. On 21 Sep four reports
+ * were filed and never picked up — two of them asked about twice — and the
+ * screen showed the same blank for those as for the ones being worked. The
+ * reporter's only possible reading was "nothing is happening", and they had no
+ * way to know whether that was true.
+ *
+ * So the absence is now a word. `Not picked up yet` is the honest answer when
+ * no label says otherwise, and it is deliberately the one this errs towards:
+ * `claude-attempted` is written by a routine that has been seen to skip it
+ * (homecast-web#207 was worked in depth and never labelled), so a row can read
+ * as unclaimed while someone is in fact on it. Under-claiming shows the queue
+ * as worse than it is, which is the safe direction — the opposite mistake is
+ * the one that produced this issue.
+ *
+ * Ordered most-resolved first: a closed report is fixed whatever else it
+ * carries, and a pull request outranks the investigation that produced it.
  */
-export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): 'Fixed' | 'Fix proposed' | null {
+export type FixStatus =
+  | 'Fixed'
+  | 'Fix proposed'
+  | 'Blocked upstream'
+  | 'Needs review'
+  | 'Investigating'
+  | 'Not picked up yet';
+
+export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): FixStatus {
   if (issue.state === 'closed') return 'Fixed';
   if (issue.labels.includes(PR_OPEN_LABEL)) return 'Fix proposed';
-  return null;
+  if (issue.labels.includes(BLOCKED_LABEL)) return 'Blocked upstream';
+  if (issue.labels.includes(NEEDS_HUMAN_LABEL)) return 'Needs review';
+  if (issue.labels.includes(ATTEMPTED_LABEL)) return 'Investigating';
+  return 'Not picked up yet';
+}
+
+/**
+ * How loudly a status reads. Here rather than in the view so the word and its
+ * weight are decided in one place — they are one fact about the row.
+ *
+ * `Not picked up yet` is muted on purpose. It is the absence of news, and an
+ * absence that shouts is worse than one that is simply legible.
+ */
+export function fixStatusTone(status: FixStatus): 'done' | 'active' | 'waiting' | 'idle' {
+  switch (status) {
+    case 'Fixed':
+      return 'done';
+    case 'Fix proposed':
+    case 'Investigating':
+      return 'active';
+    case 'Blocked upstream':
+    case 'Needs review':
+      return 'waiting';
+    case 'Not picked up yet':
+      return 'idle';
+  }
 }
 
 /** The part of a PR URL worth reading: `homecast-web#208`. */
