@@ -46,7 +46,7 @@ export interface MergePlanEntry extends ResolutionPr {
   merged: boolean;
   mergeSha: string | null;
   mergeable: boolean | null;
-  checks: 'success' | 'failure' | 'pending' | 'none';
+  checks: 'success' | 'failure' | 'pending' | 'none' | 'unknown';
   action: MergeAction;
   reason: string | null;
   serving?: boolean | null;
@@ -321,11 +321,20 @@ export type FixStatus =
 
 export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): FixStatus {
   if (issue.state === 'closed') return 'Fixed';
-  if (issue.labels.includes(PR_OPEN_LABEL)) return 'Fix proposed';
   if (issue.labels.includes(BLOCKED_LABEL)) return 'Blocked upstream';
   if (issue.labels.includes(NEEDS_HUMAN_LABEL)) return 'Needs review';
+  if (issue.labels.includes(PR_OPEN_LABEL)) return 'Fix proposed';
   if (issue.labels.includes(ATTEMPTED_LABEL)) return 'Investigating';
   return 'Not picked up yet';
+}
+
+/** Merged code is only part of an open report's resolution. */
+export function mergedReportMessage(status: FixStatus): string {
+  const merged = 'All linked pull requests are merged.';
+  if (status === 'Fixed') return merged;
+  if (status === 'Needs review') return `${merged} This report still needs review; see the updates below.`;
+  if (status === 'Blocked upstream') return `${merged} This report is still blocked upstream; see the updates below.`;
+  return `${merged} This report is still open pending verification.`;
 }
 
 /**

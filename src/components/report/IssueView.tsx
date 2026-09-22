@@ -44,10 +44,10 @@ import { openExternalUrl } from '@/lib/open-url';
 import { readComment, type Block, type Inline } from '@/lib/report/comment-markdown';
 import { relativeAge, relativeMoment, type ReportedIssue } from '@/lib/report/issues';
 import {
-  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, mergeLabel,
+  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus, mergeLabel, mergedReportMessage,
   mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planStatus, sendFeedback, shortPr,
   type ConflictNudge, type FeedbackResult, type FeedbackTarget, type MergePlanEntry, type MergeState,
-  type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate,
+  type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate, type FixStatus,
 } from '@/lib/report/resolution';
 
 interface IssueViewProps {
@@ -85,7 +85,8 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
   useEffect(() => load(), [load]);
 
-  const fixed = issue.state === 'closed';
+  const reportStatus = fixStatus({ state: resolution?.state ?? issue.state, labels: resolution?.labels ?? issue.labels });
+  const fixed = reportStatus === 'Fixed';
   const age = relativeAge(resolution?.createdAt ?? issue.createdAt);
   const reportedText = (resolution?.reportedText ?? '').trim();
   const reported = resolution?.reported ?? [];
@@ -121,7 +122,7 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
             <div className="text-xs text-muted-foreground">
               #{issue.issueNumber}
               {age && ` · reported ${age}`}
-              {` · ${fixed ? 'Fixed' : 'Open'}`}
+              {` · ${reportStatus}`}
             </div>
           </div>
         </div>
@@ -213,6 +214,7 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
                 {resolution.merge && resolution.prs.length > 0 && (
                   <MergeControls
+                    reportStatus={reportStatus}
                     issueNumber={issue.issueNumber}
                     merge={resolution.merge}
                     onMerged={(state) => setResolution({ ...resolution, merge: state })}
@@ -326,6 +328,7 @@ function PlanPill({ entry }: { entry: MergePlanEntry }) {
 }
 
 interface MergeControlsProps {
+  reportStatus: FixStatus;
   issueNumber: number;
   merge: MergeState;
   onMerged: (state: MergeState) => void;
@@ -348,7 +351,7 @@ interface MergeControlsProps {
  * posted is shown, with the comment's address, or that it had already been
  * asked.
  */
-function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeControlsProps) {
+function MergeControls({ issueNumber, merge, onMerged, onCheckAgain, reportStatus }: MergeControlsProps) {
   const [confirming, setConfirming] = useState(false);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
@@ -501,7 +504,7 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain }: MergeCont
       )}
 
       {!label && !outstanding && plan.length > 0 && (
-        <p className="text-sm text-muted-foreground">All merged.</p>
+        <p className="text-sm text-muted-foreground">{mergedReportMessage(reportStatus)}</p>
       )}
 
       {!label && (

@@ -143,7 +143,7 @@ describe('the issue view', () => {
     const words = await screen.findByText(/The battery percentage is white on a white tile/);
     expect(words.textContent).toContain('Second line.');
     expect(fetchResolution).toHaveBeenCalledWith(167, 'tok');
-    expect(screen.getByText(/#167 · reported 3d ago · Open/)).toBeTruthy();
+    expect(screen.getByText(/#167 · reported 3d ago · Fix proposed/)).toBeTruthy();
 
     // The report's own screenshot is context, and says where a tap takes you.
     expect(screen.getByRole('button', { name: 'Open screenshot.jpg full size in your browser' })).toBeTruthy();
@@ -319,7 +319,7 @@ describe('merging from the issue view', () => {
       },
     });
     render(<IssueView issue={FIXED} onBack={() => {}} />);
-    await screen.findByText('All merged.');
+    await screen.findByText('All linked pull requests are merged. This report is still open pending verification.');
     expect(screen.getByRole('button', { name: /Open homecast-cloud#170 on GitHub/ }).textContent).toContain('Merged · serving');
     expect(screen.queryByRole('button', { name: /^Merge / })).toBeNull();
   });
@@ -808,4 +808,18 @@ describe('everything that happened to the fix', () => {
       screen.getByRole('button', { name: `Open 9 earlier updates on GitHub on GitHub — ${FIXED.url}` }),
     ).toBeTruthy();
   });
+});
+
+
+it('keeps an outstanding review visible after all PRs merge', async () => {
+  fetchResolution.mockResolvedValue({
+    ...RESOLUTION, labels: ['needs-human', 'claude-pr-open'],
+    merge: { configured: true, servingSha: 'abc', plan: [
+      entry(WEB_PR, { action: 'merged', merged: true, state: 'closed' }),
+    ] },
+  });
+  render(<IssueView issue={FIXED} onBack={() => {}} />);
+  await screen.findByText('All linked pull requests are merged. This report still needs review; see the updates below.');
+  expect(screen.getByText(/#167.*Needs review/)).toBeTruthy();
+  expect(screen.queryByText('All merged.')).toBeNull();
 });
