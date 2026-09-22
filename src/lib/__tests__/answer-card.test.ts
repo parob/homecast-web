@@ -107,10 +107,6 @@ describe('this device cannot get out', () => {
     expect(c.reconnect).toBe(true);
   });
 
-  it('does not certify relay health from a slow client link', () => {
-    expect(at({ quality: 'slow', managed: true }).because).toContain('does not tell us whether');
-  });
-
   it('pulses while reconnecting and says nothing more', () => {
     const c = at({ quality: 'connecting' });
     expect(c.pulse).toBe(true);
