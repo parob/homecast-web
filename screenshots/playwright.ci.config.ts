@@ -58,6 +58,7 @@ export default defineConfig({
     // The background picker fills the dialog and still scrolls to its end,
     // and each slider is one line. homecast-cloud#178.
     'background-dialog-space.spec.ts',
+    'heading-native-metrics.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,
