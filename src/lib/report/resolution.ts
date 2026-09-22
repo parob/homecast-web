@@ -1,5 +1,6 @@
 /**
- * What resolves a reported issue — the pull requests and the pictures.
+ * What resolves a reported issue — the pull requests, the pictures, and what
+ * has been said about it.
  *
  * Read through the server for the same reason the list is: the issue
  * reporter's credential lives there. The server reads the issue's comments
@@ -84,6 +85,50 @@ export interface ConflictNudge {
   error?: string;
 }
 
+/**
+ * One thing said about a report — a comment on the issue, as prose.
+ *
+ * `by` is who said it: `claude` the routine, `app` someone typing into the
+ * feedback box on this screen, `person` a comment written on GitHub. The
+ * server decides it (the routine's footer is the only discriminator — it
+ * comments under the same account a person does), so nothing here has to
+ * guess from the author's name.
+ */
+export interface ResolutionUpdate {
+  id: string;
+  /** The entry's own address on GitHub. */
+  url: string | null;
+  /** When it happened. */
+  at: string | null;
+  /** The GitHub login behind it. */
+  author: string | null;
+  /**
+   * Who: `claude` the routine, `app` someone typing into the feedback box,
+   * `person` a comment written on GitHub, `bot` a review or CI account.
+   * The server decides it from GitHub's own author type, never from wording —
+   * the routine posts under the same account a person does.
+   */
+  by: 'claude' | 'app' | 'person' | 'bot';
+  /** What kind of thing happened. */
+  kind: 'comment' | 'review' | 'review_comment' | 'commit';
+  /** The thread it came from: `issue`, or a short pull request name. */
+  where: string;
+  /** That thread's address, for the one-line label. */
+  whereUrl: string | null;
+  /** A review's verdict, a commit's short sha, an inline note's file. */
+  meta: string | null;
+  /**
+   * Starts folded to a single line. Bot output and commits do; an answer
+   * written to the reporter never does. Included rather than filtered, so
+   * nothing is judged away and nothing drowns the answer either.
+   */
+  collapsed: boolean;
+  /** The wording as written, with the record, footer and markers taken out. */
+  text: string;
+  /** Longer than the server will send; the rest is on GitHub. */
+  truncated: boolean;
+}
+
 export interface Resolution {
   issueNumber: number;
   title: string | null;
@@ -109,6 +154,15 @@ export interface Resolution {
   reportedText?: string | null;
   /** When the issue was opened. Absent on a server that predates it. */
   createdAt?: string | null;
+  /**
+   * Everything that has happened to the report, oldest first — its own
+   * comments and its pull requests' comments, reviews and commits, in one
+   * timeline. Absent on a server that predates it, which is the signal to show
+   * no section at all rather than an empty one reading as "nothing happened".
+   */
+  updates?: ResolutionUpdate[];
+  /** How many older entries the server left on GitHub. */
+  earlierUpdates?: number;
   /** Absent on a server that predates merging. */
   merge?: MergeState;
   /**
