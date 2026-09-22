@@ -96,16 +96,36 @@ export interface ConflictNudge {
  */
 export interface ResolutionUpdate {
   id: string;
-  /** The comment's own address on GitHub. */
+  /** The entry's own address on GitHub. */
   url: string | null;
-  /** When it was said. */
+  /** When it happened. */
   at: string | null;
-  /** The GitHub login that posted it. */
+  /** The GitHub login behind it. */
   author: string | null;
-  by: 'claude' | 'app' | 'person';
+  /**
+   * Who: `claude` the routine, `app` someone typing into the feedback box,
+   * `person` a comment written on GitHub, `bot` a review or CI account.
+   * The server decides it from GitHub's own author type, never from wording —
+   * the routine posts under the same account a person does.
+   */
+  by: 'claude' | 'app' | 'person' | 'bot';
+  /** What kind of thing happened. */
+  kind: 'comment' | 'review' | 'review_comment' | 'commit';
+  /** The thread it came from: `issue`, or a short pull request name. */
+  where: string;
+  /** That thread's address, for the one-line label. */
+  whereUrl: string | null;
+  /** A review's verdict, a commit's short sha, an inline note's file. */
+  meta: string | null;
+  /**
+   * Starts folded to a single line. Bot output and commits do; an answer
+   * written to the reporter never does. Included rather than filtered, so
+   * nothing is judged away and nothing drowns the answer either.
+   */
+  collapsed: boolean;
   /** The wording as written, with the record, footer and markers taken out. */
   text: string;
-  /** The comment was longer than the server will send; the rest is on GitHub. */
+  /** Longer than the server will send; the rest is on GitHub. */
   truncated: boolean;
 }
 
@@ -135,11 +155,14 @@ export interface Resolution {
   /** When the issue was opened. Absent on a server that predates it. */
   createdAt?: string | null;
   /**
-   * What has been said on the report, oldest first. Absent on a server that
-   * predates it — which is the signal to show no section at all, rather than
-   * an empty one that reads as "nobody has said anything".
+   * Everything that has happened to the report, oldest first — its own
+   * comments and its pull requests' comments, reviews and commits, in one
+   * timeline. Absent on a server that predates it, which is the signal to show
+   * no section at all rather than an empty one reading as "nothing happened".
    */
   updates?: ResolutionUpdate[];
+  /** How many older entries the server left on GitHub. */
+  earlierUpdates?: number;
   /** Absent on a server that predates merging. */
   merge?: MergeState;
   /**

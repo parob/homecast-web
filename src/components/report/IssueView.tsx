@@ -35,7 +35,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
-  RefreshCw, Send, Sparkles, User,
+  Bot, GitCommitHorizontal, MessageSquare, RefreshCw, Send, Sparkles, User,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -224,7 +224,11 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
           </section>
 
           {resolution?.updates && resolution.updates.length > 0 && (
-            <UpdatesSection updates={resolution.updates} issueUrl={issue.url} />
+            <UpdatesSection
+              updates={resolution.updates}
+              issueUrl={issue.url}
+              earlierOnGitHub={resolution.earlierUpdates ?? 0}
+            />
           )}
 
           {resolution && <FeedbackSection issue={issue} resolution={resolution} />}
@@ -563,6 +567,16 @@ function prFromUrl(url: string): ResolutionPr {
  * many earlier ones there are and where to read them. A report that has been
  * going for a week is a scroll nobody finishes.
  *
+ * It is **everything that happened to the fix**, not only the report's own
+ * comments: the pull requests' comments, what their reviews concluded, and the
+ * commits as they were pushed, in one timeline with each entry saying which
+ * thread it came from. That is what someone needs in front of them to approve
+ * a fix and merge it without leaving the app.
+ *
+ * Bot output and commits arrive **collapsed** — present as one line, opening
+ * on a tap — rather than filtered out. Nothing is judged away, and the answers
+ * written to the reporter are still what the eye lands on.
+ *
  * The words are read rather than reprinted: `lib/report/comment-markdown.ts`
  * turns the Markdown that was typed into blocks, so a heading is a heading and
  * a hard-wrapped paragraph reflows. Shown raw it was barely legible on a phone
@@ -570,10 +584,14 @@ function prFromUrl(url: string): ResolutionPr {
  * became a visual break mid-sentence, with `##` and `**` left as punctuation
  * for the reader to parse. Nothing is rewritten; it is only read as meant.
  */
-function UpdatesSection({ updates, issueUrl }: { updates: ResolutionUpdate[]; issueUrl: string }) {
+function UpdatesSection(
+  { updates, issueUrl, earlierOnGitHub }: {
+    updates: ResolutionUpdate[]; issueUrl: string; earlierOnGitHub: number;
+  },
+) {
   const newestFirst = [...updates].reverse();
   const shown = newestFirst.slice(0, MAX_UPDATES_SHOWN);
-  const earlier = newestFirst.length - shown.length;
+  const earlier = newestFirst.length - shown.length + earlierOnGitHub;
   return (
     <section aria-label="Updates" className="space-y-2">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -605,6 +623,35 @@ function updateWho(update: ResolutionUpdate): string {
 }
 
 /**
+ * What happened, in a couple of words — the part a one-line collapsed entry
+ * has to carry on its own.
+ */
+function updateWhat(update: ResolutionUpdate): string | null {
+  switch (update.kind) {
+    case 'commit':
+      return update.meta ? `pushed ${update.meta}` : 'pushed a commit';
+    case 'review':
+      return update.meta ?? 'reviewed';
+    case 'review_comment':
+      return update.meta ? `on ${update.meta.split('/').pop()}` : 'review note';
+    default:
+      return null;
+  }
+}
+
+/** The icon for one entry's kind and author. */
+function UpdateIcon({ update }: { update: ResolutionUpdate }) {
+  const className = 'h-3.5 w-3.5 shrink-0';
+  if (update.kind === 'commit') return <GitCommitHorizontal className={className} />;
+  if (update.by === 'bot') return <Bot className={className} />;
+  if (update.by === 'claude') return <Sparkles className={className} />;
+  if (update.kind === 'review' || update.kind === 'review_comment') {
+    return <MessageSquare className={className} />;
+  }
+  return <User className={className} />;
+}
+
+/**
  * One thing said: who, when, and the words.
  *
  * Folded to a readable height — taller for the newest — with the toggle shown
@@ -615,6 +662,9 @@ function updateWho(update: ResolutionUpdate): string {
  * know before they decide they have read it all.
  */
 function Update({ update, newest }: { update: ResolutionUpdate; newest: boolean }) {
+  // A collapsed entry starts as its one line and nothing else, so the body is
+  // not rendered at all until it is opened. The newest is never collapsed by
+  // the server, so this only ever hides bot output and commit bodies.
   const [open, setOpen] = useState(false);
   const body = useRef<HTMLDivElement>(null);
   // Whether anything is actually folded away, measured rather than guessed:
@@ -629,31 +679,43 @@ function Update({ update, newest }: { update: ResolutionUpdate; newest: boolean 
     if (!el || el.clientHeight === 0) return;
     setOverflows(el.scrollHeight > el.clientHeight + 1);
   }, [open, update.text]);
-  const long = overflows ?? update.text.length > (newest ? 900 : 320);
+  const long = update.collapsed || (overflows ?? update.text.length > (newest ? 900 : 320));
   const when = relativeMoment(update.at);
+  const what = updateWhat(update);
+  // A collapsed entry shows its first line as the summary, so the body itself
+  // stays out of the DOM until asked for.
+  const summary = update.collapsed && !open ? update.text.split('\n')[0] : null;
 
   return (
     <article className="space-y-1 rounded-md border p-2">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {update.by === 'claude' ? (
-          <Sparkles className="h-3.5 w-3.5 shrink-0" />
-        ) : (
-          <User className="h-3.5 w-3.5 shrink-0" />
-        )}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <UpdateIcon update={update} />
         <span className="min-w-0 truncate font-medium text-foreground">{updateWho(update)}</span>
+        {what && <span className="min-w-0 truncate">{what}</span>}
         {when && <span className="shrink-0">· {when}</span>}
+        {/* Which thread this came from. The report's own comments say nothing
+            — that is the default and naming it on every row is noise. */}
+        {update.where !== 'issue' && (
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+            {update.where}
+          </span>
+        )}
       </div>
 
-      <div
-        ref={body}
-        className={`min-w-0 space-y-2 break-words text-sm ${
-          open ? '' : newest ? FOLD.newest : FOLD.rest
-        }`}
-      >
-        {readComment(update.text).map((block, index) => (
-          <CommentBlock key={index} block={block} />
-        ))}
-      </div>
+      {summary !== null ? (
+        <p className="min-w-0 truncate text-sm text-muted-foreground">{summary}</p>
+      ) : (
+        <div
+          ref={body}
+          className={`min-w-0 space-y-2 break-words text-sm ${
+            open ? '' : newest ? FOLD.newest : FOLD.rest
+          }`}
+        >
+          {readComment(update.text).map((block, index) => (
+            <CommentBlock key={index} block={block} />
+          ))}
+        </div>
+      )}
 
       {long && (
         <Button

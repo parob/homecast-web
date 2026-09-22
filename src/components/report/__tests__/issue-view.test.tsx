@@ -5,7 +5,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { ReportedIssues } from '../ReportedIssues';
 import { IssueView } from '../IssueView';
 import type { ReportedIssue } from '@/lib/report/issues';
-import type { MergePlanEntry, MergeState, Resolution } from '@/lib/report/resolution';
+import type { MergePlanEntry, MergeState, Resolution, ResolutionUpdate } from '@/lib/report/resolution';
 
 /**
  * One reported issue, on one screen.
@@ -567,10 +567,12 @@ const UPDATED: Resolution = {
     {
       id: '1', url: `${FIXED.url}#issuecomment-1`, at: new Date(Date.now() - 12 * 3_600_000).toISOString(),
       author: 'robjampar', by: 'person', text: 'Hello?', truncated: false,
+      kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
     },
     {
       id: '2', url: `${FIXED.url}#issuecomment-2`, at: new Date(Date.now() - 11 * 60_000).toISOString(),
       author: 'robjampar', by: 'claude', text: ANSWER, truncated: false,
+      kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
     },
   ],
 };
@@ -644,6 +646,7 @@ describe('what has been said about the report', () => {
         id: String(index), url: `${FIXED.url}#issuecomment-${index}`,
         at: new Date(Date.now() - (14 - index) * 3_600_000).toISOString(),
         author: 'robjampar', by: 'claude' as const, text: `answer ${index}`, truncated: false,
+        kind: 'comment' as const, where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
       })),
       earlierUpdates: 6,
     });
@@ -656,8 +659,10 @@ describe('what has been said about the report', () => {
     expect(said).toHaveLength(10);
     expect(said[0].textContent).toContain('answer 13');
     expect(said[9].textContent).toContain('answer 4');
+    // 14 sent, 10 shown, plus the 6 the server never sent = 10 earlier. The
+    // count has to include both or it under-reports what is on GitHub.
     expect(
-      screen.getByRole('button', { name: `Open 4 earlier updates on GitHub on GitHub — ${FIXED.url}` }),
+      screen.getByRole('button', { name: `Open 10 earlier updates on GitHub on GitHub — ${FIXED.url}` }),
     ).toBeTruthy();
   });
 
@@ -667,6 +672,7 @@ describe('what has been said about the report', () => {
       updates: [{
         id: '9', url: `${FIXED.url}#issuecomment-9`, at: new Date().toISOString(),
         author: 'robjampar', by: 'claude', text: 'A very long answer.', truncated: true,
+        kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
       }],
     });
     render(<IssueView issue={FIXED} onBack={() => {}} />);
@@ -684,6 +690,7 @@ describe('what has been said about the report', () => {
       updates: [{
         id: '3', url: null, at: new Date().toISOString(), author: 'robjampar',
         by: 'app', text: 'Please also line up the blur title.', truncated: false,
+        kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
       }],
     });
     render(<IssueView issue={FIXED} onBack={() => {}} />);
@@ -704,5 +711,101 @@ describe('what has been said about the report', () => {
     render(<IssueView issue={FIXED} onBack={() => {}} />);
     await screen.findByRole('region', { name: 'Proposed fix' });
     expect(screen.queryByRole('region', { name: 'Updates' })).toBeNull();
+  });
+});
+
+/**
+ * Everything that happened to the fix, on the report's own screen.
+ *
+ * Asked for on homecast-cloud#182: "it should show all of the stuff that's
+ * happened ... everything that's been going on for the development of the fix
+ * of that issue before I approve it and merge". So the pull requests' comments,
+ * reviews and commits arrive beside the report's own, and bot output is
+ * collapsed rather than filtered.
+ */
+const ON_THE_PR = (over: Partial<ResolutionUpdate>): ResolutionUpdate => ({
+  id: 'x', url: 'https://github.com/parob/homecast-web/pull/226#c', at: new Date().toISOString(),
+  author: 'robjampar', by: 'claude', kind: 'comment', where: 'homecast-web#226',
+  whereUrl: 'https://github.com/parob/homecast-web/pull/226', meta: null,
+  collapsed: false, text: 'said something', truncated: false, ...over,
+});
+
+describe('everything that happened to the fix', () => {
+  it('shows the pull request’s activity beside the report’s, saying which is which', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [
+        { ...UPDATED.updates![0] },
+        ON_THE_PR({ id: 'c1', kind: 'commit', meta: 'e195c60', collapsed: true,
+          text: 'No answer arrives as an unbounded wall of text\n\nThe long body.' }),
+        ON_THE_PR({ id: 'r1', kind: 'review', meta: 'approved', by: 'person', text: 'Approved' }),
+      ],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    const said = Array.from(updates.querySelectorAll('article')).map((a) => a.textContent ?? '');
+
+    // Newest first: the review, the commit, then the report's own comment.
+    expect(said[0]).toContain('approved');
+    expect(said[1]).toContain('pushed e195c60');
+    // Each pull request entry names its thread; the report's own does not,
+    // because that is the default and labelling every row is noise.
+    expect(said[0]).toContain('homecast-web#226');
+    expect(said[2]).not.toContain('homecast-web#226');
+  });
+
+  it('collapses a commit to its subject and opens the body on a tap', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [ON_THE_PR({
+        id: 'c1', kind: 'commit', meta: 'e195c60', collapsed: true,
+        text: 'No answer arrives as an unbounded wall of text\n\nThe long body explains why.',
+      })],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    expect(updates.textContent).toContain('No answer arrives as an unbounded wall of text');
+    // Collapsed means the body is not on the screen at all yet.
+    expect(updates.textContent).not.toContain('The long body explains why');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(updates.textContent).toContain('The long body explains why');
+  });
+
+  it('includes bot output rather than filtering it, collapsed to a line', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [ON_THE_PR({
+        id: 'b1', by: 'bot', author: 'github-actions[bot]', collapsed: true,
+        text: 'Coverage report: 91.2% of statements\n\nFull breakdown follows.',
+      })],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // Present — nothing is judged away — but it is one line until asked.
+    expect(updates.textContent).toContain('github-actions[bot]');
+    expect(updates.textContent).toContain('Coverage report: 91.2% of statements');
+    expect(updates.textContent).not.toContain('Full breakdown follows');
+  });
+
+  it('counts what the server left on GitHub as well as what it did not show', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: Array.from({ length: 12 }, (_, index) => ON_THE_PR({
+        id: String(index), at: new Date(Date.now() - (12 - index) * 3_600_000).toISOString(),
+        text: `entry ${index}`,
+      })),
+      earlierUpdates: 7,
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    await screen.findByRole('region', { name: 'Updates' });
+    // 12 sent, 10 shown, plus 7 the server never sent = 9 earlier.
+    expect(
+      screen.getByRole('button', { name: `Open 9 earlier updates on GitHub on GitHub — ${FIXED.url}` }),
+    ).toBeTruthy();
   });
 });

@@ -74,16 +74,27 @@ const ANSWER = [
 // the size of answer that actually gets written on these reports.
 ].join('\n');
 
+const PR_URL = 'https://github.com/parob/homecast-web/pull/226';
+
+/** On the pull request: what was said, what the review concluded, what shipped. */
+const onPr = (over: Record<string, unknown>) => ({
+  id: 'x', url: `${PR_URL}#c`, author: 'robjampar', by: 'claude', kind: 'comment',
+  where: 'homecast-web#226', whereUrl: PR_URL, meta: null, collapsed: false,
+  text: '', truncated: false, ...over,
+});
+
 const UPDATES = [
   {
     id: '5769050948', url: `${ISSUE_URL}#issuecomment-5769050948`,
     at: new Date(Date.now() - 8 * 3_600_000).toISOString(),
     author: 'robjampar', by: 'person', text: 'Hello?', truncated: false,
+    kind: 'comment', where: 'issue', whereUrl: ISSUE_URL, meta: null, collapsed: false,
   },
   {
     id: '5772175077', url: `${ISSUE_URL}#issuecomment-5772175077`,
     at: new Date(Date.now() - 40 * 60_000).toISOString(),
     author: 'robjampar', by: 'claude', truncated: false,
+    kind: 'comment', where: 'issue', whereUrl: ISSUE_URL, meta: null, collapsed: false,
     text: [
       'Picked this up — investigating now.',
       '',
@@ -108,7 +119,32 @@ const UPDATES = [
     id: '5772444657', url: `${ISSUE_URL}#issuecomment-5772444657`,
     at: new Date(Date.now() - 11 * 60_000).toISOString(),
     author: 'robjampar', by: 'claude', text: ANSWER, truncated: false,
+    kind: 'comment', where: 'issue', whereUrl: ISSUE_URL, meta: null, collapsed: false,
   },
+  onPr({
+    id: 'pr-1', at: new Date(Date.now() - 9 * 60_000).toISOString(), kind: 'commit',
+    meta: '2b4d1e9', collapsed: true,
+    text: 'The background picker gets the room the sliders were wasting\n\n'
+      + 'The ScrollArea was a fixed 280px box inside a 235px overflow-hidden\n'
+      + 'wrapper, so it overflowed and was clipped.',
+  }),
+  onPr({
+    id: 'pr-2', at: new Date(Date.now() - 7 * 60_000).toISOString(), by: 'bot',
+    author: 'github-actions[bot]', collapsed: true,
+    text: 'Browser regressions (desktop and phone) — 44 passed in 11m09s\n\n'
+      + 'Full job log attached as an artifact.',
+  }),
+  onPr({
+    id: 'pr-3', at: new Date(Date.now() - 5 * 60_000).toISOString(), kind: 'review_comment',
+    by: 'bot', author: 'claude-review', meta: 'src/components/BackgroundSettingsDialog.tsx',
+    collapsed: true,
+    text: 'nit: this could use optional chaining\n\nNot blocking.',
+  }),
+  onPr({
+    id: 'pr-4', at: new Date(Date.now() - 3 * 60_000).toISOString(),
+    text: 'Pushed the picker fix — the box now scrolls to the end, measured 321px '
+      + 'against 235px before. Ready for you.',
+  }),
 ];
 
 const RESOLUTION = {
@@ -126,6 +162,7 @@ const RESOLUTION = {
   reportedText: 'I don’t think the widgets change correctly based on the background darkness or lightness. Also not enough of the background options are visible.',
   createdAt: REPORTED_ISSUES.issues[0].createdAt,
   updates: UPDATES,
+  earlierUpdates: 0,
   merge: { configured: true, servingSha: '4ae7930', plan: [] },
   feedback: { configured: true },
 };
@@ -199,7 +236,9 @@ test('the answer written to the reporter is on the screen, newest first', async 
   await expect(updates).toContainText('11m ago');
   // Newest first, and the older ones folded.
   const said = updates.locator('article');
-  await expect(said.first()).toContainText('0.179');
+  // Newest first, across both threads: the pull request's latest answer leads,
+  // the report's own first question is last.
+  await expect(said.first()).toContainText('Ready for you');
   await expect(said.last()).toContainText('Hello?');
   await expect(updates.getByRole('button', { name: 'Show more' }).first()).toBeVisible();
 
@@ -207,15 +246,27 @@ test('the answer written to the reporter is on the screen, newest first', async 
   // unbounded wall of text. Measured here because a CSS clamp only exists in a
   // real browser — jsdom reports every height as 0, so the unit test can only
   // assert the class.
-  const newest = updates.locator('article').first();
-  const folded = (await newest.boundingBox())!.height;
-  await updates.getByRole('button', { name: 'Show more' }).first().click();
-  const opened = (await newest.boundingBox())!.height;
-  console.log(`[#182] newest update: folded ${Math.round(folded)}px -> opened ${Math.round(opened)}px`);
-  expect(folded).toBeLessThan(500);
-  expect(opened).toBeGreaterThan(folded);
-  await updates.getByRole('button', { name: 'Show less' }).first().click();
-  await expect.poll(async () => Math.round((await newest.boundingBox())!.height)).toBe(Math.round(folded));
+  // Nothing arrives as an unbounded wall — asserted over every entry rather
+  // than the first, since the timeline now mixes the report's answers with the
+  // pull request's commits, CI and review notes in time order.
+  const heights = () => updates.locator('article').evaluateAll(
+    (nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)),
+  );
+  const folded = await heights();
+  console.log(`[#182] folded entry heights: ${folded.join(', ')}px`);
+  expect(Math.max(...folded)).toBeLessThan(500);
+
+  // And the long answer still opens to its full height on a tap. Measured on
+  // the entry that actually holds it, wherever it now sits in time order.
+  const answer = updates.locator('article').filter({ hasText: '0.179' }).first();
+  const answerFolded = (await answer.boundingBox())!.height;
+  await answer.getByRole('button', { name: 'Show more' }).click();
+  const answerOpened = (await answer.boundingBox())!.height;
+  console.log(`[#182] the answer: folded ${Math.round(answerFolded)}px -> opened ${Math.round(answerOpened)}px`);
+  expect(answerOpened).toBeGreaterThan(answerFolded);
+  await answer.getByRole('button', { name: 'Show less' }).click();
+  await expect.poll(async () => Math.round((await answer.boundingBox())!.height))
+    .toBe(Math.round(answerFolded));
 
   // Read, not reprinted: no `##` or `**` left on the screen, and the source's
   // 80-column wraps reflowed into sentences.
@@ -225,9 +276,20 @@ test('the answer written to the reporter is on the screen, newest first', async 
     'a background as dark below 0.8; WCAG’s crossover — where white and black ink contrast equally — is 0.179.',
   );
 
+  // Everything that happened to the fix, not only the report's own comments:
+  // the pull request's commits, its CI, its review notes and its answers, each
+  // saying which thread it came from.
+  await expect(updates).toContainText('homecast-web#226');
+  await expect(updates).toContainText('pushed 2b4d1e9');
+  await expect(updates).toContainText('github-actions[bot]');
+  // Bot output is present but collapsed to its first line — included, not
+  // filtered, which is what was asked for.
+  await expect(updates).toContainText('Browser regressions (desktop and phone) — 44 passed');
+  await expect(updates).not.toContainText('Full job log attached');
+
   // Back to the top of the section: the measuring taps above scroll the sheet,
   // and the newest answer is what the capture is of.
-  await updates.scrollIntoViewIfNeeded();
+  await updates.evaluate((node) => node.scrollIntoView({ block: 'start' }));
   await page.waitForTimeout(600);
   await sheet(page).screenshot({ path: 'screenshots/output/issue-182-updates.png' });
 });
