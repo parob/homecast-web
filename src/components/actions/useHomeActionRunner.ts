@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { HomeAction } from './catalog';
 import type { RunHomeActionOverrides } from './useRunHomeAction';
 
@@ -42,6 +42,31 @@ export function useHomeActionRunner(
    */
   const inFlight = useRef<AbortController | null>(null);
 
+  /**
+   * Every elapsed-timer currently ticking, so unmount can stop all of them.
+   *
+   * A run's own `finally` clears the timer it started — but `finally` waits on
+   * `onRunAction`, so the timer's lifetime is the PROMISE's, not the
+   * component's. Unmount while a run is in flight (navigate away mid-press,
+   * close the section, a relay that never answers) and nothing stopped it: the
+   * interval kept firing `setElapsed` at a component that had gone.
+   *
+   * Usually invisible in the app, because the promise settles. Not invisible in
+   * a test run, where the environment is torn down first and React's
+   * `dispatchSetState` then reaches for a `window` that no longer exists —
+   * failing CI with every test passing (#207).
+   *
+   * A set rather than one handle because a superseding press starts its own
+   * timer while the abandoned run's is still ticking, so at unmount there can
+   * legitimately be more than one to stop.
+   */
+  const timers = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
+
+  useEffect(() => () => {
+    timers.current.forEach(clearInterval);
+    timers.current.clear();
+  }, []);
+
   const run = async (action: HomeAction, direction?: boolean) => {
     const total = direction === undefined || !action.toggle
       ? action.targetCount
@@ -65,6 +90,7 @@ export function useHomeActionRunner(
     const timer = setInterval(() => {
       if (inFlight.current === controller) setElapsed(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
+    timers.current.add(timer);
     try {
       await onRunAction(action, {
         direction,
@@ -78,8 +104,9 @@ export function useHomeActionRunner(
       });
     } finally {
       // Unconditional: each run clears the timer it started, whether or not it
-      // is still the one on screen.
+      // is still the one on screen. Unmount clears whatever is left (above).
       clearInterval(timer);
+      timers.current.delete(timer);
       // Only the current run owns the running state. An aborted one finishes
       // late, and clearing here would wipe its replacement's.
       if (inFlight.current === controller) {

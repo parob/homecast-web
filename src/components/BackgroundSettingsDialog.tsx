@@ -356,7 +356,13 @@ export function BackgroundSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+      {/* A definite height, not `max-h`. The picker below fills the space
+          left over, and `flex-1` only distributes FREE space — with a
+          content-sized dialog there is none, so the picker collapsed to its
+          minimum and the dialog shrank to fit it. A fixed height also stops
+          the dialog jumping as the sliders show and hide with the background
+          type. */}
+      <DialogContent className="sm:max-w-lg h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{entityTypeLabel} Background</DialogTitle>
           <DialogDescription>
@@ -369,7 +375,11 @@ export function BackgroundSettingsDialog({
 
         <div className="flex-1 overflow-hidden flex flex-col gap-4 py-2">
           {/* Preview */}
-          <div className="relative h-44 rounded-lg overflow-hidden border bg-muted">
+          {/* `shrink-0` so the preview keeps its height instead of being a
+              flex item that negotiates for it, and a shorter box on a phone —
+              it only has to show two sample tiles, and every pixel it does not
+              take goes to the picker below (parob/homecast-cloud#178). */}
+          <div className="relative h-32 sm:h-44 shrink-0 rounded-lg overflow-hidden border bg-muted">
             {currentBackgroundPreview ? (
               <>
                 {currentBackgroundPreview.type === 'solid' ? (
@@ -492,8 +502,26 @@ export function BackgroundSettingsDialog({
           </div>
 
           {/* Presets */}
-          <div className="flex-1 overflow-hidden">
-            <ScrollArea className="h-[280px] rounded-md border p-2">
+          {/* The picker takes the height the dialog can spare instead of a
+              fixed 280px, which showed barely a row and a half of the list
+              this dialog mostly exists for (parob/homecast-cloud#178).
+
+              Two layers, and both are load-bearing:
+
+              - The inner div is absolutely positioned so it has a DEFINITE
+                height. `h-full` on the ScrollArea alone resolves a percentage
+                against the parent's CSS height, and `flex-1` leaves that
+                `auto` — so it fell back to the content height, overflowed the
+                wrapper, and the ScrollArea stopped scrolling entirely, putting
+                every option past the fold out of reach.
+              - The `absolute` goes on that div rather than on the ScrollArea,
+                because `ScrollArea` hardcodes `relative` on its own root and
+                Tailwind emits `.relative` after `.absolute` — passing
+                `absolute` in `className` loses the cascade and silently does
+                nothing. */}
+          <div className="flex-1 min-h-[120px] relative">
+            <div className="absolute inset-0">
+              <ScrollArea className="h-full rounded-md border p-2">
               <div className="space-y-4">
                 {/* Upload button and user's uploaded backgrounds */}
                 <div>
@@ -638,18 +666,22 @@ export function BackgroundSettingsDialog({
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+              </ScrollArea>
+            </div>
           </div>
 
           {/* Blur and Dim sliders */}
+          {/* Name, bar and value on ONE line each. Stacked, the two sliders
+              cost ~110px of a dialog whose main content is the picker above;
+              in line they cost ~50px and the difference goes to the picker
+              (parob/homecast-cloud#178). The name column is a fixed width so
+              both bars start on the same x. */}
           {settings.type !== 'none' && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Blur</Label>
-                  <span className="text-xs text-muted-foreground">{settings.blur}</span>
-                </div>
+            <div className="space-y-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <Label className="text-sm w-20 shrink-0">Blur</Label>
                 <Slider
+                  className="flex-1"
                   value={[settings.blur]}
                   min={0}
                   max={30}
@@ -657,14 +689,13 @@ export function BackgroundSettingsDialog({
                   onValueChange={([value]) => setSettings(prev => ({ ...prev, blur: value }))}
                   disabled={isUploading || isSaving}
                 />
+                <span className="text-xs text-muted-foreground w-10 shrink-0 text-right tabular-nums">{settings.blur}</span>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Brightness</Label>
-                  <span className="text-xs text-muted-foreground">{settings.brightness}%</span>
-                </div>
+              <div className="flex items-center gap-3">
+                <Label className="text-sm w-20 shrink-0">Brightness</Label>
                 <Slider
+                  className="flex-1"
                   value={[settings.brightness]}
                   min={0}
                   max={100}
@@ -672,6 +703,7 @@ export function BackgroundSettingsDialog({
                   onValueChange={([value]) => setSettings(prev => ({ ...prev, brightness: value }))}
                   disabled={isUploading || isSaving}
                 />
+                <span className="text-xs text-muted-foreground w-10 shrink-0 text-right tabular-nums">{settings.brightness}%</span>
               </div>
             </div>
           )}
