@@ -9,6 +9,12 @@
  * faster than a PR body; and the pull requests as a short list with their
  * place in the merge plan.
  *
+ * Then **Updates** — what has been said on the report, newest first. The fix
+ * above it is four machine-readable things; this is the prose, and it is where
+ * a reason, a judgement call, or a question put to the reporter actually
+ * reaches them. Without it the screen had a box for saying something back and
+ * nowhere to read the reply.
+ *
  * Then, where the server holds a credential for it, **Merge**. It merges what
  * the server's plan says merges now — cloud before web before native, and
  * never a web or native PR while a cloud PR ahead of it is merged but not yet
@@ -26,21 +32,22 @@
  * user expects from a row they tapped.
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
-  RefreshCw, Send,
+  Bot, GitCommitHorizontal, MessageSquare, RefreshCw, Send, Sparkles, User,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { openExternalUrl } from '@/lib/open-url';
-import { relativeAge, type ReportedIssue } from '@/lib/report/issues';
+import { readComment, type Block, type Inline } from '@/lib/report/comment-markdown';
+import { relativeAge, relativeMoment, type ReportedIssue } from '@/lib/report/issues';
 import {
   conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, mergeLabel,
   mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planStatus, sendFeedback, shortPr,
   type ConflictNudge, type FeedbackResult, type FeedbackTarget, type MergePlanEntry, type MergeState,
-  type Resolution, type ResolutionImage, type ResolutionPr,
+  type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate,
 } from '@/lib/report/resolution';
 
 interface IssueViewProps {
@@ -215,6 +222,14 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
               </>
             )}
           </section>
+
+          {resolution?.updates && resolution.updates.length > 0 && (
+            <UpdatesSection
+              updates={resolution.updates}
+              issueUrl={issue.url}
+              earlierOnGitHub={resolution.earlierUpdates ?? 0}
+            />
+          )}
 
           {resolution && <FeedbackSection issue={issue} resolution={resolution} />}
 
@@ -529,6 +544,262 @@ function prFromUrl(url: string): ResolutionPr {
   return match
     ? { repo: match[1], number: Number(match[2]), url }
     : { repo: url, number: 0, url };
+}
+
+/**
+ * What has been said about the report, newest first.
+ *
+ * The screen above it says what the fix *is*; this says what was **said** — and
+ * that is the half a reporter comes back for. The one-line summary cannot
+ * carry a reason, a judgement call flagged for them, or a question put to
+ * them, and until this existed none of those reached the app at all: an answer
+ * written to the reporter ended at the endpoint, which read comments only to
+ * mine four machine-readable things out of them.
+ *
+ * Newest first, because the complaint that produced this section was about the
+ * *new* reply. **Every one of them is folded**, the newest to a taller height
+ * than the rest: these answers run to four or five thousand characters, and an
+ * unfolded one is a wall that pushes the whole conversation — and the box for
+ * replying to it — off the bottom of a phone. Fourteen lines is the first two
+ * paragraphs, which is the answer; the tap is there for the rest.
+ *
+ * Only the most recent {MAX_UPDATES_SHOWN} are listed, with a line saying how
+ * many earlier ones there are and where to read them. A report that has been
+ * going for a week is a scroll nobody finishes.
+ *
+ * It is **everything that happened to the fix**, not only the report's own
+ * comments: the pull requests' comments, what their reviews concluded, and the
+ * commits as they were pushed, in one timeline with each entry saying which
+ * thread it came from. That is what someone needs in front of them to approve
+ * a fix and merge it without leaving the app.
+ *
+ * Bot output and commits arrive **collapsed** — present as one line, opening
+ * on a tap — rather than filtered out. Nothing is judged away, and the answers
+ * written to the reporter are still what the eye lands on.
+ *
+ * The words are read rather than reprinted: `lib/report/comment-markdown.ts`
+ * turns the Markdown that was typed into blocks, so a heading is a heading and
+ * a hard-wrapped paragraph reflows. Shown raw it was barely legible on a phone
+ * — the routine wraps its prose at about 80 columns, so every source newline
+ * became a visual break mid-sentence, with `##` and `**` left as punctuation
+ * for the reader to parse. Nothing is rewritten; it is only read as meant.
+ */
+function UpdatesSection(
+  { updates, issueUrl, earlierOnGitHub }: {
+    updates: ResolutionUpdate[]; issueUrl: string; earlierOnGitHub: number;
+  },
+) {
+  const newestFirst = [...updates].reverse();
+  const shown = newestFirst.slice(0, MAX_UPDATES_SHOWN);
+  const earlier = newestFirst.length - shown.length + earlierOnGitHub;
+  return (
+    <section aria-label="Updates" className="space-y-2">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Updates
+      </h3>
+      {shown.map((update, index) => (
+        <Update key={update.id || update.url || index} update={update} newest={index === 0} />
+      ))}
+      {earlier > 0 && (
+        <ExternalRow
+          label={`${earlier} earlier ${earlier === 1 ? 'update' : 'updates'} on GitHub`}
+          url={issueUrl}
+        />
+      )}
+    </section>
+  );
+}
+
+/** How many of a report's updates this screen lists before pointing at GitHub. */
+const MAX_UPDATES_SHOWN = 10;
+/** How much of one update shows before the tap: the newest gets the taller fold. */
+const FOLD = { newest: 'line-clamp-[14]', rest: 'line-clamp-6' } as const;
+
+/** Who said one update, in the words this screen can stand behind. */
+function updateWho(update: ResolutionUpdate): string {
+  if (update.by === 'claude') return 'Claude';
+  if (update.by === 'app') return 'You, from the app';
+  return update.author || 'Someone';
+}
+
+/**
+ * What happened, in a couple of words — the part a one-line collapsed entry
+ * has to carry on its own.
+ */
+function updateWhat(update: ResolutionUpdate): string | null {
+  switch (update.kind) {
+    case 'commit':
+      return update.meta ? `pushed ${update.meta}` : 'pushed a commit';
+    case 'review':
+      return update.meta ?? 'reviewed';
+    case 'review_comment':
+      return update.meta ? `on ${update.meta.split('/').pop()}` : 'review note';
+    default:
+      return null;
+  }
+}
+
+/** The icon for one entry's kind and author. */
+function UpdateIcon({ update }: { update: ResolutionUpdate }) {
+  const className = 'h-3.5 w-3.5 shrink-0';
+  if (update.kind === 'commit') return <GitCommitHorizontal className={className} />;
+  if (update.by === 'bot') return <Bot className={className} />;
+  if (update.by === 'claude') return <Sparkles className={className} />;
+  if (update.kind === 'review' || update.kind === 'review_comment') {
+    return <MessageSquare className={className} />;
+  }
+  return <User className={className} />;
+}
+
+/**
+ * One thing said: who, when, and the words.
+ *
+ * Folded to a readable height — taller for the newest — with the toggle shown
+ * only when something is actually folded away, measured from the rendered
+ * height: a "Show more" that reveals nothing is worse than no button. The
+ * comment's own address is offered whenever the server had to shorten it —
+ * not only once unfolded, because being cut off is the thing a reader needs to
+ * know before they decide they have read it all.
+ */
+function Update({ update, newest }: { update: ResolutionUpdate; newest: boolean }) {
+  // A collapsed entry starts as its one line and nothing else, so the body is
+  // not rendered at all until it is opened. The newest is never collapsed by
+  // the server, so this only ever hides bot output and commit bodies.
+  const [open, setOpen] = useState(false);
+  const body = useRef<HTMLDivElement>(null);
+  // Whether anything is actually folded away, measured rather than guessed:
+  // the text is rendered as reflowed blocks, so counting its source lines says
+  // very little about how tall it ends up. Only measurable while it is folded,
+  // and only where there is layout at all — under jsdom every height is 0, so
+  // a null measurement falls back to the length.
+  const [overflows, setOverflows] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (open) return;
+    const el = body.current;
+    if (!el || el.clientHeight === 0) return;
+    setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [open, update.text]);
+  const long = update.collapsed || (overflows ?? update.text.length > (newest ? 900 : 320));
+  const when = relativeMoment(update.at);
+  const what = updateWhat(update);
+  // A collapsed entry shows its first line as the summary, so the body itself
+  // stays out of the DOM until asked for.
+  const summary = update.collapsed && !open ? update.text.split('\n')[0] : null;
+
+  return (
+    <article className="space-y-1 rounded-md border p-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        <UpdateIcon update={update} />
+        <span className="min-w-0 truncate font-medium text-foreground">{updateWho(update)}</span>
+        {what && <span className="min-w-0 truncate">{what}</span>}
+        {when && <span className="shrink-0">· {when}</span>}
+        {/* Which thread this came from. The report's own comments say nothing
+            — that is the default and naming it on every row is noise. */}
+        {update.where !== 'issue' && (
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+            {update.where}
+          </span>
+        )}
+      </div>
+
+      {summary !== null ? (
+        <p className="min-w-0 truncate text-sm text-muted-foreground">{summary}</p>
+      ) : (
+        <div
+          ref={body}
+          className={`min-w-0 space-y-2 break-words text-sm ${
+            open ? '' : newest ? FOLD.newest : FOLD.rest
+          }`}
+        >
+          {readComment(update.text).map((block, index) => (
+            <CommentBlock key={index} block={block} />
+          ))}
+        </div>
+      )}
+
+      {long && (
+        <Button
+          type="button" variant="ghost" size="sm"
+          className="h-7 px-1 text-xs"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? 'Show less' : 'Show more'}
+        </Button>
+      )}
+
+      {update.truncated && update.url && (
+        <ExternalRow label="Read the rest of this comment" url={update.url} />
+      )}
+    </article>
+  );
+}
+
+/**
+ * One block of a comment, as the thing it is.
+ *
+ * Built from elements, never `dangerouslySetInnerHTML`: these are comments
+ * from GitHub, and the one thing this screen must not do is let one of them
+ * put markup into the app.
+ *
+ * A heading is a heading rather than `##`, a paragraph has its 80-column soft
+ * wraps reflowed, and a fenced measurement keeps its own line breaks and
+ * scrolls sideways rather than reflowing into nonsense — the routine's
+ * before/after numbers only read as a pair when they stay in columns.
+ */
+function CommentBlock({ block }: { block: Block }) {
+  switch (block.kind) {
+    case 'heading':
+      return (
+        <p className={`font-semibold ${block.level <= 2 ? 'text-sm' : 'text-xs uppercase tracking-wide'}`}>
+          <Spans spans={block.spans} />
+        </p>
+      );
+    case 'code':
+      return (
+        <pre className="overflow-x-auto rounded bg-muted/60 p-2 text-[11px] leading-snug">
+          <code>{block.text}</code>
+        </pre>
+      );
+    case 'quote':
+      return (
+        <blockquote className="border-l-2 pl-2 italic text-muted-foreground">
+          <Spans spans={block.spans} />
+        </blockquote>
+      );
+    case 'list': {
+      const Tag = block.ordered ? 'ol' : 'ul';
+      return (
+        <Tag className={`ml-4 space-y-1 ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
+          {block.items.map((item, index) => (
+            <li key={index}><Spans spans={item} /></li>
+          ))}
+        </Tag>
+      );
+    }
+    default:
+      return <p><Spans spans={block.spans} /></p>;
+  }
+}
+
+/** The runs inside one block: emphasis and inline code, nothing clickable. */
+function Spans({ spans }: { spans: Inline[] }) {
+  return (
+    <>
+      {spans.map((span, index) => {
+        if (span.code) {
+          return (
+            <code key={index} className="rounded bg-muted/60 px-1 py-0.5 text-[0.95em]">
+              {span.text}
+            </code>
+          );
+        }
+        if (span.bold) return <strong key={index}>{span.text}</strong>;
+        if (span.italic) return <em key={index}>{span.text}</em>;
+        return <span key={index}>{span.text}</span>;
+      })}
+    </>
+  );
 }
 
 /**

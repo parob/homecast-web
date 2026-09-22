@@ -5,7 +5,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { ReportedIssues } from '../ReportedIssues';
 import { IssueView } from '../IssueView';
 import type { ReportedIssue } from '@/lib/report/issues';
-import type { MergePlanEntry, MergeState, Resolution } from '@/lib/report/resolution';
+import type { MergePlanEntry, MergeState, Resolution, ResolutionUpdate } from '@/lib/report/resolution';
 
 /**
  * One reported issue, on one screen.
@@ -532,5 +532,280 @@ describe('sending feedback from the issue view', () => {
 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Resource not accessible'));
     expect((box as HTMLTextAreaElement).value).toBe('Try again.');
+  });
+});
+
+/**
+ * What has been said, on the screen.
+ *
+ * The reported fault: #178 was answered with a diagnosis, a reason and a
+ * question put to the reporter, and the app showed the one summary line. These
+ * pin the answer being on the screen, who said it, and that a server with no
+ * such field shows no section rather than an empty one.
+ */
+const ANSWER = [
+  'Two of the three asks are fixed in homecast-web#222. The third — the one in your',
+  'title — I have diagnosed but deliberately **not** changed, because it is a product',
+  'decision rather than a bug.',
+  '',
+  '## Ask 1 — the widget light/dark treatment. Real, and not mine to change',
+  '',
+  "WCAG's crossover is 0.179; this app uses 0.8, deliberately. So white ink goes on",
+  'essentially every photograph and every preset, which is why it feels like it',
+  'changes at the wrong time: it almost never changes at all. That threshold is',
+  'load-bearing — `widget-tint.ts` is built on top of it and reproduces it on purpose,',
+  'so moving it would restyle every tile over every wallpaper for every user.',
+  '',
+  '**What I would do, if you want it:** move the *ink* decision to the WCAG crossover',
+  'and leave the 0.8 mood threshold alone for the scrim and the header chrome — a',
+  'contained change with a visible before/after — say the word and it gets its own PR.',
+].join('\n');
+
+const UPDATED: Resolution = {
+  ...RESOLUTION,
+  updates: [
+    {
+      id: '1', url: `${FIXED.url}#issuecomment-1`, at: new Date(Date.now() - 12 * 3_600_000).toISOString(),
+      author: 'robjampar', by: 'person', text: 'Hello?', truncated: false,
+      kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
+    },
+    {
+      id: '2', url: `${FIXED.url}#issuecomment-2`, at: new Date(Date.now() - 11 * 60_000).toISOString(),
+      author: 'robjampar', by: 'claude', text: ANSWER, truncated: false,
+      kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
+    },
+  ],
+};
+
+describe('what has been said about the report', () => {
+  it('shows the answer itself, newest first, with who said it and when', async () => {
+    fetchResolution.mockResolvedValue(UPDATED);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // The words the one-line summary could not carry — including the question.
+    expect(updates.textContent).toContain('Ask 1 — the widget light/dark treatment');
+    expect(updates.textContent).toContain('say the word and it gets its own PR');
+    // Newest first: the reply that just arrived is the one being come back for.
+    const said = Array.from(updates.querySelectorAll('article')).map((a) => a.textContent ?? '');
+    expect(said[0]).toContain('Claude');
+    expect(said[0]).toContain('11m ago');
+    expect(said[1]).toContain('Hello?');
+    expect(said[1]).toContain('robjampar');
+  });
+
+  it('reads the markdown rather than reprinting it', async () => {
+    fetchResolution.mockResolvedValue(UPDATED);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // The heading is a heading and the emphasis is emphasis — not `##` and
+    // `**` left on the screen for the reader to parse.
+    expect(updates.textContent).not.toContain('##');
+    expect(updates.textContent).not.toContain('**');
+    expect(updates.querySelector('strong')?.textContent).toBe('not');
+    // And the hard wraps in the source are reflowed into one sentence.
+    expect(updates.textContent).toContain(
+      "WCAG's crossover is 0.179; this app uses 0.8, deliberately. So white ink goes on "
+      + 'essentially every photograph and every preset,',
+    );
+  });
+
+  it('folds every answer, the newest less than the rest, and opens on the tap', async () => {
+    fetchResolution.mockResolvedValue(UPDATED);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    const bodies = Array.from(updates.querySelectorAll('article')).map(
+      (article) => article.querySelector('div[class*="line-clamp"], div[class*="space-y-2"]'),
+    );
+    // Asked for from the app: nothing arrives as an unbounded wall of text.
+    // The newest gets the taller fold; the rest the shorter one. Asserted on
+    // the class because a CSS clamp is not something jsdom can measure.
+    expect(bodies[0]?.className).toContain('line-clamp-[14]');
+    expect(bodies[1]?.className).toContain('line-clamp-6');
+
+    const toggles = Array.from(updates.querySelectorAll('button')).filter(
+      (button) => /Show (more|less)/.test(button.textContent ?? ''),
+    );
+    // One long answer, one 'Hello?' — so one toggle, and it starts folded.
+    expect(toggles).toHaveLength(1);
+    expect(toggles[0].textContent).toContain('Show more');
+
+    fireEvent.click(toggles[0]);
+    expect(toggles[0].textContent).toContain('Show less');
+    expect(
+      updates.querySelectorAll('article')[0].querySelector('div[class*="line-clamp"]'),
+    ).toBeNull();
+  });
+
+  it('lists the most recent and points at GitHub for the earlier ones', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: Array.from({ length: 14 }, (_, index) => ({
+        id: String(index), url: `${FIXED.url}#issuecomment-${index}`,
+        at: new Date(Date.now() - (14 - index) * 3_600_000).toISOString(),
+        author: 'robjampar', by: 'claude' as const, text: `answer ${index}`, truncated: false,
+        kind: 'comment' as const, where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
+      })),
+      earlierUpdates: 6,
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // Ten at most on the screen, newest first, and the count of the rest —
+    // a week-old report is otherwise a scroll nobody finishes.
+    const said = updates.querySelectorAll('article');
+    expect(said).toHaveLength(10);
+    expect(said[0].textContent).toContain('answer 13');
+    expect(said[9].textContent).toContain('answer 4');
+    // 14 sent, 10 shown, plus the 6 the server never sent = 10 earlier. The
+    // count has to include both or it under-reports what is on GitHub.
+    expect(
+      screen.getByRole('button', { name: `Open 10 earlier updates on GitHub on GitHub — ${FIXED.url}` }),
+    ).toBeTruthy();
+  });
+
+  it('offers the rest of a comment the server had to shorten', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [{
+        id: '9', url: `${FIXED.url}#issuecomment-9`, at: new Date().toISOString(),
+        author: 'robjampar', by: 'claude', text: 'A very long answer.', truncated: true,
+        kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
+      }],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const rest = await screen.findByRole('button', {
+      name: `Open Read the rest of this comment on GitHub — ${FIXED.url}#issuecomment-9`,
+    });
+    fireEvent.click(rest);
+    expect(openExternalUrl).toHaveBeenCalledWith(`${FIXED.url}#issuecomment-9`);
+  });
+
+  it('names words sent from the app as the reader\'s own', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [{
+        id: '3', url: null, at: new Date().toISOString(), author: 'robjampar',
+        by: 'app', text: 'Please also line up the blur title.', truncated: false,
+        kind: 'comment', where: 'issue', whereUrl: FIXED.url, meta: null, collapsed: false,
+      }],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    expect(updates.textContent).toContain('You, from the app');
+    expect(updates.textContent).toContain('Please also line up the blur title.');
+  });
+
+  it('shows no section at all on a server that predates it, or with nothing said', async () => {
+    fetchResolution.mockResolvedValue(RESOLUTION);
+    const { unmount } = render(<IssueView issue={FIXED} onBack={() => {}} />);
+    await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(screen.queryByRole('region', { name: 'Updates' })).toBeNull();
+    unmount();
+
+    fetchResolution.mockResolvedValue({ ...RESOLUTION, updates: [] });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(screen.queryByRole('region', { name: 'Updates' })).toBeNull();
+  });
+});
+
+/**
+ * Everything that happened to the fix, on the report's own screen.
+ *
+ * Asked for on homecast-cloud#182: "it should show all of the stuff that's
+ * happened ... everything that's been going on for the development of the fix
+ * of that issue before I approve it and merge". So the pull requests' comments,
+ * reviews and commits arrive beside the report's own, and bot output is
+ * collapsed rather than filtered.
+ */
+const ON_THE_PR = (over: Partial<ResolutionUpdate>): ResolutionUpdate => ({
+  id: 'x', url: 'https://github.com/parob/homecast-web/pull/226#c', at: new Date().toISOString(),
+  author: 'robjampar', by: 'claude', kind: 'comment', where: 'homecast-web#226',
+  whereUrl: 'https://github.com/parob/homecast-web/pull/226', meta: null,
+  collapsed: false, text: 'said something', truncated: false, ...over,
+});
+
+describe('everything that happened to the fix', () => {
+  it('shows the pull request’s activity beside the report’s, saying which is which', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [
+        { ...UPDATED.updates![0] },
+        ON_THE_PR({ id: 'c1', kind: 'commit', meta: 'e195c60', collapsed: true,
+          text: 'No answer arrives as an unbounded wall of text\n\nThe long body.' }),
+        ON_THE_PR({ id: 'r1', kind: 'review', meta: 'approved', by: 'person', text: 'Approved' }),
+      ],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    const said = Array.from(updates.querySelectorAll('article')).map((a) => a.textContent ?? '');
+
+    // Newest first: the review, the commit, then the report's own comment.
+    expect(said[0]).toContain('approved');
+    expect(said[1]).toContain('pushed e195c60');
+    // Each pull request entry names its thread; the report's own does not,
+    // because that is the default and labelling every row is noise.
+    expect(said[0]).toContain('homecast-web#226');
+    expect(said[2]).not.toContain('homecast-web#226');
+  });
+
+  it('collapses a commit to its subject and opens the body on a tap', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [ON_THE_PR({
+        id: 'c1', kind: 'commit', meta: 'e195c60', collapsed: true,
+        text: 'No answer arrives as an unbounded wall of text\n\nThe long body explains why.',
+      })],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    expect(updates.textContent).toContain('No answer arrives as an unbounded wall of text');
+    // Collapsed means the body is not on the screen at all yet.
+    expect(updates.textContent).not.toContain('The long body explains why');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(updates.textContent).toContain('The long body explains why');
+  });
+
+  it('includes bot output rather than filtering it, collapsed to a line', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [ON_THE_PR({
+        id: 'b1', by: 'bot', author: 'github-actions[bot]', collapsed: true,
+        text: 'Coverage report: 91.2% of statements\n\nFull breakdown follows.',
+      })],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // Present — nothing is judged away — but it is one line until asked.
+    expect(updates.textContent).toContain('github-actions[bot]');
+    expect(updates.textContent).toContain('Coverage report: 91.2% of statements');
+    expect(updates.textContent).not.toContain('Full breakdown follows');
+  });
+
+  it('counts what the server left on GitHub as well as what it did not show', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: Array.from({ length: 12 }, (_, index) => ON_THE_PR({
+        id: String(index), at: new Date(Date.now() - (12 - index) * 3_600_000).toISOString(),
+        text: `entry ${index}`,
+      })),
+      earlierUpdates: 7,
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    await screen.findByRole('region', { name: 'Updates' });
+    // 12 sent, 10 shown, plus 7 the server never sent = 9 earlier.
+    expect(
+      screen.getByRole('button', { name: `Open 9 earlier updates on GitHub on GitHub — ${FIXED.url}` }),
+    ).toBeTruthy();
   });
 });
