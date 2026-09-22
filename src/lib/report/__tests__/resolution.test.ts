@@ -334,3 +334,9 @@ describe('sendFeedback', () => {
     await expect(sendFeedback(179, 'tok', 'pr', 'hi')).rejects.toThrow('admin');
   });
 });
+
+
+it('keeps an unresolved dependency or review ahead of a proposed fix', () => {
+  expect(fixStatus({ state: 'open', labels: ['needs-human', 'claude-pr-open'] })).toBe('Needs review');
+  expect(fixStatus({ state: 'open', labels: ['blocked-upstream', 'claude-pr-open'] })).toBe('Blocked upstream');
+});

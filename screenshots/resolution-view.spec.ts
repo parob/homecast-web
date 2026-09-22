@@ -170,7 +170,7 @@ test('the issue on one screen: what was reported, the fix, and the links printed
 
   // The report first, in the reporter's words.
   await expect(page.getByText(/white text on a white background/)).toBeVisible();
-  await expect(page.getByText(/#167 · reported today · Open/)).toBeVisible();
+  await expect(page.getByText(/#167 · reported today · Fix proposed/)).toBeVisible();
 
   const picture = page.getByRole('img', { name: /Before: Battery 100% invisible/ });
   await expect(picture).toBeVisible();
@@ -211,4 +211,17 @@ test('Merge names what it merges, asks once, and shows what happened', async ({ 
   await expect(page.getByRole('button', { name: /^Merge / })).toHaveCount(0);
   await page.waitForTimeout(300);
   await sheet(page).screenshot({ path: 'screenshots/output/resolution-merged.png' });
+});
+
+test('a merged change still explains the report needs review', async ({ page }) => {
+  await asAdminReporter(page);
+  await page.route(/\/rest\/issue-report\/167\/resolution$/, route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ...RESOLUTION, labels: ['needs-human', 'claude-pr-open'], merge: MERGED }),
+  }));
+  await openExisting(page);
+  await openIssue(page);
+  await expect(page.getByText(/#167.*Needs review/)).toBeVisible();
+  await expect(page.getByText('All linked pull requests are merged. This report still needs review; see the updates below.')).toBeVisible();
+  await sheet(page).screenshot({ path: '/tmp/homecast-review-20260922/report-needs-review.png' });
 });
