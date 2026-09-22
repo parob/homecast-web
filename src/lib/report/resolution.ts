@@ -1,5 +1,6 @@
 /**
- * What resolves a reported issue — the pull requests and the pictures.
+ * What resolves a reported issue — the pull requests, the pictures, and what
+ * has been said about it.
  *
  * Read through the server for the same reason the list is: the issue
  * reporter's credential lives there. The server reads the issue's comments
@@ -84,6 +85,30 @@ export interface ConflictNudge {
   error?: string;
 }
 
+/**
+ * One thing said about a report — a comment on the issue, as prose.
+ *
+ * `by` is who said it: `claude` the routine, `app` someone typing into the
+ * feedback box on this screen, `person` a comment written on GitHub. The
+ * server decides it (the routine's footer is the only discriminator — it
+ * comments under the same account a person does), so nothing here has to
+ * guess from the author's name.
+ */
+export interface ResolutionUpdate {
+  id: string;
+  /** The comment's own address on GitHub. */
+  url: string | null;
+  /** When it was said. */
+  at: string | null;
+  /** The GitHub login that posted it. */
+  author: string | null;
+  by: 'claude' | 'app' | 'person';
+  /** The wording as written, with the record, footer and markers taken out. */
+  text: string;
+  /** The comment was longer than the server will send; the rest is on GitHub. */
+  truncated: boolean;
+}
+
 export interface Resolution {
   issueNumber: number;
   title: string | null;
@@ -109,6 +134,12 @@ export interface Resolution {
   reportedText?: string | null;
   /** When the issue was opened. Absent on a server that predates it. */
   createdAt?: string | null;
+  /**
+   * What has been said on the report, oldest first. Absent on a server that
+   * predates it — which is the signal to show no section at all, rather than
+   * an empty one that reads as "nobody has said anything".
+   */
+  updates?: ResolutionUpdate[];
   /** Absent on a server that predates merging. */
   merge?: MergeState;
   /**

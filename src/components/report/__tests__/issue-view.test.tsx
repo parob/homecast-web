@@ -534,3 +534,130 @@ describe('sending feedback from the issue view', () => {
     expect((box as HTMLTextAreaElement).value).toBe('Try again.');
   });
 });
+
+/**
+ * What has been said, on the screen.
+ *
+ * The reported fault: #178 was answered with a diagnosis, a reason and a
+ * question put to the reporter, and the app showed the one summary line. These
+ * pin the answer being on the screen, who said it, and that a server with no
+ * such field shows no section rather than an empty one.
+ */
+const ANSWER = [
+  'Two of the three asks are fixed in homecast-web#222.',
+  '',
+  '## Ask 1 — the widget light/dark treatment. Real, and not mine to change',
+  '',
+  "WCAG's crossover is 0.179; this app uses 0.8, deliberately.",
+  '',
+  '**What I would do, if you want it:** say the word and it gets its own PR.',
+].join('\n');
+
+const UPDATED: Resolution = {
+  ...RESOLUTION,
+  updates: [
+    {
+      id: '1', url: `${FIXED.url}#issuecomment-1`, at: new Date(Date.now() - 12 * 3_600_000).toISOString(),
+      author: 'robjampar', by: 'person', text: 'Hello?', truncated: false,
+    },
+    {
+      id: '2', url: `${FIXED.url}#issuecomment-2`, at: new Date(Date.now() - 11 * 60_000).toISOString(),
+      author: 'robjampar', by: 'claude', text: ANSWER, truncated: false,
+    },
+  ],
+};
+
+describe('what has been said about the report', () => {
+  it('shows the answer itself, newest first, with who said it and when', async () => {
+    fetchResolution.mockResolvedValue(UPDATED);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // The words the one-line summary could not carry — including the question.
+    expect(updates.textContent).toContain('Ask 1 — the widget light/dark treatment');
+    expect(updates.textContent).toContain('say the word and it gets its own PR');
+    // Newest first: the reply that just arrived is the one being come back for.
+    const said = Array.from(updates.querySelectorAll('article')).map((a) => a.textContent ?? '');
+    expect(said[0]).toContain('Claude');
+    expect(said[0]).toContain('11m ago');
+    expect(said[1]).toContain('Hello?');
+    expect(said[1]).toContain('robjampar');
+  });
+
+  it('reads the markdown rather than reprinting it', async () => {
+    fetchResolution.mockResolvedValue(UPDATED);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // The heading is a heading and the emphasis is emphasis — not `##` and
+    // `**` left on the screen for the reader to parse.
+    expect(updates.textContent).not.toContain('##');
+    expect(updates.textContent).not.toContain('**');
+    expect(updates.querySelector('strong')?.textContent).toBe('What I would do, if you want it:');
+    // And the hard wraps in the source are reflowed into one sentence.
+    expect(updates.textContent).toContain(
+      "WCAG's crossover is 0.179; this app uses 0.8, deliberately.",
+    );
+  });
+
+  it('opens the newest and folds the rest, and only offers the toggle where there is more', async () => {
+    fetchResolution.mockResolvedValue(UPDATED);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    const toggles = Array.from(updates.querySelectorAll('button')).filter(
+      (button) => /Show (more|less)/.test(button.textContent ?? ''),
+    );
+    // One long answer, one 'Hello?' — so one toggle, and it starts open.
+    expect(toggles).toHaveLength(1);
+    expect(toggles[0].textContent).toContain('Show less');
+
+    fireEvent.click(toggles[0]);
+    expect(toggles[0].getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('offers the rest of a comment the server had to shorten', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [{
+        id: '9', url: `${FIXED.url}#issuecomment-9`, at: new Date().toISOString(),
+        author: 'robjampar', by: 'claude', text: 'A very long answer.', truncated: true,
+      }],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const rest = await screen.findByRole('button', {
+      name: `Open Read the rest of this comment on GitHub — ${FIXED.url}#issuecomment-9`,
+    });
+    fireEvent.click(rest);
+    expect(openExternalUrl).toHaveBeenCalledWith(`${FIXED.url}#issuecomment-9`);
+  });
+
+  it('names words sent from the app as the reader\'s own', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: [{
+        id: '3', url: null, at: new Date().toISOString(), author: 'robjampar',
+        by: 'app', text: 'Please also line up the blur title.', truncated: false,
+      }],
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    expect(updates.textContent).toContain('You, from the app');
+    expect(updates.textContent).toContain('Please also line up the blur title.');
+  });
+
+  it('shows no section at all on a server that predates it, or with nothing said', async () => {
+    fetchResolution.mockResolvedValue(RESOLUTION);
+    const { unmount } = render(<IssueView issue={FIXED} onBack={() => {}} />);
+    await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(screen.queryByRole('region', { name: 'Updates' })).toBeNull();
+    unmount();
+
+    fetchResolution.mockResolvedValue({ ...RESOLUTION, updates: [] });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(screen.queryByRole('region', { name: 'Updates' })).toBeNull();
+  });
+});

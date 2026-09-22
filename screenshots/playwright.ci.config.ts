@@ -16,6 +16,10 @@ export default defineConfig({
     'resolution-view.spec.ts',
     // Saying something back from it, and which one place it goes. homecast-cloud#179.
     'resolution-feedback.spec.ts',
+    // And reading what came back: the answer on the screen, newest first, its
+    // markdown read rather than reprinted. homecast-cloud#182. In from day one
+    // — #192 and #193 are what a spec no check runs turns into.
+    'issue-182-updates.spec.ts',
     'camera-live.spec.ts',
     'camera-viewer-fit.spec.ts',
     'camera-cache-reload.spec.ts',

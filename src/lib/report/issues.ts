@@ -26,10 +26,23 @@ export interface ReportedIssuePage {
 
 export type IssueFilter = 'open' | 'closed' | 'all';
 
+/**
+ * When a timestamp says, in milliseconds — NaN for anything unusable.
+ *
+ * The reporter answers `2026-09-22 07:00:03+00:00`: a space where ISO 8601
+ * has a `T`, which `Date` is only required to parse for the ISO form. Node
+ * takes it; JavaScriptCore is where this app actually runs, and a date that
+ * silently reads as NaN there would blank every age in the view. Normalising
+ * costs one replace.
+ */
+function timeOf(iso: string | null | undefined): number {
+  if (!iso) return NaN;
+  return new Date(iso.replace(' ', 'T')).getTime();
+}
+
 /** `today`, `yesterday`, `3d ago`, `2mo ago`, `1y ago` — or '' for nothing usable. */
 export function relativeAge(iso: string | null | undefined, now: number = Date.now()): string {
-  if (!iso) return '';
-  const then = new Date(iso).getTime();
+  const then = timeOf(iso);
   if (Number.isNaN(then)) return '';
   const days = Math.floor((now - then) / 86_400_000);
   if (days <= 0) return 'today';
@@ -37,6 +50,25 @@ export function relativeAge(iso: string | null | undefined, now: number = Date.n
   if (days < 30) return `${days}d ago`;
   if (days < 365) return `${Math.floor(days / 30)}mo ago`;
   return `${Math.floor(days / 365)}y ago`;
+}
+
+/**
+ * The same, to the minute for anything recent: `just now`, `11m ago`, `3h ago`.
+ *
+ * A comment's own age is the thing a reader checks first — whether what they
+ * are looking at is the answer that just arrived. `today` cannot say that, so
+ * anything under a day is counted in hours and minutes and the rest falls
+ * through to `relativeAge`, which is what the report's own age still uses.
+ */
+export function relativeMoment(iso: string | null | undefined, now: number = Date.now()): string {
+  const then = timeOf(iso);
+  if (Number.isNaN(then)) return '';
+  const minutes = Math.floor((now - then) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return relativeAge(iso, now);
 }
 
 export async function fetchReportedIssues(

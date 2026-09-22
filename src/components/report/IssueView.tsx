@@ -9,6 +9,12 @@
  * faster than a PR body; and the pull requests as a short list with their
  * place in the merge plan.
  *
+ * Then **Updates** — what has been said on the report, newest first. The fix
+ * above it is four machine-readable things; this is the prose, and it is where
+ * a reason, a judgement call, or a question put to the reporter actually
+ * reaches them. Without it the screen had a box for saying something back and
+ * nowhere to read the reply.
+ *
  * Then, where the server holds a credential for it, **Merge**. It merges what
  * the server's plan says merges now — cloud before web before native, and
  * never a web or native PR while a cloud PR ahead of it is merged but not yet
@@ -29,18 +35,19 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
-  RefreshCw, Send,
+  RefreshCw, Send, Sparkles, User,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { openExternalUrl } from '@/lib/open-url';
-import { relativeAge, type ReportedIssue } from '@/lib/report/issues';
+import { readComment, type Block, type Inline } from '@/lib/report/comment-markdown';
+import { relativeAge, relativeMoment, type ReportedIssue } from '@/lib/report/issues';
 import {
   conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, mergeLabel,
   mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planStatus, sendFeedback, shortPr,
   type ConflictNudge, type FeedbackResult, type FeedbackTarget, type MergePlanEntry, type MergeState,
-  type Resolution, type ResolutionImage, type ResolutionPr,
+  type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate,
 } from '@/lib/report/resolution';
 
 interface IssueViewProps {
@@ -215,6 +222,10 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
               </>
             )}
           </section>
+
+          {resolution?.updates && resolution.updates.length > 0 && (
+            <UpdatesSection updates={resolution.updates} />
+          )}
 
           {resolution && <FeedbackSection issue={issue} resolution={resolution} />}
 
@@ -529,6 +540,165 @@ function prFromUrl(url: string): ResolutionPr {
   return match
     ? { repo: match[1], number: Number(match[2]), url }
     : { repo: url, number: 0, url };
+}
+
+/**
+ * What has been said about the report, newest first.
+ *
+ * The screen above it says what the fix *is*; this says what was **said** — and
+ * that is the half a reporter comes back for. The one-line summary cannot
+ * carry a reason, a judgement call flagged for them, or a question put to
+ * them, and until this existed none of those reached the app at all: an answer
+ * written to the reporter ended at the endpoint, which read comments only to
+ * mine four machine-readable things out of them.
+ *
+ * Newest first, because the complaint that produced this section was about the
+ * *new* reply. The newest is open and the rest are clamped: a thread of five
+ * long answers is otherwise a wall a phone cannot get past, and the older ones
+ * have already been read.
+ *
+ * The words are read rather than reprinted: `lib/report/comment-markdown.ts`
+ * turns the Markdown that was typed into blocks, so a heading is a heading and
+ * a hard-wrapped paragraph reflows. Shown raw it was barely legible on a phone
+ * — the routine wraps its prose at about 80 columns, so every source newline
+ * became a visual break mid-sentence, with `##` and `**` left as punctuation
+ * for the reader to parse. Nothing is rewritten; it is only read as meant.
+ */
+function UpdatesSection({ updates }: { updates: ResolutionUpdate[] }) {
+  const newestFirst = [...updates].reverse();
+  return (
+    <section aria-label="Updates" className="space-y-2">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Updates
+      </h3>
+      {newestFirst.map((update, index) => (
+        <Update key={update.id || update.url || index} update={update} newest={index === 0} />
+      ))}
+    </section>
+  );
+}
+
+/** Who said one update, in the words this screen can stand behind. */
+function updateWho(update: ResolutionUpdate): string {
+  if (update.by === 'claude') return 'Claude';
+  if (update.by === 'app') return 'You, from the app';
+  return update.author || 'Someone';
+}
+
+/**
+ * One thing said: who, when, and the words.
+ *
+ * Clamped to a readable height unless it is the newest, with the toggle shown
+ * only when there is something folded away — a "Show more" that reveals
+ * nothing is worse than no button. The comment's own address is offered when
+ * the server had to shorten it, so the rest is one tap away rather than lost.
+ */
+function Update({ update, newest }: { update: ResolutionUpdate; newest: boolean }) {
+  const [open, setOpen] = useState(newest);
+  const long = update.text.length > 320 || update.text.split('\n').length > 6;
+  const when = relativeMoment(update.at);
+
+  return (
+    <article className="space-y-1 rounded-md border p-2">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {update.by === 'claude' ? (
+          <Sparkles className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <User className="h-3.5 w-3.5 shrink-0" />
+        )}
+        <span className="min-w-0 truncate font-medium text-foreground">{updateWho(update)}</span>
+        {when && <span className="shrink-0">· {when}</span>}
+      </div>
+
+      <div className={`min-w-0 space-y-2 break-words text-sm ${open ? '' : 'line-clamp-6'}`}>
+        {readComment(update.text).map((block, index) => (
+          <CommentBlock key={index} block={block} />
+        ))}
+      </div>
+
+      {long && (
+        <Button
+          type="button" variant="ghost" size="sm"
+          className="h-7 px-1 text-xs"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? 'Show less' : 'Show more'}
+        </Button>
+      )}
+
+      {update.truncated && open && update.url && (
+        <ExternalRow label="Read the rest of this comment" url={update.url} />
+      )}
+    </article>
+  );
+}
+
+/**
+ * One block of a comment, as the thing it is.
+ *
+ * Built from elements, never `dangerouslySetInnerHTML`: these are comments
+ * from GitHub, and the one thing this screen must not do is let one of them
+ * put markup into the app.
+ *
+ * A heading is a heading rather than `##`, a paragraph has its 80-column soft
+ * wraps reflowed, and a fenced measurement keeps its own line breaks and
+ * scrolls sideways rather than reflowing into nonsense — the routine's
+ * before/after numbers only read as a pair when they stay in columns.
+ */
+function CommentBlock({ block }: { block: Block }) {
+  switch (block.kind) {
+    case 'heading':
+      return (
+        <p className={`font-semibold ${block.level <= 2 ? 'text-sm' : 'text-xs uppercase tracking-wide'}`}>
+          <Spans spans={block.spans} />
+        </p>
+      );
+    case 'code':
+      return (
+        <pre className="overflow-x-auto rounded bg-muted/60 p-2 text-[11px] leading-snug">
+          <code>{block.text}</code>
+        </pre>
+      );
+    case 'quote':
+      return (
+        <blockquote className="border-l-2 pl-2 italic text-muted-foreground">
+          <Spans spans={block.spans} />
+        </blockquote>
+      );
+    case 'list': {
+      const Tag = block.ordered ? 'ol' : 'ul';
+      return (
+        <Tag className={`ml-4 space-y-1 ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
+          {block.items.map((item, index) => (
+            <li key={index}><Spans spans={item} /></li>
+          ))}
+        </Tag>
+      );
+    }
+    default:
+      return <p><Spans spans={block.spans} /></p>;
+  }
+}
+
+/** The runs inside one block: emphasis and inline code, nothing clickable. */
+function Spans({ spans }: { spans: Inline[] }) {
+  return (
+    <>
+      {spans.map((span, index) => {
+        if (span.code) {
+          return (
+            <code key={index} className="rounded bg-muted/60 px-1 py-0.5 text-[0.95em]">
+              {span.text}
+            </code>
+          );
+        }
+        if (span.bold) return <strong key={index}>{span.text}</strong>;
+        if (span.italic) return <em key={index}>{span.text}</em>;
+        return <span key={index}>{span.text}</span>;
+      })}
+    </>
+  );
 }
 
 /**
