@@ -225,7 +225,7 @@ export function buildAnswerCard(input: AnswerCardInput): AnswerCard {
         return card({
           tone: 'warn',
           verdict: 'The connection to Homecast is slow',
-          because: `Requests from this ${dev} may take longer. This does not tell us whether ${H}'s relay is working.`,
+          because: 'Requests are taking longer than expected.',
           reconnect: true,
           showChain: true,
         });
