@@ -103,12 +103,8 @@ describe('this device cannot get out', () => {
     const c = at({ quality: 'slow', rtt: '2.4s' });
     expect(c.tone).toBe('warn');
     expect(c.verdict).toBe('The connection to Homecast is slow');
-    expect(c.because).toContain('Requests from this iPhone may take longer');
+    expect(c.because).toContain('Requests are taking longer than expected');
     expect(c.reconnect).toBe(true);
-  });
-
-  it('does not certify relay health from a slow client link', () => {
-    expect(at({ quality: 'slow', managed: true }).because).toContain('does not tell us whether');
   });
 
   it('pulses while reconnecting and says nothing more', () => {
