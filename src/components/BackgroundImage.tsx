@@ -100,7 +100,8 @@ export function BackgroundImage({ settings, className, placement = 'fixed', enti
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [newBgReady, setNewBgReady] = useState(true);
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const fallbackTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  /** Unblocks onReady when an image is slow; it does not drive the crossfade. */
+  const readyDeadlineRef = useRef<ReturnType<typeof setTimeout>>();
   const onReadyCalledRef = useRef(false);
 
   // Track luminance and top color from the current image layer
@@ -139,7 +140,7 @@ onBottomColorChange?.(null);
     if (currentKey !== activeKey) {
       // Clear any pending timeouts
       if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-      if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
+      if (readyDeadlineRef.current) clearTimeout(readyDeadlineRef.current);
 
       // Reset onReady flag for new background
       onReadyCalledRef.current = false;
@@ -179,19 +180,27 @@ onBottomColorChange?.(null);
         setIsTransitioning(true);
         setNewBgReady(false);
 
-        // Fallback: show image after 2 seconds even if onLoad hasn't fired
-        fallbackTimeoutRef.current = setTimeout(() => {
-          setNewBgReady(true);
+        // Stop *waiting* on a slow image after 2 seconds — but do not stop
+        // *showing* the wallpaper we have.
+        //
+        // This deadline used to run the crossfade too (setNewBgReady(true)).
+        // The incoming layer is still opacity-0 at that point — ImageBackground
+        // lifts it on its own onLoad — so what it revealed was nothing, and
+        // 500ms later the outgoing layer was unmounted outright. A wallpaper
+        // that genuinely fails never needed this: onError sets hasError and the
+        // (!imageUrl || hasError) effect completes the transition. So this only
+        // ever fires for an image that is *slow*, and for a slow image the
+        // right answer is to keep the one already on screen.
+        //
+        // Readiness must not wait, so it still fires on time. The measurements
+        // deliberately do not: they describe what is painted, and that is the
+        // outgoing wallpaper, whose figures already stand. Reporting the
+        // incoming image's pending nulls here would tell useBackgroundDarkness
+        // "nothing measured" about a wallpaper that is plainly visible, and
+        // flip the widget ink and the browser bars against a backdrop that has
+        // not changed.
+        readyDeadlineRef.current = setTimeout(() => {
           callOnReady();
-          // Report whatever we have (may be null if image never loaded)
-          onLuminanceChange?.(pendingLuminanceRef.current);
-          onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
-          onTopColorChange?.(pendingTopColorRef.current);
-    onBottomColorChange?.(pendingBottomColorRef.current);
-          transitionTimeoutRef.current = setTimeout(() => {
-            setPrevBg(null);
-            setIsTransitioning(false);
-          }, 500);
         }, 2000);
       }
     }
@@ -203,7 +212,7 @@ onBottomColorChange?.(null);
   useEffect(() => {
     return () => {
       if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-      if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
+      if (readyDeadlineRef.current) clearTimeout(readyDeadlineRef.current);
     };
   }, []);
 
@@ -225,8 +234,8 @@ onBottomColorChange?.(null);
 
   // When new image is ready, complete the transition
   const handleNewBgReady = () => {
-    // Clear fallback timeout since image loaded successfully
-    if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
+    // The image arrived, so the readiness deadline is moot.
+    if (readyDeadlineRef.current) clearTimeout(readyDeadlineRef.current);
     setNewBgReady(true);
     callOnReady();
     // Report luminance and top color now that the image is visible

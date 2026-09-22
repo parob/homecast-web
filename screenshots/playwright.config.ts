@@ -52,6 +52,7 @@ export default defineConfig({
     'room-opens-scrolled.spec.ts',
     'background-dialog-space.spec.ts',
     'issue-182-updates.spec.ts',
+    'background-slow-swap.spec.ts',
     'heading-native-metrics.spec.ts',
   ],
   timeout: 60_000,
