@@ -29,8 +29,35 @@ jobs:
       - name: Build
         run: npm run build
 
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            screenshots/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: screenshots
+      - run: npx playwright install --with-deps chromium
+        working-directory: screenshots
+      - name: Browser regressions (desktop and phone)
+        run: npx playwright test --config playwright.ci.config.ts
+        working-directory: screenshots
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failures
+          path: screenshots/test-results/
+          retention-days: 7
+
   notify:
-    needs: test
+    needs: [test, browser]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

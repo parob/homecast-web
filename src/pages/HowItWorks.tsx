@@ -12,7 +12,7 @@ const HowItWorks = () => {
       {/* Page-level background for hero - extends above fold for elastic scroll */}
       <div className="absolute inset-x-0 top-0 h-[800px] -mt-[200px] pt-[200px] overflow-hidden">
         <img
-          src="/backgrounds/abstract_mountains.png"
+          src="/backgrounds/abstract_mountains.webp"
           alt=""
           className="w-full h-full object-cover opacity-15 dark:opacity-10"
         />
@@ -211,6 +211,10 @@ const HowItWorks = () => {
                     <li className="flex items-center gap-2">
                       <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
                       <span>No Mac available 24/7</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                      <span>Camera snapshots and live view</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
@@ -427,11 +431,13 @@ const HowItWorks = () => {
                 </p>
               </FAQItem>
 
-              <FAQItem question="What about HomeKit Secure Video?">
+              <FAQItem question="What about cameras and HomeKit Secure Video?">
                 <p>
-                  HomeKit Secure Video cameras appear as accessories in Homecast, but video streaming is not
-                  available through Homecast. Video recording and analysis continues to work through iCloud
-                  and Apple Home as usual—Homecast doesn't interfere with that functionality.
+                  With a Cloud Relay, camera and video-doorbell tiles show a still from the camera and open
+                  to a live view — muted, and without talkback. Cameras are a Cloud Relay feature: a
+                  self-hosted relay on your own Mac shows their status only. HomeKit Secure Video recording
+                  and analysis continue to work through iCloud and Apple Home as usual — Homecast doesn't
+                  interfere with that.
                 </p>
               </FAQItem>
 

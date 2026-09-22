@@ -5,14 +5,15 @@
 // nothing on its own — reaches the surface that is showing the home.
 
 import { useEffect, useState } from 'react';
-import { effectiveServing, subscribeHomeServing, type HomeServing } from '@/server/home-serving';
+import { effectiveServing, getHomeServing, subscribeHomeServing, type HomeServing } from '@/server/home-serving';
 
-export function useHomeServing(homeId: string | null | undefined): HomeServing | null {
+/** Cloud-only features need the relay fact; Local Mode cannot supply them. */
+export function useHomeServing(homeId: string | null | undefined, scope: 'device' | 'cloud' = 'device'): HomeServing | null {
   const [, bump] = useState(0);
   useEffect(() => subscribeHomeServing((id) => {
     if (!homeId || id === homeId.toUpperCase()) bump((n) => n + 1);
   }), [homeId]);
-  return homeId ? effectiveServing(homeId) : null;
+  return homeId ? (scope === 'cloud' ? getHomeServing(homeId) : effectiveServing(homeId)) : null;
 }
 
 /**

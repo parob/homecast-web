@@ -322,16 +322,13 @@ describe('shortcut cards', () => {
     expect(within(card('lights')).queryByText(/Turning off/)).toBeNull();
   });
 
-  it('keeps a long name on one line, and offers the whole of it on hover', () => {
-    // The point of the compact row. "All switches & outlets" used to wrap into
-    // the two-line clamp and then clip, losing its second line entirely; it now
-    // trails off on one line, with the full name in the tooltip.
+  it('shows the full shortcut name without clipping', () => {
     renderSection([
       acc('s1', 'switch', [['power_state', true]]),
       acc('o1', 'outlet', [['power_state', false]]),
     ]);
     const name = within(card('switches')).getByText('All switches & outlets');
-    expect(name.className).toContain('truncate');
+    expect(name.className).not.toContain('truncate');
     expect(name.className).not.toContain('line-clamp-2');
     expect(name.getAttribute('title')).toBe('All switches & outlets');
   });
@@ -400,6 +397,26 @@ describe('shortcut cards', () => {
     expect(card('lights').className).not.toContain('opacity-50');
     fireEvent.click(switchOn('lights'));
     expect(onRunAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not dim a shortcut card just because the layout is being edited', () => {
+    // Editing stops the card firing, but it is still a card you can see and
+    // reorder. Dimming it there faded the whole Scenes grid to half strength
+    // while every tile, scene and automation card beside it stayed solid, and
+    // it left a hidden card (opacity-40) all but indistinguishable from a
+    // visible one. See parob/homecast-cloud#158.
+    renderSection([lightOn, lockOpen], {}, { touchMode: true, editMode: true });
+    expect(card('lights').className).not.toContain('opacity-5');
+    expect(card('locks').className).not.toContain('opacity-5');
+  });
+
+  it('still dims a hidden card while editing, so the reveal reads as a reveal', () => {
+    renderSection(
+      [lightOn],
+      { homeLayout: { visibility: { hiddenActions: ['lights'] } }, homeId: 'HOME-1' },
+      { touchMode: true, editMode: true },
+    );
+    expect(card('lights').className).toContain('opacity-40');
   });
 
   it('disables every card for a view-only member', () => {

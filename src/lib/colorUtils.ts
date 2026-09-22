@@ -274,20 +274,39 @@ export const PRESET_GRADIENTS: Record<string, string> = {
   'gradient-rose': 'radial-gradient(at 70% 80%, #d48a6e 0%, transparent 50%), radial-gradient(at 20% 30%, #c27090 0%, transparent 55%), radial-gradient(at 80% 20%, #e0a0a0 0%, transparent 50%), linear-gradient(135deg, #c87888 0%, #d49888 100%)',
 };
 
-// Image URL map for preset lookup (local images in public/backgrounds/)
+// Image URL map for preset lookup (local images in public/backgrounds/).
+//
+// WebP, not PNG, and that is the whole point of this map rather than a detail
+// of it. These are wallpapers: drawn behind everything, blurred by up to 30px,
+// and swapped every time you change home or room. As PNGs they were 1.3-2.9 MB
+// each (25.7 MB for the twelve), so every switch to a home you had not visited
+// this session spent seconds fetching one — long enough for BackgroundImage's
+// 2s deadline to fire and reveal a wallpaper that had not painted yet. Same
+// pixel dimensions, quality 85, which is exactly what the server already does
+// to a user's own uploaded background (storage.py `_convert_to_webp`).
+//
+// The .png files are deliberately still in public/backgrounds/. Firebase
+// rewrites any unmatched path outside /assets/** to index.html, so a client
+// still running an older bundle - a cloud-mode relay Mac keeps its bundle
+// until the app restarts - would not get a 404 for the old path, it would get
+// an HTML document where an image should be, and lose its wallpaper entirely.
+// They can go once those clients have rotated.
+//
+// Regenerate with:
+//   npx sharp-cli -i public/backgrounds/<name>.png -o public/backgrounds -f webp -q 85
 export const PRESET_IMAGES: Record<string, string> = {
-  'nature-forest': '/backgrounds/forest.png',
-  'nature-mountains': '/backgrounds/mountain.png',
-  'nature-beach': '/backgrounds/beach.png',
-  'nature-cliffs': '/backgrounds/cliffs.png',
-  'nature-desert': '/backgrounds/desert.png',
-  'nature-canyon': '/backgrounds/canyon.png',
-  'nature-countryside': '/backgrounds/countryside.png',
-  'abstract-blue': '/backgrounds/abstract_blue.png',
-  'abstract-orange': '/backgrounds/abstract_orange.png',
-  'abstract-forest': '/backgrounds/abstract_forest.png',
-  'abstract-mountains': '/backgrounds/abstract_mountains.png',
-  'abstract-clouds': '/backgrounds/colourful_clouds.png',
+  'nature-forest': '/backgrounds/forest.webp',
+  'nature-mountains': '/backgrounds/mountain.webp',
+  'nature-beach': '/backgrounds/beach.webp',
+  'nature-cliffs': '/backgrounds/cliffs.webp',
+  'nature-desert': '/backgrounds/desert.webp',
+  'nature-canyon': '/backgrounds/canyon.webp',
+  'nature-countryside': '/backgrounds/countryside.webp',
+  'abstract-blue': '/backgrounds/abstract_blue.webp',
+  'abstract-orange': '/backgrounds/abstract_orange.webp',
+  'abstract-forest': '/backgrounds/abstract_forest.webp',
+  'abstract-mountains': '/backgrounds/abstract_mountains.webp',
+  'abstract-clouds': '/backgrounds/colourful_clouds.webp',
 };
 
 /**
@@ -346,6 +365,58 @@ export function applyBrightnessToHex(hex: string, brightness: number): string {
   return applyBrightness(rgb.r, rgb.g, rgb.b, brightness);
 }
 
+/**
+ * Re-expose a colour at a given relative luminance, keeping its hue.
+ *
+ * The scaling is done in LINEAR light — the same space `getLuminance` measures
+ * in — so the three channels keep their ratios to each other and only the
+ * exposure moves. Doing it on the sRGB bytes instead would pull a colour
+ * towards grey as it darkened, which is exactly the character the band is
+ * supposed to keep.
+ *
+ * `target` is a relative luminance in 0–1, as `analyzeLoadedImage` reports it.
+ * A target a colour cannot reach without clipping (asking a saturated blue for
+ * the luminance of white) lands as close as it can and desaturates on the way,
+ * which is what an over-exposure does anyway. Black has no hue to keep, so it
+ * answers with the neutral grey of that luminance rather than dividing by zero.
+ */
+export function setLuminanceHex(hex: string, target: number): string {
+  const rgb = parseColor(hex);
+  if (!rgb) return hex;
+  const t = Math.min(1, Math.max(0, target));
+  const toLinear = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const toByte = (v: number) => {
+    const c = Math.min(1, Math.max(0, v));
+    const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.round(s * 255);
+  };
+  const hexOf = (r: number, g: number, b: number) =>
+    `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+  const r = toLinear(rgb.r), g = toLinear(rgb.g), b = toLinear(rgb.b);
+  const current = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  if (current <= 0) {
+    const v = toByte(t);
+    return hexOf(v, v, v);
+  }
+  const k = t / current;
+  return hexOf(toByte(r * k), toByte(g * k), toByte(b * k));
+}
+
+/** Mix a hex colour towards white by `amount` (0–1). Non-hex input is returned unchanged. */
+export function lightenHex(hex: string, amount: number): string {
+  const rgb = parseColor(hex);
+  if (!rgb) return hex;
+  const lift = Math.min(1, Math.max(0, amount));
+  const r = Math.round(rgb.r + (255 - rgb.r) * lift);
+  const g = Math.round(rgb.g + (255 - rgb.g) * lift);
+  const b = Math.round(rgb.b + (255 - rgb.b) * lift);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 function applyBrightness(r: number, g: number, b: number, brightness: number): string {
   if (brightness !== 50) {
     const amount = Math.abs(brightness - 50) / 50;
@@ -358,24 +429,80 @@ function applyBrightness(r: number, g: number, b: number, brightness: number): s
 }
 
 /**
- * Get the average color of the top row of pixels from a loaded image.
- * Used for iOS 26 Safari Liquid Glass tinting of image backgrounds.
+ * The part of an image that `object-fit: cover; object-position: center`
+ * shows in a box — in image pixels. Pure, so the sampler below can be checked
+ * without a canvas.
+ *
+ * `scale` is a uniform enlargement applied on top (the blurred wallpaper is
+ * drawn at 1.1× to hide its soft edges), which crops the same amount more.
+ */
+export function coverCropRect(
+  imgW: number, imgH: number, boxW: number, boxH: number, scale = 1,
+): { x: number; y: number; w: number; h: number } {
+  if (imgW <= 0 || imgH <= 0 || boxW <= 0 || boxH <= 0) return { x: 0, y: 0, w: imgW, h: imgH };
+  // Cover: the image is scaled by the larger of the two ratios, then centred.
+  const s = Math.max(boxW / imgW, boxH / imgH) * scale;
+  const w = Math.min(imgW, boxW / s);
+  const h = Math.min(imgH, boxH / s);
+  return { x: (imgW - w) / 2, y: (imgH - h) / 2, w, h };
+}
+
+/**
+ * Get the average color of the top rows of a loaded image AS DISPLAYED.
+ * Used for iOS 26 Safari Liquid Glass tinting of image backgrounds: the page
+ * canvas takes this colour, and it is what shows in the band behind the
+ * status bar, right against the wallpaper's own top edge.
+ *
+ * "As displayed" matters: the wallpaper is painted with `object-fit: cover`,
+ * so on a portrait phone a landscape photo shows a slice from its middle, and
+ * the source image's top 5% (sky, a ceiling, dark water) can be nothing like
+ * the row that actually meets the band. Pass the box the image fills to sample
+ * the visible crop; with no box the whole image is assumed visible.
  * Returns a hex color string.
  */
-export function getImageTopColor(img: HTMLImageElement, brightness: number = 50): string {
+export function getImageTopColor(
+  img: HTMLImageElement,
+  brightness: number = 50,
+  box?: { width: number; height: number; scale?: number },
+): string {
+  return getImageEdgeColor(img, 'top', brightness, box);
+}
+
+/**
+ * `getImageTopColor` for either edge. The bottom edge is what meets iOS
+ * Safari's URL bar band, and on a wallpaper that runs sky-to-sand it is
+ * nothing like the top.
+ */
+export function getImageEdgeColor(
+  img: HTMLImageElement,
+  edge: 'top' | 'bottom',
+  brightness: number = 50,
+  box?: { width: number; height: number; scale?: number },
+): string {
   try {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return '#888888';
 
-    // Sample the top 5% of the source image, scaled down to a small canvas
+    // Sample the outer 5% of the visible crop, scaled down to a small canvas
     const sampleWidth = 50;
     const sampleHeight = 5;
-    const sourceHeight = Math.ceil(img.naturalHeight * 0.05);
+    const crop = box
+      ? coverCropRect(img.naturalWidth, img.naturalHeight, box.width, box.height, box.scale ?? 1)
+      : { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+    // Whole pixels, clamped inside the image. The crop is computed in floats,
+    // and a source rectangle that runs a fraction past the bottom edge is
+    // clipped by Chrome but refused by Safari — which threw, fell through to
+    // the grey below, and painted a grey bar under the URL bar.
+    const sourceHeight = Math.max(1, Math.min(Math.floor(crop.h), Math.ceil(crop.h * 0.05)));
+    const sourceX = Math.max(0, Math.floor(crop.x));
+    const sourceWidth = Math.max(1, Math.min(img.naturalWidth - sourceX, Math.floor(crop.w)));
+    const rawY = edge === 'top' ? crop.y : crop.y + crop.h - sourceHeight;
+    const sourceY = Math.max(0, Math.min(img.naturalHeight - sourceHeight, Math.floor(rawY)));
     canvas.width = sampleWidth;
     canvas.height = sampleHeight;
 
-    ctx.drawImage(img, 0, 0, img.naturalWidth, sourceHeight, 0, 0, sampleWidth, sampleHeight);
+    ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sampleWidth, sampleHeight);
     const data = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
 
     let totalR = 0, totalG = 0, totalB = 0;

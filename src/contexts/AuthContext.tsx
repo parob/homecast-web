@@ -12,6 +12,7 @@ import { isRelayCapable as checkRelayCapable } from '@/relay';
 import { handleGraphQL } from '@/server/local-graphql';
 import { clearPersistedHomeKitCache } from '@/hooks/useHomeKitData';
 import { clearSeriesCache } from '@/history/seriesCache';
+import { clearCameraSnapshots, setCameraSnapshotAccount } from '@/lib/camera-snapshot-cache';
 import { diagnoseConnection } from '@/lib/connectionDiagnosis';
 import { unregisterThisDevice } from '@/lib/device-identity';
 
@@ -63,6 +64,7 @@ function clearAuthToken() {
   // Same argument for Analytics: recorded history is per-user data behind a
   // per-home opt-in, and must not outlive the session that fetched it.
   clearSeriesCache();
+  clearCameraSnapshots();
   // Same for Local Mode's id map, which is now adopted before auth answers
   // (see `loadLast`) and so would otherwise outlive the account that minted it.
   // Gated like the load below, so a browser never pulls the native chunk.
@@ -464,6 +466,13 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Disk-backed camera stills must only be read in the verified account's
+  // namespace. Do not clear on the initial null user: that is an auth check,
+  // not a sign-out. Explicit sign-out paths clear both memory and disk.
+  useEffect(() => {
+    if (user?.id) setCameraSnapshotAccount(user.id);
+  }, [user?.id]);
+
   // Point Local Mode's identity cache at whoever is signed in. Keyed by user so
   // switching accounts cannot serve one person's home layout against another's
   // HomeKit ids. One effect rather than a call beside each of the many
@@ -583,6 +592,7 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           apolloClient.clearStore();
           clearSeriesCache();
+          clearCameraSnapshots();
         }
       }
     };
@@ -724,6 +734,8 @@ const CloudAuthProvider = ({ children }: { children: ReactNode }) => {
     }
     activatingRef.current = false;
 
+    // A token switch ends the previous account's cache session just like logout.
+    clearAuthToken();
     setAuthToken(newToken);
     const win = window as Window & { webkit?: { messageHandlers?: { homecast?: { postMessage: (msg: { action: string; token?: string }) => void } } } };
     if (win.webkit?.messageHandlers?.homecast) {

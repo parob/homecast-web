@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Home as HomeIcon } from 'lucide-react';
 import { useHomes } from '@/hooks/useHomeKitData';
@@ -14,9 +14,8 @@ import { UptimeSection } from './UptimeSection';
 import { HomeOverviewSection } from './home/HomeOverviewSection';
 import { HomeNotificationsSection } from './home/HomeNotificationsSection';
 import { HomeMQTTSection } from './home/HomeMQTTSection';
+import { HomeCamerasSection } from './home/HomeCamerasSection';
 import { HomeSectionList } from './home/HomeSectionList';
-import { isHomeServed } from '@/server/home-serving';
-import { useHomeServingVersion } from '@/hooks/useHomeServing';
 
 /**
  * One home's settings.
@@ -27,8 +26,7 @@ import { useHomeServingVersion } from '@/hooks/useHomeServing';
  * sidebar, or from the row list this renders on mobile, which has no sidebar.
  *
  * The container keeps what every page shares: one live `home` object, polled
- * here rather than in each sub-page so the poll can't be duplicated, and the
- * one-second tick that keeps relative-time labels moving between polls.
+ * here rather than in each sub-page so the poll can't be duplicated.
  */
 
 interface HomeDetailViewProps {
@@ -54,7 +52,6 @@ export function HomeDetailView({
   showSectionList,
   onCloudRelayRemoved,
 }: HomeDetailViewProps) {
-  useHomeServingVersion();
   // Keep the detail view fresh so relayLastSeenAt / relayConnected reflect the
   // live server state instead of a frozen snapshot taken at settings-open time.
   const { data: liveHomes, refetch: refetchHomes } = useHomes();
@@ -69,13 +66,6 @@ export function HomeDetailView({
   // home owner off the overview. The poll only needs to win on the fields that
   // actually go stale, which are the relay's.
   const home: HomeKitHome = live ? { ...homeProp, ...live, role: homeProp.role } : homeProp;
-  // Tick every second so the "ago" label updates without waiting for a refetch.
-  const [, setNow] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setNow(n => n + 1), 1_000);
-    return () => clearInterval(id);
-  }, []);
-
   const isOwner = !home.role || home.role === 'owner';
   const isShared = !isOwner;
   const isAdmin = !home.role || home.role === 'owner' || home.role === 'admin';
@@ -90,12 +80,13 @@ export function HomeDetailView({
         return isCommunity ? null : <UptimeSection homeId={home.id} />;
       case 'analytics':
         return <HomeHistorySettings home={home} isAdmin={isAdmin} />;
+      case 'cameras':
+        return <HomeCamerasSection home={home} isAdmin={isAdmin} />;
       case 'mqtt':
         return (
           <HomeMQTTSection
             home={home}
             isAdmin={isAdmin}
-            relayOnline={isHomeServed(home.id)}
           />
         );
       default:

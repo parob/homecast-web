@@ -76,6 +76,12 @@ const accessoryWidgetPropsAreEqual = (
   if (prevProps.isHidden !== nextProps.isHidden) return false;
   if (prevProps.hideLabel !== nextProps.hideLabel) return false;
   if (prevProps.showHiddenItems !== nextProps.showHiddenItems) return false;
+  // Size has to be here or the tile never redraws at its new size: the grid
+  // cell resizes around it (the span is set on the SortableItem outside this
+  // memo) and the card inside carries on rendering at the old one. Only `size`
+  // is compared, not `sizeOptions` — that array is rebuilt every render, and
+  // it changes nothing visible until the menu is opened, which reads it fresh.
+  if (prevProps.size !== nextProps.size) return false;
   // onShare, onHide, onToggleShowHidden are intentionally excluded from comparison —
   // they are closures that change identity every render but their behavior only depends
   // on props already compared above (accessory.id, selectedHomeId, showHiddenItems).
@@ -93,6 +99,7 @@ const AccessoryWidgetInner: React.FC<AccessoryWidgetProps> = (props) => {
 
   const { widgetType, sensorType, deviceType } = resolveWidgetType({
     category: accessory.category,
+    camera: accessory.camera,
     serviceTypes: (accessory.services || []).map(s => s.serviceType),
   });
 

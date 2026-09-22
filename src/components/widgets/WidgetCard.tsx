@@ -9,10 +9,10 @@ import {
   ContextMenuSeparator,
   ContextMenuItem,
 } from '@/components/ui/context-menu';
-import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart } from 'lucide-react';
+import { Trash2, Eye, EyeOff, Share2, Bug, Pencil, Tag, LineChart, Check } from 'lucide-react';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
-import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
+import { TileEditActions, HiddenLabel, type PrimaryEditAction, type SizeEditAction } from '@/components/shared/EditActions';
 import type { PinnedTab } from '@/lib/pinned-tabs';
 import { useVirtualAccessoryEditor, useVirtualAccessoryRemover } from './VirtualAccessoryEditContext';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
@@ -27,9 +27,10 @@ import { useDragHandle } from '@/components/shared/SortableItem';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDeals } from '@/contexts/DealsContext';
 import { useHistory } from '@/contexts/HistoryContext';
-import { usePinnedTabs, usePinAction } from '@/contexts/PinnedTabsContext';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { WidgetWrapper } from './WidgetWrapper';
 import ExpandedActionBar, { type ExpandedAction } from './ExpandedActionBar';
+import { WIDGET_SIZE_LABELS, type WidgetSize } from '@/lib/widget-sizes';
 import { useTileTone } from './useTileTone';
 
 // Context for passing widget colors to child components
@@ -98,6 +99,23 @@ interface WidgetCardProps {
    * thing you reach for. `children` become the secondary controls beside it.
    */
   hero?: React.ReactNode;
+  /** Camera background plus an in-flow age label; never behind expanded controls. */
+  collapsedPreview?: React.ReactNode;
+  /**
+   * How many grid cells this tile occupies (see lib/widget-sizes.ts).
+   *
+   * The card's side of it is small and entirely visual: it fills its area
+   * rather than hugging its content, and `collapsedPreview` gets the whole
+   * card instead of the header's right-hand corner. Which sizes exist, which
+   * this widget may take and where the choice is stored all live outside.
+   */
+  size?: WidgetSize;
+  /**
+   * The sizes this widget may be set to right now, in menu order. Fewer than
+   * two means there is no choice and no control is offered.
+   */
+  sizeOptions?: WidgetSize[];
+  onSizeChange?: (size: WidgetSize) => void;
   /**
    * 'bar' is a tall drag control that wants a narrow column; 'block' is a
    * square-ish control (a dial) that needs width in both orientations.
@@ -112,6 +130,17 @@ interface WidgetCardProps {
    * "H…", "C…", "A…". Widgets whose hero is wide say so here.
    */
   heroStack?: boolean;
+  /**
+   * Lay the expanded card's chrome OVER the hero instead of above and below it.
+   *
+   * For a hero that is the whole point of the panel — a camera's live view —
+   * on a screen too short to stack a header, the image and an action row. The
+   * header and actions become one translucent bar across the top of the image,
+   * and the hero gets the card's whole height rather than what is left of it.
+   * Only the caller knows its hero can carry chrome legibly, so nobody gets
+   * this by default.
+   */
+  heroImmersive?: boolean;
   className?: string;
   style?: React.CSSProperties;
   accessory?: HomeKitAccessory;
@@ -198,8 +227,13 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   childrenVisible,
   overlayContent,
   hero,
+  collapsedPreview,
+  size = 'regular',
+  sizeOptions,
+  onSizeChange,
   heroShape = 'bar',
   heroStack,
+  heroImmersive,
   className = '',
   style,
   accessory,
@@ -252,6 +286,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // cache. Widgets just read it as-is.
   // When not responding, default to off state visually
   const effectiveCompact = compact;
+  const showTilePreview = !!collapsedPreview && !expanded;
   const effectiveIsOn = isReachable ? isOn : false;
   const effectiveOnExpandToggle = onExpandToggle;
 
@@ -334,10 +369,10 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // 'standard' and 'colourful' both use service-type colors for icons
   // 'basic' uses primary/muted colors
   const iconColor = colorOverride ?? (useServiceColors ? getIconColor(serviceType) : null);
-  const iconBgClass = iconColor
+  const iconBgClass = showTilePreview ? 'bg-white/15 backdrop-blur-md' : iconColor
     ? (effectiveIsOn ? iconColor.bg : iconColor.bgOff)
     : (effectiveIsOn ? 'bg-primary' : 'bg-muted hover:bg-muted/80');
-  const iconTextClass = iconColor
+  const iconTextClass = showTilePreview ? 'text-white' : iconColor
     ? (effectiveIsOn ? iconColor.text : iconColor.textOff)
     : (effectiveIsOn ? 'text-primary-foreground' : '');
   const iconShadowClass = effectiveIsOn ? (iconColor ? 'shadow-sm' : 'shadow-sm shadow-primary/25') : '';
@@ -389,10 +424,11 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const compactHeaderContent = (
     <div className="space-y-2">
       <div className="flex items-start justify-between">
-        {iconElement}
+        <div className={showTilePreview ? 'relative z-10 shrink-0' : undefined}>{iconElement}</div>
+        {showTilePreview && collapsedPreview}
         {effectiveHeaderAction && (
           <div
-            className={`relative shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+            className={`relative z-10 shrink-0 scale-90 origin-top-right ${effectiveDisabled ? 'pointer-events-none' : ''}`}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {effectiveHeaderAction}
@@ -405,7 +441,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
           </div>
         )}
       </div>
-      <div>
+      <div className={showTilePreview ? 'relative z-10' : undefined}>
         {/* No `selectable` here. That class exists to punch a hole in the Mac
             and iOS shells' global `user-select: none`, and on a tile it did
             exactly that \u2014 a drag or a long-press highlighted the name. The
@@ -413,7 +449,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
         <CardTitle className="text-xs font-medium truncate">
           {displayTitle}
         </CardTitle>
-        <CardDescription className="text-[10px] mt-0.5">
+        <CardDescription className={`text-[10px] mt-0.5 ${showTilePreview ? 'truncate' : ''}`}>
           {effectiveSubtitle || '\u00A0'}
         </CardDescription>
       </div>
@@ -425,10 +461,15 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const hideSubtitleForMultiLine = multiLineTitle && isReachable;
 
   // Non-compact mode header content - horizontal layout
-  const headerContent = (
+  // `withIcon: false` is for the immersive camera bar, where the accessory's
+  // type disc sits on top of its own live picture — the most literal statement
+  // of what the accessory is, next to the least. Everything else about the
+  // name and subtitle (the two-line clamp, the subtitle collapse) has to stay
+  // shared, which is why this is a parameter rather than a second block.
+  const renderHeaderContent = (withIcon = true) => (
     <div className="flex min-w-0 gap-2.5 items-center">
-      {iconElement}
-      <div className="min-w-0 flex-1">
+      {withIcon && <div className={showTilePreview ? 'relative z-10 shrink-0' : undefined}>{iconElement}</div>}
+      <div className={`min-w-0 flex-1 ${showTilePreview ? 'relative z-10' : ''}`}>
         <div className={!effectiveSubtitle && !multiLineTitle ? 'translate-y-2' : 'translate-y-0'}>
           {/* `break-words` is what makes the two-line clamp end in an ellipsis.
               Without it a word longer than the column — "Conditioner" beside a
@@ -447,7 +488,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
               collapses the subtitle away when the title needs two lines. */}
           <div className={`overflow-hidden ${hideSubtitleForMultiLine ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
             <CardDescription
-              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'}`}
+              className={`${expanded ? 'text-sm' : 'text-xs'} mt-0.5 ${effectiveSubtitle ? 'opacity-100' : 'opacity-0'} ${showTilePreview ? 'truncate' : ''}`}
             >
               {effectiveSubtitle || '\u00A0'}
             </CardDescription>
@@ -456,6 +497,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
       </div>
     </div>
   );
+  const headerContent = renderHeaderContent();
 
   // Apply No Response styling to inner content only, not the tooltip portal
   const noResponseClass = !isReachable ? 'opacity-50 grayscale' : '';
@@ -495,17 +537,53 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId }
     : null;
 
+  // Size: a resized tile fills its grid area, and its preview fills the tile.
+  //
+  // `sized` is deliberately not `size !== 'regular'` at every call site — the
+  // card is asked for one decision and reuses it, so the card, the wrapper and
+  // the header cannot end up disagreeing about whether this tile stretches.
+  const sized = size !== 'regular';
+  const offeredSizes = sizeOptions ?? [];
+  const canResize = !!onSizeChange && offeredSizes.length > 1;
+  // One round button in a cluster of round buttons, so it cycles rather than
+  // opening a picker inside an overlay that is itself a picker. Desktop gets
+  // the explicit three-way choice in the context menu below.
+  const nextSize = canResize
+    ? offeredSizes[(Math.max(0, offeredSizes.indexOf(size)) + 1) % offeredSizes.length]
+    : undefined;
+
+  // The Edit Layout badge for resizing, asked for on review: "just have a small
+  // circle with the expand and contract icons ... next to the other bubbles".
+  //
+  // Same cycle as the expanded panel's button, so the two cannot disagree about
+  // what one tap does. The glyph is `contract` only on the step that returns to
+  // Regular — anything else is growing, whatever it is growing into.
+  const sizeEditAction: SizeEditAction = canResize && nextSize
+    ? {
+        nextLabel: WIDGET_SIZE_LABELS[nextSize],
+        direction: nextSize === 'regular' ? 'contract' : 'expand',
+        onCycle: () => onSizeChange?.(nextSize),
+        name: accessory?.name ?? title,
+      }
+    : null;
+
   // Always rendered, gated by `visible`: the badges have to outlive the mode
   // by the length of their exit animation, and a component that is not there
   // cannot animate away.
-  const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} visible={showEditActions} />;
+  const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} size={sizeEditAction} visible={showEditActions} />;
 
-  // A hidden tile with no way to act on it still has to say why it is greyed out.
-  // Named outside edit mode, where there is no legend explaining what a bare eye
-  // icon means — desktop reveals hidden tiles from the context menu and never
-  // enters edit mode. Inside edit mode the bar spells the icons out, and a pill
-  // across the middle would cover the name again.
-  const hiddenLabel = isHidden && !editMode ? <HiddenLabel /> : null;
+  // A hidden tile with no way to act on it still has to say why it is greyed
+  // out. The badge says it whenever there is one, and a pill across the middle
+  // covers the name — so this is the fallback for a tile that has no badge at
+  // all: no `onHide`, which is a shared home or a view-only member.
+  //
+  // This was `!editMode`, which was right for the mode and wrong for the
+  // desktop: `editPrimaryAction` above stands on `isHidden` alone precisely so
+  // Show Hidden Items can offer Unhide without entering a mode, and outside
+  // edit mode that left the badge and the pill on the same tile.
+  // homecast-cloud#160 reported the pair on the scene cards; this is the same
+  // thing on a tile.
+  const hiddenLabel = isHidden && !onHide ? <HiddenLabel /> : null;
 
   /**
    * Virtual accessories are indistinguishable from real ones by design — a
@@ -591,9 +669,6 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   // Actions offered in the expanded panel: what the context menu already
   // offers, surfaced where a person is actually studying the accessory.
-  const pinAction = usePinAction(
-    accessory ? { type: 'accessory', id: accessory.id, name: accessory.name, homeId: accessory.homeId } : null,
-  );
   const expandedActions: ExpandedAction[] = [];
   if (canShowHistory && accessory) {
     expandedActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openHistory(accessory) });
@@ -602,30 +677,33 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // accessory, and the deal badge only ever appears on the collapsed tile — so
   // without this the expanded panel offered no way to prices but a right-click.
   if (canShowPrices && accessory) {
-    expandedActions.push({ key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => openPriceHistory(accessory) });
+    expandedActions.push({ key: 'prices', icon: 'prices', label: 'Prices', ariaLabel: 'Price & Deals', onClick: () => openPriceHistory(accessory) });
   }
   if (effectiveOnEdit) {
-    expandedActions.push({ key: 'edit', icon: 'edit', label: editLabel || 'Edit', onClick: effectiveOnEdit });
+    expandedActions.push({ key: 'edit', icon: 'edit', label: 'Edit', ariaLabel: editLabel, onClick: effectiveOnEdit });
   }
   if (onShare) {
     expandedActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
   }
-  // Pinning was a context-menu item, and on touch there is no longer a menu to
-  // put it in. Edit Layout's badge is the only other route, and reaching it to
-  // pin one accessory means entering a mode for it.
+  // Pin is deliberately NOT here, for the same reason Size is not: it was a
+  // third route to one setting. On a phone — the only place pinning is offered
+  // at all, `Dashboard`'s `enabled: isPhone` — Edit Layout's badge already
+  // carries Pin/Unpin beside Hide (`EditActions`' `pinButton`), and the tab bar
+  // carries its own unpin badge. Reported as homecast-cloud#173: "Remove pin
+  // from the options when you expand any widget ... this should only be
+  // accessible in editing mode and that's enough".
   //
-  // Through `usePinAction`, not a hand-rolled toggle: it is the same hook the
-  // edit badge uses, so the pinned/full/pinnable wording cannot drift between
-  // the two places that offer the same job. It answers null when pinning is not
-  // on offer at all (no tab bar), which is the gate.
-  if (pinAction && !pinAction.full) {
-    expandedActions.push({
-      key: 'pin',
-      icon: pinAction.pinned ? 'unpin' : 'pin',
-      label: pinAction.label,
-      onClick: pinAction.toggle,
-    });
-  }
+  // Removing it closes no door, and it makes an accessory tile agree with the
+  // scene and shortcut cards, which have pinned from the badge alone since
+  // touch lost its context menus (`ShortcutCards.test.tsx`).
+  //
+  // Size is deliberately NOT here either. It was, and by the time #197 had also
+  // put the same cycle on Edit Layout's badge beside Hide and Pin, the panel was
+  // the third route to one setting — reported as redundant in
+  // homecast-cloud#162. `nextSize` stays because `sizeEditAction` above is
+  // that badge, driving the identical cycle, and the desktop context menu
+  // below still lists all three sizes with the current one ticked. One route
+  // per platform, which is the rule that matters.
   // Deleting a virtual accessory, and only that.
   //
   // It shares WidgetCard's `onRemove` slot with a collection's "remove from
@@ -641,14 +719,52 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
     expandedActions.push({
       key: 'delete',
       icon: 'delete',
-      label: effectiveRemoveLabel,
+      label: 'Delete',
+      ariaLabel: effectiveRemoveLabel,
       onClick: effectiveOnRemove,
     });
   }
 
-  const cardInner = (
+  // The whole card is the hero, with its chrome floating on top. Deliberately
+  // not a variant of the stacked branch below: that one's job is to give the
+  // header, the hero and the actions each their own band, and every rule in it
+  // is about sharing height between them. Here there is nothing to share.
+  const immersive = showHero && heroImmersive;
+
+  const immersiveInner = (
+    <div
+      className="relative overflow-hidden rounded-[inherit]"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className={`${noResponseClass} ${hiddenClass}`}>{hero}</div>
+      {/* One bar, top-aligned: name on the left, actions and the close control
+          on the right. The gradient is what keeps a white name legible over a
+          daylit doorway — the image underneath is not ours to choose. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 bg-gradient-to-b from-black/75 via-black/40 to-transparent px-3 pb-10 pt-2 [&_.text-muted-foreground]:!text-white/80 [&_h3]:!text-white [&_p]:!text-white/80">
+        <div className="pointer-events-auto min-w-0 flex-1">{renderHeaderContent(false)}</div>
+        <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+          {/* `mt-0` undoes the row's stacked-layout top margin: here it is not
+              sitting under anything. */}
+          {expandedActions.length > 0 && (
+            <div className="[&>div]:!mt-0"><ExpandedActionBar actions={expandedActions} onDark /></div>
+          )}
+          {effectiveHeaderAction}
+        </div>
+      </div>
+    </div>
+  );
+
+  const cardInner = immersive ? immersiveInner : (
     <>
-      <CardHeader className={effectiveCompact ? "p-3" : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`}>
+      {/* `h-full` on a sized tile is what turns a bigger cell into a bigger
+          picture. `collapsedPreview` is `absolute inset-0`, so it fills its
+          nearest positioned ancestor — this header. Left at content height it
+          would draw the same small strip at the top of a 2×2 area, which is
+          the "expanded and nothing got bigger" failure this feature is for.
+          Nothing else changes: the title and the age caption stay in the
+          header row exactly where they already sit. */}
+      <CardHeader className={`${sized ? 'h-full' : ''} ${effectiveCompact ? 'p-3' : `${expanded ? 'p-5' : 'p-4'} ${showChildren ? (tightContent ? 'pb-0' : 'pb-2') : (expanded ? 'pb-5' : 'pb-4')}`} ${showTilePreview ? 'relative [&_h3]:!text-white [&_p]:!text-white/80 [&_.text-muted-foreground]:!text-white/80' : ''}`}>
         {effectiveCompact ? (
           // Compact mode - vertical layout with switch inside
           <div
@@ -668,18 +784,21 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
             >
               {headerContent}
             </div>
-            {effectiveHeaderAction && (
-              <div
-                className={`relative shrink-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                {effectiveHeaderAction}
-                {effectiveDisabled && effectiveOnDisabledClick && (
-                  <div
-                    className="absolute inset-0 z-50 pointer-events-auto cursor-default"
-                    onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
-                  />
-                )}
+            {(effectiveHeaderAction || showTilePreview) && (
+              <div className={`min-w-0 shrink-0 ${showTilePreview ? 'flex max-w-[35%] flex-col items-end' : ''}`}>
+                {effectiveHeaderAction && <div
+                  className={`relative z-10 shrink-0 ${effectiveDisabled ? 'pointer-events-none' : ''}`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {effectiveHeaderAction}
+                  {effectiveDisabled && effectiveOnDisabledClick && (
+                    <div
+                      className="absolute inset-0 z-50 pointer-events-auto cursor-default"
+                      onClick={(e) => { e.stopPropagation(); effectiveOnDisabledClick(); }}
+                    />
+                  )}
+                </div>}
+                {showTilePreview && collapsedPreview}
               </div>
             )}
           </div>
@@ -769,18 +888,22 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   const menuOnHide = touchMode ? undefined : onHide;
   const menuOnToggleShowHidden = touchMode ? undefined : onToggleShowHidden;
 
-  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || menuOnHide || menuOnToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory || canPin;
+  // `canResize` belongs in this list or Size is unreachable on the one tile
+  // that has nothing else in its menu — the menu is not rendered at all unless
+  // something wants to be in it, so a size-only widget would silently have no
+  // desktop route. Caught by a fixture whose camera had no other menu items.
+  const hasContextMenuContent = hasCharacteristics || homeName || accessory?.roomName || effectiveOnRemove || effectiveOnEdit || menuOnHide || menuOnToggleShowHidden || onShare || onDebug || canShowPrices || canShowHistory || canPin || canResize;
   if (hasContextMenuContent && !touchMode && !editMode && !isDragging && !disableTooltip) {
     return (
       <WidgetColorContext.Provider value={colorContextValue}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden} fill={sized}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <Card
                 ref={ref}
                 onClick={handleCardClick}
                 {...pressHandlers}
-                className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+                className={`relative ${sized ? 'h-full' : ''} ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
                 style={style}
               >
                 {cardInner}
@@ -833,6 +956,24 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share Accessory
                 </ContextMenuItem>
+              )}
+              {/* The desktop half of Size. A menu can show all three at once
+                  with the current one marked, which the round cluster button
+                  cannot — it cycles. Both halves have to exist for the reason
+                  the Automations grid documents: whichever route a platform
+                  has must be able to get back, or the setting is a one-way
+                  door on that platform. */}
+              {canResize && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuLabel className="text-xs text-muted-foreground font-normal">Size</ContextMenuLabel>
+                  {offeredSizes.map(option => (
+                    <ContextMenuItem key={option} onClick={() => onSizeChange?.(option)}>
+                      <Check className={`h-4 w-4 mr-2 ${option === size ? 'opacity-100' : 'opacity-0'}`} />
+                      {WIDGET_SIZE_LABELS[option]}
+                    </ContextMenuItem>
+                  ))}
+                </>
               )}
               {canPin && accessory && (
                 <PinTabMenuItem
@@ -893,13 +1034,16 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
 
   return (
     <WidgetColorContext.Provider value={colorContextValue}>
-      <div className={wiggleClass} style={{ '--wiggle-offset': wiggleOffset } as React.CSSProperties}>
-        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden}>
+      {/* `h-full` here too: this div sits between the grid cell and the
+          wrapper, so without it the wrapper's own `h-full` resolves against a
+          content-height parent and nothing stretches. */}
+      <div className={`${wiggleClass} ${sized ? 'h-full' : ''}`} style={{ '--wiggle-offset': wiggleOffset } as React.CSSProperties}>
+        <WidgetWrapper isOn={effectiveIsOn} iconStyle={iconStyle} tint={widgetColors?.tint} tintAlpha={widgetColors?.tintAlpha} intensity={intensity} pressed={pressed} hiddenItem={isCurrentlyHidden} fill={sized}>
           <Card
             ref={ref}
             onClick={handleCardClick}
             {...pressHandlers}
-            className={`relative ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
+            className={`relative ${sized ? 'h-full' : ''} ${cardBgClass} ${effectiveCompact ? 'cursor-pointer' : 'cursor-default'} transition-[transform,opacity] duration-fast ease-standard hover:opacity-80 ${expandedClass} ${hiddenClass} ${className}`}
           >
             {cardInner}
           </Card>

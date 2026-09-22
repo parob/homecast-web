@@ -2,8 +2,10 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { EdgeSampleSlivers } from "@/components/shared/EdgeSampleSlivers";
 import { DIALOG_Z, dialogElevation, topPanelElevation } from "@/lib/overlay-elevation";
+import { useSurfaceThemeColor } from "@/hooks/useSurfaceThemeColor";
 
 /**
  * Reports the moment the dialog actually opens.
@@ -52,8 +54,15 @@ const DialogContent = React.forwardRef<
     hideCloseButton?: boolean;
     /** Restyle the backdrop, the same way SheetContent already allows. */
     overlayClassName?: string;
+    /**
+     * This dialog goes full-bleed on a phone, so while it is open it — not the
+     * wallpaper behind it — is what sits under the iOS status bar, and it has
+     * to say so. See `useSurfaceThemeColor`; opting in is per-dialog because
+     * an ordinary centred one leaves the wallpaper on show up there.
+     */
+    ownsThemeColor?: boolean;
   }
->(({ className, children, style, hideCloseButton, overlayClassName, ...props }, ref) => {
+>(({ className, children, style, hideCloseButton, overlayClassName, ownsThemeColor, ...props }, ref) => {
   // A dialog opened FROM an expanded panel has to be above it — the panel is a
   // portal sibling, not an ancestor, so only z-index separates them. Measured
   // at open, not continuously: a dialog that a panel is later elevated INSIDE
@@ -65,11 +74,28 @@ const DialogContent = React.forwardRef<
     [],
   );
   const zIndex = style?.zIndex ?? panelAwareZ;
+
+  // State rather than a ref: the hook has to re-run when the node arrives and
+  // again when the portal takes it away, which a ref's mutation never reports.
+  const [surface, setSurface] = React.useState<HTMLDivElement | null>(null);
+  const attach = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      setSurface(ownsThemeColor ? node : null);
+      if (typeof ref === "function") ref(node);
+      else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    },
+    [ref, ownsThemeColor],
+  );
+  useSurfaceThemeColor(surface);
+
   return (
   <DialogPortal>
     <DialogOverlay className={overlayClassName} style={{ zIndex }} />
+    {/* iOS Safari's bar bands, matched to the scrim: black at 80% by default,
+        30% for a caller that passes OVERLAY_SCRIM (lib/overlay-scrim). */}
+    <EdgeSampleSlivers dim={overlayClassName?.includes('bg-black/30') ? 0.3 : 0.8} zIndex={zIndex} />
     <DialogPrimitive.Content
-      ref={ref}
+      ref={attach}
       aria-describedby={undefined}
       className={cn(
         // `grid-cols-[minmax(0,1fr)]` is load-bearing, not tidying. Without it

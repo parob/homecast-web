@@ -71,7 +71,7 @@ describe('the healthy card', () => {
 
   it('claims only the link when there is no home to speak for', () => {
     // Onboarding, or several homes and none selected.
-    const c = at({ serving: null, relayServing: null });
+    const c = at({ serving: null, relayServing: null, homeName: null });
     expect(c.verdict).toBe('Connected to Homecast');
     expect(c.via).toBe('Round trip 34ms');
   });
@@ -98,17 +98,13 @@ describe('this device cannot get out', () => {
     expect(at({ quality: 'offline', deviceNoun: 'Mac' }).verdict).toBe("This Mac can't reach Homecast");
   });
 
-  it('says "working, slowly" rather than blaming the home', () => {
+  it('describes slow transport without claiming the home works', () => {
     // The old copy said "Your connection is slow" about a 28ms connection.
     const c = at({ quality: 'slow', rtt: '2.4s' });
     expect(c.tone).toBe('warn');
-    expect(c.verdict).toBe('County Hall is working, slowly');
-    expect(c.because).toContain('Your relay is answering normally behind it');
+    expect(c.verdict).toBe('The connection to Homecast is slow');
+    expect(c.because).toContain('Requests are taking longer than expected');
     expect(c.reconnect).toBe(true);
-  });
-
-  it('says the cloud relay is behind a slow link on a cloud plan', () => {
-    expect(at({ quality: 'slow', managed: true }).because).toContain('The cloud relay is answering normally');
   });
 
   it('pulses while reconnecting and says nothing more', () => {
@@ -119,20 +115,20 @@ describe('this device cannot get out', () => {
   });
 });
 
-describe('a stall — the flagship contrast', () => {
-  it('offers Reconnect for the user own relay', () => {
+describe('a stalled client connection', () => {
+  it('offers Reconnect for the stalled client connection', () => {
     const c = at({ quality: 'stalled' });
-    expect(c.verdict).toBe("County Hall isn't responding");
-    expect(c.because).toBe("Homecast can't get an answer from your relay. Your iPhone and your internet are both fine.");
+    expect(c.verdict).toBe('The connection to Homecast is not responding');
+    expect(c.because).toContain('County Hall may still be available from other devices');
     expect(c.reconnect).toBe(true);
     expect(c.note).toBeNull();
   });
 
-  it('offers nothing but the note for a dead cloud relay, because the user owns nothing to restart', () => {
+  it('does not infer a dead cloud relay from the client connection', () => {
     const c = at({ quality: 'stalled', managed: true });
-    expect(c.because).toContain('The cloud relay for this home');
-    expect(c.reconnect).toBe(false);
-    expect(c.note).toMatch(/Homecast has been notified/);
+    expect(c.because).toContain('waiting for Homecast to answer');
+    expect(c.reconnect).toBe(true);
+    expect(c.note).toBeNull();
   });
 });
 
@@ -144,15 +140,15 @@ describe('the server says nothing may serve the home', () => {
     const c = at({ ...gone('offline'), managed: true });
     expect(c.tone).toBe('bad');
     expect(c.verdict).toBe("County Hall can't be reached");
-    expect(c.because).toBe("The cloud relay isn't answering. Your iPhone and your internet are both fine.");
+    expect(c.because).toBe('Homecast reports that no relay is serving this home.');
     expect(c.reconnect).toBe(false);
-    expect(c.note).toMatch(/notified/);
+    expect(c.note).toMatch(/reconnect automatically/);
     expect(c.showChain).toBe(true);
   });
 
   it('tells a self-hosted owner what to go and check', () => {
     const c = at(gone('offline'));
-    expect(c.because).toContain('check that the relay is on and online');
+    expect(c.because).toContain('Check that your relay is on and online');
     expect(c.note).toBeNull();
   });
 
@@ -240,7 +236,7 @@ describe('the activated standby, without Local Mode', () => {
     const c = at({ managed: true, serving: servedBy(ME, 'self_hosted'), relayServing: servedBy(ME, 'self_hosted'), deviceNoun: 'Mac' });
     expect(c.tone).toBe('warn');
     expect(c.verdict).toBe('County Hall is working');
-    expect(c.because).toContain('this Mac is standing in');
+    expect(c.because).toContain('This Mac is serving your home as a backup');
     expect(c.via).toBe('via This Mac · 34ms');
     expect(c.showChain).toBe(false);
   });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { inferSceneRoom, sceneRoom } from '@/lib/scene-rooms';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { ChevronRight, Loader2, Plus } from 'lucide-react';
@@ -77,11 +78,11 @@ function visibleActions(
   return deriveHomeActions(accessories).filter(a => showHidden || isHomeActionVisible(layout, a.id));
 }
 
-type Card =
-  | { kind: 'action'; id: string; action: HomeAction; isHidden: boolean }
-  | { kind: 'scene'; id: string; scene: HomeKitScene; isHidden: boolean };
+export type Card =
+  | { kind: 'action'; id: string; action: HomeAction; isHidden: boolean; roomId?: string | null }
+  | { kind: 'scene'; id: string; scene: HomeKitScene; isHidden: boolean; roomId?: string | null };
 
-const cardKey = (c: Card) => homeCardKey(c.kind, c.id);
+export const cardKey = (c: Card) => homeCardKey(c.kind, c.id);
 
 /**
  * The cards, in the user's order.
@@ -182,12 +183,17 @@ interface ScenesSectionProps {
    * is what makes hiding reversible on a platform that never edits.
    */
   showHidden?: boolean;
+  tile?: boolean;
+  layoutEdit?: { editMode: boolean; touchMode: boolean };
+  revealHidden?: boolean;
+  rooms?: { id: string; name: string }[];
+  onPlaceScene?: (sceneId: string, roomId: string | null | undefined) => void;
 }
 
-export function ScenesSection({
-  homeId, accessories, homeLayout, compact, isDarkBackground, open, isViewOnly,
-  dndEnabled = true, onRunAction, onToggleActionHidden, onReorderCards, onToggleSceneHidden,
-  showHidden,
+export function useSceneCards({
+  homeId, accessories, homeLayout, isDarkBackground, isViewOnly,
+  onRunAction, onToggleActionHidden, onReorderCards, onToggleSceneHidden,
+  showHidden, tile = false, rooms = [], onPlaceScene, layoutEdit, revealHidden,
 }: ScenesSectionProps) {
   const [runningSceneId, setRunningSceneId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<HomeKitScene | null>(null);
@@ -221,7 +227,8 @@ export function ScenesSection({
     fetchPolicy: 'cache-first',
     errorPolicy: 'ignore',
   });
-  const { editMode, touchMode } = useLayoutEdit();
+  const contextEdit = useLayoutEdit();
+  const { editMode, touchMode } = layoutEdit ?? contextEdit;
   const [executeScene] = useMutation(EXECUTE_SCENE);
   const [deleteScene] = useMutation(DELETE_SCENE);
 
@@ -229,7 +236,7 @@ export function ScenesSection({
   // the desktop's Show Hidden Items; the rest of the time they are simply not
   // there. Both halves of the grid obey it — they are one grid to the user, and
   // a reveal that produced only half the hidden cards would be a puzzle.
-  const reveal = editMode || !!showHidden;
+  const reveal = revealHidden ?? (editMode || !!showHidden);
   const scenes = visibleScenes(data?.scenes, homeLayout, reveal);
   const actions = visibleActions(accessories, homeLayout, reveal);
   const hiddenSceneIds = useMemo(
@@ -243,7 +250,8 @@ export function ScenesSection({
   const savedOrder = homeLayout?.sceneCardOrder;
   const cards = useOrderedCards(
     scenes, actions, optimisticOrder ?? savedOrder, hiddenSceneIds, hiddenActionIds,
-  );
+  ).map(card => ({ ...card, roomId: card.kind === 'scene'
+    ? sceneRoom(card.scene, accessories, rooms, homeLayout?.sceneRooms) : null }));
 
   // Let go once the saved order is the source of truth again.
   useEffect(() => { setOptimisticOrder(null); }, [savedOrder]);
@@ -290,6 +298,7 @@ export function ScenesSection({
   const renderCard = (card: Card) => card.kind === 'action' ? (
     <ActionCard
       action={card.action}
+      tile={tile}
       homeId={homeId}
       isDarkBackground={isDarkBackground}
       isViewOnly={isViewOnly}
@@ -322,6 +331,7 @@ export function ScenesSection({
   ) : (
     <SceneCard
       scene={card.scene}
+      tile={tile}
       homeId={homeId}
       isDarkBackground={isDarkBackground}
       editMode={editMode}
@@ -338,55 +348,13 @@ export function ScenesSection({
 
   const canShowScenes = isSummarySectionVisible(homeLayout, 'scenes');
   const itemIds = cards.map(cardKey);
-
-  return (
-    <>
-      <AnimatedCollapse open={open}>
-        <div className={compact ? 'mb-3' : 'mb-6'}>
-          {cards.length === 0 && canShowScenes && (
-            <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
-              No scenes yet. A scene sets several accessories at once — create one to get started.
-            </p>
-          )}
-          <DraggableGrid
-            itemIds={itemIds}
-            onReorder={(order) => { setOptimisticOrder(order); onReorderCards?.(order); }}
-            enabled={dndEnabled && !!onReorderCards}
-            touchMode={touchMode}
-            renderDragOverlay={(activeId) => {
-              const card = cards.find(c => cardKey(c) === activeId);
-              return card ? <div className="w-full opacity-90">{renderCard(card)}</div> : null;
-            }}
-          >
-            <div className={
-              compact
-                ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
-                : 'grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]'
-            }>
-              {cards.map(card => (
-                <SortableItem key={cardKey(card)} id={cardKey(card)} disabled={!dndEnabled || !onReorderCards}>
-                  <DragHandleArea>{renderCard(card)}</DragHandleArea>
-                </SortableItem>
-              ))}
-              {!editMode && canShowScenes && <button
-                onClick={() => {
-                  if (relayCannotEdit) { setViewOnlyOpen(true); return; }
-                  setEditingScene(null);
-                  setFormOpen(true);
-                }}
-                className={`flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed p-3 text-xs font-medium transition-colors ${
-                  isDarkBackground
-                    ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
-                    : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
-                }`}
-              >
-                <Plus className="h-3.5 w-3.5" /> Create scene
-              </button>}
-            </div>
-          </DraggableGrid>
-        </div>
-      </AnimatedCollapse>
-
+  const createScene = () => {
+    if (relayCannotEdit) { setViewOnlyOpen(true); return; }
+    setEditingScene(null);
+    setFormOpen(true);
+  };
+  const reorder = (order: string[]) => { setOptimisticOrder(order); onReorderCards?.(order); };
+  const dialogs = (<>
       <ActionConfirmDialog
         action={runner.confirming}
         onCancel={() => runner.setConfirming(null)}
@@ -402,6 +370,20 @@ export function ScenesSection({
         onOpenChange={setFormOpen}
         homeId={homeId}
         scene={editingScene}
+        placement={editingScene && onPlaceScene ? (
+          <label className="block py-2 text-sm">
+            <span className="mb-1.5 block text-muted-foreground">Show in</span>
+            <select aria-label="Scene location" className="w-full rounded-lg border bg-background px-3 py-2 text-base"
+              value={Object.prototype.hasOwnProperty.call(homeLayout?.sceneRooms ?? {}, editingScene.id)
+                ? homeLayout?.sceneRooms?.[editingScene.id] ?? 'home' : 'automatic'}
+              onChange={e => onPlaceScene(editingScene.id, e.target.value === 'automatic' ? undefined : e.target.value === 'home' ? null : e.target.value)}>
+              <option value="automatic">Automatic</option>
+              <option value="home">Scenes (home)</option>
+              {rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}
+            </select>
+            <span className="mt-1.5 block text-xs text-muted-foreground">Controls: {rooms.find(r => r.id === inferSceneRoom(editingScene, accessories, rooms))?.name ?? 'Whole home'}</span>
+          </label>
+        ) : undefined}
         onSaved={() => refetch()}
         onDelete={() => { setFormOpen(false); setConfirmDelete(editingScene); }}
       />
@@ -422,6 +404,56 @@ export function ScenesSection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
-  );
+  </>);
+  return { cards, itemIds, renderCard, dialogs, createScene, reorder, canShowScenes, editMode, touchMode };
+}
+
+export function ScenesSection(props: ScenesSectionProps) {
+  const { compact, isDarkBackground, open, dndEnabled = true, onReorderCards } = props;
+  const { cards, itemIds, renderCard, dialogs, createScene, reorder, canShowScenes, editMode, touchMode } = useSceneCards(props);
+  return (<>
+      <AnimatedCollapse open={open}>
+        <div className={compact ? 'mb-3' : 'mb-6'}>
+          {cards.length === 0 && canShowScenes && (
+            <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
+              No scenes yet. A scene sets several accessories at once — create one to get started.
+            </p>
+          )}
+          <DraggableGrid
+            itemIds={itemIds}
+            onReorder={reorder}
+            enabled={dndEnabled && !!onReorderCards}
+            touchMode={touchMode}
+            renderDragOverlay={(activeId) => {
+              const card = cards.find(c => cardKey(c) === activeId);
+              return card ? <div className="w-full opacity-90">{renderCard(card)}</div> : null;
+            }}
+          >
+            <div className={
+              compact
+                ? 'grid items-start gap-2 grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))]'
+                : 'grid items-start gap-3 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]'
+            }>
+              {cards.map(card => (
+                <SortableItem key={cardKey(card)} id={cardKey(card)} disabled={!dndEnabled || !onReorderCards}>
+                  <DragHandleArea>{renderCard(card)}</DragHandleArea>
+                </SortableItem>
+              ))}
+              {!editMode && canShowScenes && <button
+                onClick={createScene}
+                className={`flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed p-3 text-xs font-medium transition-colors ${
+                  isDarkBackground
+                    ? 'border-white/15 text-white/40 hover:border-white/30 hover:text-white/60'
+                    : 'border-muted-foreground/20 text-muted-foreground/50 hover:border-muted-foreground/40 hover:text-muted-foreground'
+                }`}
+              >
+                <Plus className="h-3.5 w-3.5" /> Create scene
+              </button>}
+            </div>
+          </DraggableGrid>
+        </div>
+      </AnimatedCollapse>
+
+    {dialogs}
+  </>);
 }

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
 import { checkIsInMacApp } from '@/lib/platform';
-import { headerControlClass, headerHaloNeedsReinforcing } from '@/lib/header-chrome';
+import { headerControlClass, headerHaloNeedsReinforcing, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
 import { Navigate, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
@@ -39,9 +39,14 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { useAuth } from '@/contexts/AuthContext';
 import { GET_SESSIONS, SET_SERVICE_GROUP, GET_SETTINGS, UPDATE_SETTINGS, GET_COLLECTIONS, GET_CONNECTION_DEBUG_INFO, GET_ROOM_GROUPS, GET_STORED_ENTITY_LAYOUT, GET_STORED_ENTITIES, GET_ACCOUNT, GET_PENDING_INVITATIONS, GET_VERSION, GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
 import { SET_CHARACTERISTIC, UPDATE_COLLECTION, DELETE_COLLECTION, DELETE_ROOM_GROUP, UPDATE_ROOM_GROUP, CREATE_CHECKOUT_SESSION, CREATE_PORTAL_SESSION, DOWNGRADE_TO_STANDARD, ACCEPT_HOME_INVITATION, REJECT_HOME_INVITATION, DISMISS_HOME, EXECUTE_SCENE } from '@/lib/graphql/mutations';
-import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
+import type { GetSessionsResponse, Session, HomeKitHome, HomeKitAccessory, HomeKitAutomation, HomeKitRoom, HomeKitServiceGroup, GetServiceGroupsResponse, SetServiceGroupResponse, SetCharacteristicResponse, GetSettingsResponse, UpdateSettingsResponse, UserSettingsData, PinnedTab, Collection, CollectionGroup, CollectionPayload, GetConnectionDebugInfoResponse, StoredEntity, RoomGroupData, GetCollectionsResponse, GetStoredEntitiesResponse, UpdateCollectionResponse, BackgroundSettings, GetStoredEntityLayoutResponse, GetAccountResponse, CreateCheckoutSessionResponse, CreatePortalSessionResponse, DowngradeToStandardResponse, GetPendingInvitationsResponse, AcceptHomeInvitationResponse, RejectHomeInvitationResponse, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
 import { getDisplayName, parseCollectionPayload, DEVICE_SETTING_KEYS, getDeviceSettings } from '@/lib/graphql/types';
 import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
+import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
+import { useDebugDockHeight } from '@/lib/debug-dock';
+import { sidebarWidthCss } from '@/lib/sidebar-width';
+import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
+import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { setActivityLoggingFlags } from '@/lib/activity-logging';
@@ -60,23 +65,24 @@ import { useEntitySync } from '@/hooks/useEntitySync';
 import { useHomeLayout, useRoomLayout, useCollectionLayout, useCollectionGroupLayout, useRoomGroupLayout } from '@/hooks/useEntityLayout';
 import type { HomeLayoutData, RoomLayoutData } from '@/lib/graphql/types';
 import { MasonryGrid } from '@/components/MasonryGrid';
-import { AreaSummary, StatusPill } from '@/components/summary';
+import { AreaSummary } from '@/components/summary';
 import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
 import {
-  isSummarySectionVisible, isScenesSectionVisible, withHomeActionVisibility, withSummarySectionVisibility,
-  withScenesSectionVisibility, withSceneVisibility,
-  type HomeActionId, type SummarySectionId,
+  isSummarySectionVisible, withHomeActionVisibility,
+  withSceneVisibility,
+  type HomeActionId,
 } from '@/lib/summary-sections';
-import { SummarySectionEditPills } from '@/components/summary/SummarySectionEditPills';
-import { AutomationsSection, AutomationsPill } from '@/components/automations/AutomationsSection';
-import { ScenesSection, ScenesPill } from '@/components/scenes/ScenesSection';
+import { AutomationsSection } from '@/components/automations/AutomationsSection';
+import { SceneGridSizing } from '@/components/scenes/SceneGridSizing';
+import { useSceneCards, cardKey, type Card as SceneGridCard } from '@/components/scenes/ScenesSection';
+import { mergeVisibleOrder } from '@/lib/scene-rooms';
 import { VirtualAccessoryEditorDialog } from '@/components/virtual-accessories/VirtualAccessoryEditorDialog';
 import { useVirtualAccessories, type VirtualTimerInfo } from '@/components/virtual-accessories/useVirtualAccessories';
 import { VirtualAccessoryEditProvider } from '@/components/widgets/VirtualAccessoryEditContext';
 
 /**
  * Bucket name for accessories that belong to the home rather than to a room.
- * Never shown — the group renders first and unlabelled — but it has to be a
+ * Rendered as Scenes, but internally it still needs a unique
  * name because rooms are grouped by name. The NUL prefix is what stops it
  * colliding with a real room someone actually named "home-level", so it has to
  * stay in memory: see HOME_LEVEL_CONTEXT_ID for the form that gets stored.
@@ -101,11 +107,13 @@ const BREADCRUMB_LINK_CLASS =
   'align-baseline opacity-60 hover:opacity-100 transition-opacity cursor-pointer';
 
 import type { VirtualAccessoryDefinition } from '@/automation/types/automation';
+import { DragHandleArea } from '@/components/shared/DragHandleArea';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { LazyWidget } from '@/components/shared/LazyWidget';
 import { AppBootFallback, SidebarRowsSkeleton, AccessoryGridSkeleton } from '@/components/LoadingSkeletons';
 import { DraggableGrid, useDraggableGrid } from '@/components/shared/DraggableGrid';
 import { ExpandedOverlay } from '@/components/shared/ExpandedOverlay';
+import { EdgeSampleSlivers } from '@/components/shared/EdgeSampleSlivers';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { DealsProvider, useDeals } from '@/contexts/DealsContext';
 import { HistoryProvider, useHistory, type AnalyticsScope } from '@/contexts/HistoryContext';
@@ -141,6 +149,18 @@ import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 import { LIFT_DELAY_IDLE, LIFT_DELAY_EDITING } from '@/lib/long-press';
 import { appVersionLabel } from '@/lib/app-version';
 import { withAutomationVisibility } from '@/lib/automation-cards';
+import {
+  availableWidgetSizes,
+  gridHasSizedWidget,
+  gridRowUnitStyle,
+  offersWidgetSizeChoice,
+  resolveWidgetSize,
+  widgetSizeStyle,
+  withWidgetSize,
+  type WidgetSize,
+  type WidgetSizeCapability,
+} from '@/lib/widget-sizes';
+import { useGridRowUnit } from '@/hooks/useGridRowUnit';
 import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
 import { captureHeights, collapseContainers, emptyingContainers, heightChanges, playHeightChanges, prefersReducedMotion, REFLOW_MS, type HeightMap } from '@/lib/reflow';
@@ -206,7 +226,6 @@ import { ActionConfirmDialog } from '@/components/actions/ActionConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AutoHeight } from '@/components/ui/auto-height';
 import { RemeasureDuringLift } from '@/components/shared/RemeasureDuringLift';
 import { AnimatedCollapse } from '@/components/ui/animated-collapse';
 import { Switch } from '@/components/ui/switch';
@@ -238,20 +257,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
-  Home, House, RefreshCw, Lightbulb,
+  Home, House, Folder, RefreshCw, Lightbulb,
   Thermometer, Loader2, Power, Sun, Moon, Lock,
   Wind, Droplets, AlertCircle, DoorOpen, DoorClosed, Camera,
-  Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, Blinds,
+  Plug, Speaker, Tv, Globe, Layers, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Blinds,
   Copy, Check, Link, Key, Menu, X, LockOpen, LockKeyhole, GripVertical, Pencil, Server, RotateCcw,
   LayoutGrid, Grid3X3, List, Settings, LogOut, SquarePen, Maximize2, Minimize2, AlertTriangle, FolderPlus, Plus,
-  Eye, EyeOff, Trash2, Share2, MoreVertical, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart} from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+  Eye, EyeOff, Trash2, Share2, MoreHorizontal, Bug, ImageIcon, WifiOff, Search, ArrowDown, Pin, PinOff, FlaskConical, Cloud, Blocks, LineChart, Zap} from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -272,6 +285,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { StagingSyncLabel, CommunityBadge } from '@/components/layout/StagingBanner';
 import { StatusBadge } from '@/components/layout/StatusBadge';
 import { useHomeServing, useHomeServingVersion } from '@/hooks/useHomeServing';
+import { unavailableHomePresentation } from '@/lib/status-badge';
 import { isHomeServed, isHomeUnserved } from '@/server/home-serving';
 import type { HomeSettingsSectionId } from '@/lib/home-settings-sections';
 import { BackgroundImage } from '@/components/BackgroundImage';
@@ -548,7 +562,7 @@ const SortableRoomItem: React.FC<SortableRoomItemProps> = ({ onCreateHelper, roo
         {onCreateHelper && (
           <ContextMenuItem onClick={onCreateHelper}>
             <Blocks className="h-4 w-4 mr-2" />
-            Create Virtual Accessory
+            Add Accessory
           </ContextMenuItem>
         )}
         {/* Not on touch: the row carries a hide badge in Edit Layout, and
@@ -947,13 +961,13 @@ const SortableHomeItem: React.FC<SortableHomeItemProps> = ({ home, isSelected, h
           {onCreateRoomGroup && (
             <ContextMenuItem onClick={onCreateRoomGroup}>
               <Layers className="h-4 w-4 mr-2" />
-              Create Room Group
+              Add Room Group
             </ContextMenuItem>
           )}
           {onCreateHelper && (
             <ContextMenuItem onClick={onCreateHelper}>
               <Blocks className="h-4 w-4 mr-2" />
-              Create Virtual Accessory
+              Add Accessory
             </ContextMenuItem>
           )}
             {/* Not on touch - see SortableRoomItem. */}
@@ -1512,7 +1526,6 @@ const Dashboard = () => {
       setSelectedRoomId(null);
       setSelectedCollectionId(null);
       setSelectedCollection(null);
-      setAutomationsOpen(true);
     } else if (tutorialPrevSelectionRef.current) {
       const prev = tutorialPrevSelectionRef.current;
       setSelectedHomeIdRaw(prev.home);
@@ -1520,14 +1533,8 @@ const Dashboard = () => {
       setSelectedCollectionId(prev.collectionId);
       setSelectedCollection(prev.collection);
       tutorialPrevSelectionRef.current = null;
-      // Close what the tour opened. The enter branch expands Automations so the
-      // spotlight has something to land on, and restoring only the *selection*
-      // left it hanging open afterwards — which is why a first run ended with a
-      // pill expanded that the user never touched. All three, not just that one:
-      // closed is their initial state, so this restores it whatever the tour did.
-      setScenesOpen(false);
+      // Restore the normal dashboard when the guided tour ends.
       setAutomationsOpen(false);
-      setStatusOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tutorialDemoActive]);
@@ -2094,12 +2101,8 @@ const Dashboard = () => {
   releaseAnchorRef.current = releaseAnchor;
 
   useEffect(() => () => window.clearTimeout(liftWatchdogRef.current), []);
-  // Scenes/Automations/Status sections, toggled by the pills in the summary
-  // row — mutually exclusive, so opening one closes the other two. All are
-  // home-view only: room views keep the sensor bubbles inline.
-  const [scenesOpen, setScenesOpen] = useState(false);
+  // Automations is reached through the home's overflow menu.
   const [automationsOpen, setAutomationsOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
 
   // Helper accessories: ours, not HomeKit's, so they live in the room grid
   // alongside real accessories and in a home-level folder above the rooms.
@@ -3321,6 +3324,67 @@ const Dashboard = () => {
   }, [selectedHomeId, updateHomeLayout]);
 
   /**
+   * Widget sizes — how many grid cells a tile takes. See lib/widget-sizes.ts.
+   *
+   * Two pieces of state, and they are different kinds of thing:
+   *
+   * - the **stored** size is the user's choice, in the home's layout;
+   * - the **capability** is what the widget says it can currently do, reported
+   *   up from the widget itself because only it knows (a camera derives it from
+   *   the shape of the snapshot that came back).
+   *
+   * Capabilities live in React state rather than the layout because they are
+   * observations, not preferences: they must not be persisted, and they change
+   * on their own when a first snapshot lands.
+   */
+  const [widgetCapabilities, setWidgetCapabilities] = useState<Record<string, WidgetSizeCapability>>({});
+
+  /**
+   * The measured height of an ordinary tile in the device grid, which is what
+   * lets a Large tile be exactly two of them plus the gap. Only armed once
+   * something in the grid is actually sized — see `useGridRowUnit`.
+   */
+  const anyWidgetSized = Object.values(homeLayout?.widgetSizes ?? {}).some(size => size && size !== 'regular');
+  const [deviceGridRef, deviceGridRowUnit] = useGridRowUnit(anyWidgetSized);
+
+  const reportWidgetCapability = useCallback((key: string, capability: WidgetSizeCapability) => {
+    setWidgetCapabilities(prev => {
+      const before = prev[key];
+      // Bail on an unchanged answer. A widget reports on every snapshot, and
+      // setting state to an equal-but-new object here would re-render the whole
+      // grid every few seconds per camera.
+      if (before && !!before.large === !!capability.large && !!before.tall === !!capability.tall) return prev;
+      return { ...prev, [key]: capability };
+    });
+  }, []);
+
+  const setWidgetSize = useCallback((key: string, size: WidgetSize) => {
+    updateHomeLayout(prev => ({
+      ...prev,
+      widgetSizes: withWidgetSize(prev?.widgetSizes, key, size),
+    })).catch(err => console.error('Failed to save widget size to entity layout:', err));
+  }, [updateHomeLayout]);
+
+  /**
+   * Everything one tile needs to render at its size and offer the control.
+   *
+   * Returns `undefined` for a widget with no capability — the overwhelmingly
+   * common case — so the props are absent rather than present-and-empty, and
+   * every tile that has never been resized takes exactly the path it took
+   * before this existed.
+   */
+  const widgetSizeProps = useCallback((key: string) => {
+    const capability = widgetCapabilities[key];
+    const size = resolveWidgetSize(homeLayout?.widgetSizes, key, capability);
+    if (!offersWidgetSizeChoice(capability) && size === 'regular') return undefined;
+    return {
+      size,
+      sizeOptions: availableWidgetSizes(capability),
+      onSizeChange: (next: WidgetSize) => setWidgetSize(key, next),
+    };
+  }, [widgetCapabilities, homeLayout?.widgetSizes, setWidgetSize]);
+
+  /**
    * Hide or reveal an accessory on one surface, or on both.
    *
    * Split out of `toggleVisibility` for the same reason the room case was: it
@@ -3425,8 +3489,9 @@ const Dashboard = () => {
     contextId: string,
     groups: HomeKitServiceGroup[],
     accessories: HomeKitAccessory[],
-    currentEditMode?: 'ui' | null
-  ): Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory }> => {
+    currentEditMode?: 'ui' | null,
+    sceneCards: SceneGridCard[] = [],
+  ): Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory } | { type: 'scene'; data: SceneGridCard }> => {
     // Always read from Apollo cache for consistent behavior in both home view and room view
     let effectiveRoomLayout: RoomLayoutData | null = null;
     if (contextId && contextId !== 'all') {
@@ -3443,16 +3508,20 @@ const Dashboard = () => {
       }
     }
 
-    const order = effectiveRoomLayout?.itemOrder || [];
+    const order = (contextId === HOME_LEVEL_CONTEXT_ID || contextId === 'all'
+      ? homeLayout?.dashboardItemOrder?.[contextId] : undefined)
+      ?? effectiveRoomLayout?.itemOrder ?? [];
 
     // Build items array with type info
-    const items: Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory }> = [
+    const items: Array<{ type: 'group'; data: HomeKitServiceGroup } | { type: 'accessory'; data: HomeKitAccessory } | { type: 'scene'; data: SceneGridCard }> = [
       ...groups.map(g => ({ type: 'group' as const, data: g, id: `group-${g.id}` })),
       ...accessories.map(a => ({ type: 'accessory' as const, data: a, id: a.id })),
+      ...sceneCards.map(card => ({ type: 'scene' as const, data: card, id: cardKey(card) })),
     ];
 
     // Helper to check if an item is hidden (using room entity layout)
     const isItemHidden = (item: typeof items[0]): boolean => {
+      if (item.type === 'scene') return item.data.isHidden;
       if (item.type === 'group') {
         return effectiveRoomLayout?.visibility?.hiddenGroups?.includes(item.data.id) ?? false;
       } else {
@@ -3470,8 +3539,8 @@ const Dashboard = () => {
     } else {
       const orderMap = new Map(order.map((id, idx) => [id, idx]));
       sortedItems = [...items].sort((a, b) => {
-        const aId = a.type === 'group' ? `group-${a.data.id}` : a.data.id;
-        const bId = b.type === 'group' ? `group-${b.data.id}` : b.data.id;
+        const aId = a.type === 'group' ? `group-${a.data.id}` : a.type === 'scene' ? cardKey(a.data) : a.data.id;
+        const bId = b.type === 'group' ? `group-${b.data.id}` : b.type === 'scene' ? cardKey(b.data) : b.data.id;
         const aIdx = orderMap.get(aId);
         const bIdx = orderMap.get(bId);
         if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx;
@@ -3490,7 +3559,7 @@ const Dashboard = () => {
 
     return sortedItems;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showHiddenItems, apolloClient, itemOrderVersion, accessorySurface]);
+  }, [showHiddenItems, apolloClient, itemOrderVersion, accessorySurface, homeLayout?.dashboardItemOrder]);
 
   // Handle drag end for reordering (unified for groups and accessories)
   // Saves to room entity layout (StoredEntity)
@@ -3606,19 +3675,39 @@ const Dashboard = () => {
   // Hoisted above the useEffects below so they can appear in deps arrays without
   // hitting a let/const TDZ at render time.
   const homes = tutorialDemoActive ? DEMO_HOMES : (homesData?.homes || []);
+  const hasHomeList = tutorialDemoActive || relayHomesData !== null;
   const hasSharedHomes = homes.some(h => h.role && h.role !== 'owner');
   const anyRelayConnected = homes.some(h => isHomeServed(h.id));
   const hasContentAccess = tutorialDemoActive ? true : (hasDeviceAccess || hasSharedHomes || anyRelayConnected);
 
-  // Swipe in from the left edge to open the navigation drawer, and back out of
-  // the open drawer to close it (that half lives in SheetContent). Gated the
-  // same way the menu button is: on md and up the sidebar is a permanent
-  // column, and during onboarding the drawer has nothing in it. The gesture
-  // stands down whenever a dialog is over the page — including the admin panel,
-  // which runs its own scoped swipe below.
+  // Swipe in from the left edge to go back, the way an iOS navigation stack
+  // does: a room, room group or collection returns to the whole home. It used
+  // to open the navigation drawer; the home name's own menu now covers what
+  // the drawer offered, and the drawer's own swipe-to-close still lives in
+  // SheetContent. Gated the same way the menu button was: on md and up the
+  // sidebar is a permanent column, and during onboarding there is nothing to
+  // go back to. The gesture stands down whenever a dialog is over the page —
+  // including the admin panel, which runs its own scoped swipe below.
+  //
+  // The whole home has nothing to go back to. It once stepped to the previous
+  // home from here (and the iOS shell animated the same, from either edge);
+  // both are parked for now, so the listener is off on the home rather than
+  // catching a gesture that does nothing.
+  //
+  // Through a ref because what "back" means depends on selections that are
+  // computed further down this component, and the gesture only fires long
+  // after render.
+  const edgeSwipeBackRef = useRef<() => void>(() => {});
+  // The iOS native header has the screen (parob/homecast-cloud#120): the web
+  // header row is hidden and the document, not an inner container, scrolls.
+  const nativeHeaderActive = useNativeHeaderActive();
   useEdgeSwipeOpen({
-    enabled: isMobile && hasContentAccess && !sidebarOpen,
-    onOpen: () => setSidebarOpen(true),
+    // Under the native header the swipe is UIKit's own interactive pop (the
+    // bar has a real back button there), so the page's listener stands down
+    // rather than racing it.
+    enabled: isMobile && hasContentAccess && !sidebarOpen && !nativeHeaderActive
+      && !!(selectedRoomId || selectedRoomGroupId || selectedCollectionId),
+    onOpen: () => edgeSwipeBackRef.current(),
   });
   useEdgeSwipeOpen({
     enabled: isMobile && isAdminRoute && !!_cloud && !adminSidebarOpen,
@@ -3894,7 +3983,7 @@ const Dashboard = () => {
   // Hold the document still while the connecting overlay is up. The overlay is
   // hand-rolled rather than a Radix dialog, so it gets none of react-remove-scroll's
   // behaviour; in the browser the document itself is the scroller (the container
-  // below sets minHeight: 120vh), so a wheel or drag over the blur moved the page.
+  // below sets minHeight: 100dvh), so a wheel or drag over the blur moved the page.
   // The previous inline value is restored rather than cleared so a Radix dialog
   // that locked scroll first keeps its own lock afterwards.
   useEffect(() => {
@@ -4097,6 +4186,94 @@ const Dashboard = () => {
     return homeNameMap.size === 1 ? [...homeNameMap.keys()][0] : null;
   }, [homeNameMap, selectedHomeId]);
 
+  // Whether the shell scrolls inside a viewport-sized box rather than the
+  // document: the two app shells do (the Mac app's title bar and the phone
+  // app's status bar are the page's to paint under). A phone BROWSER scrolls
+  // the document, plainly. Two other models were built and measured against
+  // iOS 26 Safari on the simulator (parob/homecast-web#132) and both lost:
+  // an inner scroller keeps content out of the bands under Safari's bars but
+  // Safari minimises those bars only for a document scroll, so the full-height
+  // tab bar stays for good; and a clipped "window" moved by scroll-driven
+  // animations (which alone lets Safari paint the WALLPAPER into its bands)
+  // falls hundreds of pixels out of step with the scroll whenever the main
+  // thread stalls, which on a real dashboard it does. Sticky, fixed and
+  // in-flow content are positioned by the scrolling thread and never lag.
+  //
+  // What keeps the bands clean here is the fixed blur strips (`.scroll-scrim`)
+  // and the solid slivers under them: with a fixed backdrop-filter layer at
+  // the viewport's edge Safari stops painting the document into its bands and
+  // fills them with one colour sampled from the page's edge — the slivers make
+  // that colour the canvas tint, so the bars take the wallpaper's colour and
+  // the tiles end at the viewport, blurred.
+  const shellScrolls = (isInMobileApp || isInMacApp) && !nativeHeaderActive;
+  // The phone's web header: once the big heading has scrolled under the bar,
+  // the bar shows the page's name with the switcher — what the native bar
+  // does with its large title. Watched, not computed from scroll offsets:
+  // the heading's own box says when it is gone.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [headingHidden, setHeadingHidden] = useState(false);
+  const phoneBrowser = isMobile && !isInMobileApp && !isInMacApp;
+  useEffect(() => {
+    // The heading counts as gone once it is under the header row, not at
+    // the screen's edge. The row's centre line is published by AppHeader
+    // (`--top-row-center`: 40px in a browser tab, ~99px under a notch), so
+    // the cut is the row's bottom plus a little.
+    const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
+    if (phoneBrowser) {
+      // The document scrolls here, so read the heading's box on each scroll
+      // rather than observe it: iOS Safari's viewport moves as its bars come
+      // and go, and an observer cut from the viewport's edge went quiet on
+      // the simulator where this plain comparison did not. The heading is
+      // looked up per check, as it can mount after this runs.
+      let raf = 0;
+      const check = () => {
+        raf = 0;
+        const h = headingRef.current;
+        setHeadingHidden(!!h && h.getBoundingClientRect().bottom < centre + 28);
+      };
+      const onScroll = () => { if (!raf) raf = requestAnimationFrame(check); };
+      check();
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      return () => {
+        window.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
+        if (raf) cancelAnimationFrame(raf);
+      };
+    }
+    const el = headingRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeadingHidden(!entry.isIntersecting),
+      { rootMargin: `-${Math.round(centre + 28)}px 0px 0px 0px`, threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId, phoneBrowser]);
+  // The request-log dock stops squashing the app while the native header is
+  // on (see `DebugDock`) and overlays the bottom instead, so the page clears
+  // it itself. Zero whenever the dock is closed.
+  const debugDockHeight = useDebugDockHeight();
+
+  // What the iOS native title menu lists (parob/homecast-cloud#120) — the
+  // Home app's chevron menu of homes. Memoised: the header publishes on
+  // identity change.
+  const nativeHomes = useMemo(
+    () => [...homeNameMap.entries()].map(([id, name]) => ({ id, name })),
+    [homeNameMap],
+  );
+
+  // What the left-edge swipe does (see `useEdgeSwipeOpen` above): out of a
+  // room, group or collection to the whole home.
+  useEffect(() => {
+    edgeSwipeBackRef.current = () => {
+      if (!selectedHomeId) return;
+      if (selectedRoomId || selectedRoomGroupId || selectedCollectionId) {
+        handleSelectHome(selectedHomeId);
+      }
+    };
+  });
+
   // Auto-refresh while the page is visible:
   //  - every 5s when there's no data at all (first load / empty account)
   //  - every 20s while any home's relay isn't fully connected — relay status
@@ -4159,15 +4336,32 @@ const Dashboard = () => {
     };
   }, [homes.length, accessories.length, anyRelayNotConnected, hasContentAccess, selectedHomeId, refetchHomes, refetchAccessories]);
 
-  // Refetch settings + accessories when relay changes accessory selection (free plan)
+  // Refetch settings when they change anywhere, and the accessories only if
+  // the free plan's included set is what changed — that is the one setting
+  // that alters which accessories this page may show. Every settings save
+  // comes back as this broadcast, including this page's own (the last view
+  // it saves, debounced, two seconds after a navigation), and reloading the
+  // accessories for each of those emptied the grid for a moment: the page
+  // lost its height, the scroll offset clamped to the top, and the home you
+  // had just come back to jumped to its top two seconds later.
+  const includedAccessoryIdsRef = useRef(includedAccessoryIds);
+  includedAccessoryIdsRef.current = includedAccessoryIds;
   useEffect(() => {
     const unsubscribe = serverConnection.subscribeToBroadcasts((message) => {
-      if (message.type === 'settings_updated') {
-        if (import.meta.env.DEV) console.log('[Dashboard] Settings updated, refetching');
-        refetchSettings();
+      if (message.type !== 'settings_updated') return;
+      if (import.meta.env.DEV) console.log('[Dashboard] Settings updated, refetching');
+      const before = includedAccessoryIdsRef.current;
+      refetchSettings().then((result) => {
+        let after: string[] = [];
+        try {
+          const parsed = JSON.parse(result.data?.settings?.data ?? '{}');
+          if (Array.isArray(parsed.includedAccessoryIds)) after = parsed.includedAccessoryIds as string[];
+        } catch { /* unreadable settings: leave the accessories be */ }
+        const same = after.length === before.length && after.every((id, i) => id === before[i]);
+        if (same) return;
         invalidateHomeKitCache('accessories', { prefix: true });
         refetchAccessories();
-      }
+      }).catch(() => { /* the poll and the next broadcast will catch up */ });
     });
     return unsubscribe;
   }, [refetchSettings, refetchAccessories]);
@@ -4943,28 +5137,15 @@ const Dashboard = () => {
   // moving the grid under the finger. On a phone the sidebar is a closed
   // overlay, so this is invisible there either way.
   const editingSidebar = isTouchDevice && editMode && !liftInFlight;
-  /*
-   * The summary row, unlike the sidebar, changes at the lift.
-   *
-   * It is the one thing you are looking at when the hold takes, so waiting for
-   * the drop made the mode arrive in two parts. It does move the grid: measured
-   * against the built CSS, the edit row is the same height as the live one at
-   * 414pt and up, and a second line — 24px to 56px — at 375 and 390, because its
-   * pills each carry a control the live ones do not and it reveals sections that
-   * are hidden the rest of the time.
-   *
-   * Two things make that acceptable rather than a jump under the finger:
-   * AutoHeight animates the step, and RemeasureDuringLift re-reads the grid's
-   * rects while it moves, so a drop still lands where it looks like it will.
-   *
-   * Reserving the space in the live pills was tried and is worse — it makes the
-   * normal row two lines on the commonest phones and still mismatches above
-   * that, because the live pills carry counts the edit ones do not.
-   */
-  const editingSummaryRow = isTouchDevice && editMode;
   const EDIT_SIDEBAR_EXTRA = 56;
-  const sidebarWidth = 248 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
-  const mobileSidebarWidth = 296 + (editingSidebar ? EDIT_SIDEBAR_EXTRA : 0);
+  // The panel grows with the window above a threshold rather than staying a
+  // flat 248px — see lib/sidebar-width.ts for the curve and why. Editing's
+  // 56px goes in as the clamp's `extra`, so the mode widens the panel by
+  // exactly that much at every window width rather than losing it to the
+  // ceiling on a wide screen.
+  const sidebarExtra = editingSidebar ? EDIT_SIDEBAR_EXTRA : 0;
+  const sidebarWidth = sidebarWidthCss(sidebarExtra);
+  const mobileSidebarWidth = 296 + sidebarExtra;
 
   // Change font size (optimistic)
   const changeFontSize = useCallback((size: 'small' | 'medium' | 'large') => {
@@ -5176,8 +5357,9 @@ const Dashboard = () => {
   // But NOT if a collection is selected
   // Uses visibleHomes so free-plan users don't land on a home with 0 included accessories
   useEffect(() => {
-    // Don't auto-select home if viewing a collection or enrollment
-    if (selectedCollectionId || selectedEnrollmentId) {
+    // A skipped first fetch is not loading, but it has not established that
+    // the selected home is gone. Keep URL/saved intent until a list arrives.
+    if (!hasHomeList || selectedCollectionId || selectedEnrollmentId) {
       return;
     }
     if (visibleHomes.length > 0) {
@@ -5203,7 +5385,7 @@ const Dashboard = () => {
     // Note: intentionally not including selectedHomeId to prevent oscillation during transitions
     // pendingHomeId is the source of truth for user intent
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleHomes, pendingHomeId, homesLoading, selectedCollectionId, selectedEnrollmentId, setSelectedHomeId]);
+  }, [visibleHomes, pendingHomeId, homesLoading, hasHomeList, selectedCollectionId, selectedEnrollmentId, setSelectedHomeId]);
 
   // Validate saved room belongs to current home's rooms
   // Skip during home transitions — rooms are stale (from the old home) until
@@ -5220,7 +5402,8 @@ const Dashboard = () => {
 
   // Group accessories by room
   const accessoriesByRoom = useMemo(() => {
-    const grouped: Record<string, HomeKitAccessory[]> = {};
+    const grouped: Record<string, HomeKitAccessory[]> = Object.fromEntries(rooms.map(room => [room.name, []]));
+    grouped[HOME_LEVEL_ROOM] = [];
     for (const accessory of accessories) {
       // An accessory with no room belongs to the home rather than to any part
       // of it. HomeKit has no such thing, so this only happens for helper
@@ -5234,7 +5417,7 @@ const Dashboard = () => {
       grouped[roomName].push(accessory);
     }
     return grouped;
-  }, [accessories]);
+  }, [accessories, rooms]);
 
   // Get service groups that have accessories in a specific room
   const getGroupsForRoom = useCallback((roomAccessories: HomeKitAccessory[]) => {
@@ -5265,6 +5448,7 @@ const Dashboard = () => {
     const category = accessory.category?.toLowerCase() || '';
     const serviceTypes = (accessory.services || []).map(s => s.serviceType.toLowerCase());
 
+    if (accessory.camera?.snapshot || accessory.camera?.stream) return 'Cameras';
     if (category === 'bridge' || category === 'range extender') return 'Bridges & Hubs';
     if (serviceTypes.some(s => s.includes('sensor') || s.includes('contact'))) return 'Sensors';
     if (serviceTypes.some(s => s.includes('lock') || s.includes('security'))) return 'Security';
@@ -5309,7 +5493,9 @@ const Dashboard = () => {
   const [dragCrossRoomBlocked, setDragCrossRoomBlocked] = useState(false);
   /** What to tell someone who tries it, which differs by what they dragged. */
   const crossRoomAdvice = useCallback(
-    (accessoryId: string) => (isVirtualAccessoryId(accessoryId)
+    (accessoryId: string) => (accessoryId.startsWith('scene:') ? 'Open the scene to change its display location'
+      : accessoryId.startsWith('action:') ? 'This shortcut controls the whole home'
+      : isVirtualAccessoryId(accessoryId)
       ? 'Edit the virtual accessory to change its location'
       : 'Use the Apple Home app to move accessories between rooms'),
     [isVirtualAccessoryId],
@@ -5394,8 +5580,8 @@ const Dashboard = () => {
       : null;
 
     const entries = selectedRoomId
-      ? Object.entries(accessoriesByRoom).filter(([_, accs]) =>
-          accs.some(a => a.roomId === selectedRoomId)
+      ? Object.entries(accessoriesByRoom).filter(([name, accs]) =>
+          rooms.some(room => room.id === selectedRoomId && room.name === name) || accs.some(a => a.roomId === selectedRoomId)
         )
       : Object.entries(accessoriesByRoom).filter(([roomName]) => {
           if (groupRoomIds) {
@@ -5542,19 +5728,6 @@ const Dashboard = () => {
     })).catch(() => toast.error('Could not hide that scene'));
   }, [updateHomeLayout]);
 
-  /**
-   * Persist the arrangement of the Scenes section's cards.
-   *
-   * The order arrives holding only what was on screen, exactly as the room and
-   * sidebar reorders do. A card that was absent at the time reappears at the end
-   * rather than in its old slot — the same trade those two already make, and
-   * `applyHomeCardOrder` is what makes an absent key harmless meanwhile.
-   */
-  const handleReorderSceneCards = useCallback((order: string[]) => {
-    void updateHomeLayout(prev => ({ ...prev, sceneCardOrder: order }))
-      .catch(() => toast.error('Could not save that arrangement'));
-  }, [updateHomeLayout]);
-
   const handleToggleAutomationHidden = useCallback((key: string, visible: boolean) => {
     void updateHomeLayout(prev => ({
       ...prev,
@@ -5565,53 +5738,12 @@ const Dashboard = () => {
     })).catch(() => toast.error('Could not hide that automation'));
   }, [updateHomeLayout]);
 
-  /** Persist the arrangement of the Automations section's cards. See above. */
+  /** Persist the arrangement inside the Automations dialog. */
   const handleReorderAutomationCards = useCallback((order: string[]) => {
     void updateHomeLayout(prev => ({ ...prev, automationCardOrder: order }))
       .catch(() => toast.error('Could not save that arrangement'));
   }, [updateHomeLayout]);
 
-  /**
-   * Which summary section is expanded, as one value. The three booleans are kept
-   * mutually exclusive by their own handlers, so this is the same state read the
-   * way the edit row needs it.
-   */
-  const openSummarySection: SummarySectionId | null =
-    scenesOpen ? 'scenes'
-    : automationsOpen ? 'automations'
-    : statusOpen ? 'status'
-    : null;
-
-  /** Open one and close the rest — the same exclusivity the live pills enforce. */
-  const handleToggleSummaryOpen = useCallback((id: SummarySectionId) => {
-    setScenesOpen(id === 'scenes' ? (o => !o) : false);
-    setAutomationsOpen(id === 'automations' ? (o => !o) : false);
-    setStatusOpen(id === 'status' ? (o => !o) : false);
-  }, []);
-
-  /**
-   * Turn a summary section on or off from the row itself, in Edit Layout.
-   *
-   * The same per-home `hiddenSummarySections` list Settings → Home → Home Screen
-   * writes, so the two cannot disagree.
-   */
-  const handleToggleSummarySection = useCallback((id: SummarySectionId, visible: boolean) => {
-    void updateHomeLayout(prev => ({
-      ...prev,
-      visibility: {
-        ...prev?.visibility,
-        // Scenes is one pill over two flags, so the row's eye moves both. Its
-        // halves are separable only in Settings, which has a switch for each.
-        hiddenSummarySections: id === 'scenes'
-          ? withScenesSectionVisibility(prev?.visibility?.hiddenSummarySections, visible)
-          : withSummarySectionVisibility(prev?.visibility?.hiddenSummarySections, id, visible),
-      },
-    })).catch(() => toast.error('Could not save that'));
-  }, [updateHomeLayout]);
-
-  // Scenes holds both kinds of card, so it survives while either half is on.
-  const showScenes = isScenesSectionVisible(homeLayout);
-  const showAutomations = isSummarySectionVisible(homeLayout, 'automations');
   const showStatus = isSummarySectionVisible(homeLayout, 'status');
 
   const runHomeAction = useRunHomeAction({
@@ -5620,8 +5752,20 @@ const Dashboard = () => {
     updateCharacteristicInCache,
   });
 
+  const handlePlaceScene = useCallback((sceneId: string, roomId: string | null | undefined) => {
+    void updateHomeLayout(prev => {
+      const sceneRooms = { ...prev?.sceneRooms };
+      if (roomId === undefined) delete sceneRooms[sceneId];
+      else sceneRooms[sceneId] = roomId;
+      return { ...prev, sceneRooms };
+    }).catch(() => toast.error('Could not save scene location'));
+  }, [updateHomeLayout]);
+
+
+
   // Check if accessory is an info-only device (bridge, range extender, sensors, etc.)
   const isInfoDevice = (accessory: HomeKitAccessory): boolean => {
+    if (accessory.camera?.snapshot || accessory.camera?.stream) return false;
     const category = accessory.category?.toLowerCase() || '';
     const hiddenCategories = ['bridge', 'range extender', 'rangeextender'];
     if (hiddenCategories.includes(category)) return true;
@@ -6012,81 +6156,6 @@ const Dashboard = () => {
 
 
 
-  // Stable callback for toggling hidden items visibility (shared by all widgets)
-  /**
-   * Drag overlay for the shared context.
-   *
-   * The per-room renderer could only see its own room's items, which was fine
-   * when a drag could not leave one. Now it can, so the lookup has to span the
-   * home — otherwise the floating tile vanishes the moment you cross a border.
-   */
-  /**
-   * The tile that follows your finger. It must be the tile you picked up — same
-   * editMode, and an inert `onHide` so the Hide button does not vanish the moment
-   * you lift it. You cannot tap it mid-drag, so the handler does nothing.
-   */
-  const renderSharedDragOverlay = useCallback((activeId: string) => {
-    if (activeId.startsWith('group-')) {
-      const group = serviceGroups.find(g => `group-${g.id}` === activeId);
-      if (!group) return null;
-      const groupMembers = getAccessoriesInGroup(group);
-      // The room the grid would have given it. A group tile titles itself with
-      // the room stripped off — "Lights", under a Kitchen heading that already
-      // says where it is — and the stripping only happens when it is told the
-      // room. Without this the lifted copy grew the room back the instant you
-      // picked it up ("Kitchen Lights"), which reads as a different tile.
-      //
-      // Undefined when the grid is not grouped by room, because there is no
-      // heading above it then and the grid does not strip either.
-      const overlayRoomName = groupByRoom ? groupMembers[0]?.roomName : undefined;
-      return (
-        <div className="relative cursor-grabbing opacity-90">
-          {/* editMode must match the grid, or the lifted copy is not the tile
-              you picked up — its controls come back and its edit buttons go. */}
-          <ServiceGroupWidget
-            group={group}
-            accessories={groupMembers}
-            homeName={getHomeName(groupMembers[0]?.homeId)}
-            roomName={overlayRoomName}
-            onHide={() => {}}
-            onToggle={() => {}}
-            onSlider={() => {}}
-            getEffectiveValue={getEffectiveValue}
-            compact={compactMode}
-            iconStyle={activeIconStyle}
-            editMode={isTouchDevice && editMode}
-          />
-        </div>
-      );
-    }
-    const accessory = accessories.find(a => a.id === activeId);
-    if (!accessory) return null;
-    return (
-      <div className="relative cursor-grabbing opacity-90">
-        <AccessoryWidget
-          homeName={getHomeName(accessory.homeId)}
-          accessory={accessory}
-          onHide={() => {}}
-          onToggle={() => {}}
-          onSlider={() => {}}
-          getEffectiveValue={getEffectiveValue}
-          compact={compactMode}
-          iconStyle={activeIconStyle}
-          editMode={isTouchDevice && editMode}
-        />
-        {dragCrossRoomBlocked && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
-            <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
-              {crossRoomAdvice(activeId)}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
-      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice,
-      isTouchDevice, editMode, groupByRoom]);
-
   // Desktop's Show Hidden Items, off the context menus. Switching it off is the
   // same act as Done — the revealed things are being put away — so it leaves the
   // same way rather than blinking out.
@@ -6101,6 +6170,15 @@ const Dashboard = () => {
    * three places need to agree on it.
    */
   const editBarHeight = 80;
+  /**
+   * A phone browser's header is a 40px row in a box 10px down (see
+   * AppHeader), so its controls end 50px under the viewport top.
+   * The body's own `pt-2` and the title's line-height supply the gap below
+   * them, so the page starts right there — the iOS large-title spacing. The
+   * Edit Layout bar keeps its 80 and, for the duration of the mode, overlaps
+   * the title's margin, which is empty.
+   */
+  const phoneBrowserPageTop = 10 + 40 - 10; // less the container's own 10px margin (`--band-gap`)
 
   /**
    * The band the scroller keeps clear at the bottom: room for the floating tab
@@ -6108,7 +6186,7 @@ const Dashboard = () => {
    * flush with the screen edge. On top of the safe-area inset, like the strips
    * below.
    */
-  const bottomBandHeight = isPhone && pinnedTabs.length > 0 ? 72 : 16;
+  const bottomBandHeight = (isPhone && pinnedTabs.length > 0 ? 72 : 16) + (nativeHeaderActive ? debugDockHeight : 0);
 
   /**
    * …and the heights of the two blur strips that float over those bands.
@@ -6150,9 +6228,7 @@ const Dashboard = () => {
     // Collapse the summary sections either way. On the way in, the edit row
     // replaces the pills and opens nothing, so a section left expanded behind it
     // has no visible control; on the way out, closed is their initial state.
-    setScenesOpen(false);
     setAutomationsOpen(false);
-    setStatusOpen(false);
     // Editing always shows hidden things — you cannot bring back what you cannot
     // see, and a toggle for it was one more control to misread. `getOrderedItems`
     // already sorts revealed items to the end of the grid, so they are out of the
@@ -6279,7 +6355,11 @@ const Dashboard = () => {
     if (hasNavigated) {
       setSavedBackgroundOverride(null);
       setBgImageLuminance(null);
-      setBgImageTopColor(null);
+      // The sampled top colour is NOT cleared here. BackgroundImage reports a
+      // fresh one whenever the image actually changes, and says nothing when
+      // a room shares its home's wallpaper — so clearing on every navigation
+      // left the canvas tint (and Safari's bars, which follow it) on the grey
+      // "pending" colour for as long as you stayed in that room.
     }
     prevNavRef.current = { selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId };
   }, [selectedRoomId, selectedHomeId, selectedCollectionId, selectedCollectionGroupId, selectedRoomGroupId]);
@@ -6312,6 +6392,80 @@ const Dashboard = () => {
 
   // Determine if there's an active background and if it's dark enough for light text
   const { hasBackground, isDarkBackground, effectiveLuminance } = useBackgroundDarkness(displayedBackground, bgImageLuminance);
+
+  const dashboardScenes = useSceneCards({
+    homeId: selectedHomeId ?? '', accessories: actionAccessories, homeLayout, rooms,
+    open: true, tile: true, compact: compactMode, isDarkBackground, isViewOnly,
+    onRunAction: runHomeAction, showHidden: showHiddenItems,
+    layoutEdit: layoutEditState, revealHidden: editingSidebar || showHiddenItems,
+    onToggleActionHidden: selectedHomeId && !isViewOnly ? handleToggleHomeActionHidden : undefined,
+    onToggleSceneHidden: selectedHomeId && !isViewOnly ? handleToggleSceneHidden : undefined,
+    onPlaceScene: selectedHomeId && !isViewOnly ? handlePlaceScene : undefined,
+  });
+
+  const renderSharedDragOverlay = useCallback((activeId: string) => {
+    const sceneCard = dashboardScenes.cards.find(card => cardKey(card) === activeId);
+    if (sceneCard) return <div className="opacity-90">{dashboardScenes.renderCard(sceneCard)}</div>;
+    if (activeId.startsWith('group-')) {
+      const group = serviceGroups.find(g => `group-${g.id}` === activeId);
+      if (!group) return null;
+      const groupMembers = getAccessoriesInGroup(group);
+      // The room the grid would have given it. A group tile titles itself with
+      // the room stripped off — "Lights", under a Kitchen heading that already
+      // says where it is — and the stripping only happens when it is told the
+      // room. Without this the lifted copy grew the room back the instant you
+      // picked it up ("Kitchen Lights"), which reads as a different tile.
+      //
+      // Undefined when the grid is not grouped by room, because there is no
+      // heading above it then and the grid does not strip either.
+      const overlayRoomName = groupByRoom ? groupMembers[0]?.roomName : undefined;
+      return (
+        <div className="relative cursor-grabbing opacity-90">
+          {/* editMode must match the grid, or the lifted copy is not the tile
+              you picked up — its controls come back and its edit buttons go. */}
+          <ServiceGroupWidget
+            group={group}
+            accessories={groupMembers}
+            homeName={getHomeName(groupMembers[0]?.homeId)}
+            roomName={overlayRoomName}
+            onHide={() => {}}
+            onToggle={() => {}}
+            onSlider={() => {}}
+            getEffectiveValue={getEffectiveValue}
+            compact={compactMode}
+            iconStyle={activeIconStyle}
+            editMode={isTouchDevice && editMode}
+          />
+        </div>
+      );
+    }
+    const accessory = accessories.find(a => a.id === activeId);
+    if (!accessory) return null;
+    return (
+      <div className="relative cursor-grabbing opacity-90">
+        <AccessoryWidget
+          homeName={getHomeName(accessory.homeId)}
+          accessory={accessory}
+          onHide={() => {}}
+          onToggle={() => {}}
+          onSlider={() => {}}
+          getEffectiveValue={getEffectiveValue}
+          compact={compactMode}
+          iconStyle={activeIconStyle}
+          editMode={isTouchDevice && editMode}
+        />
+        {dragCrossRoomBlocked && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100]">
+            <div className="bg-amber-500 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap shadow-md">
+              {crossRoomAdvice(activeId)}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }, [accessories, serviceGroups, getAccessoriesInGroup, getEffectiveValue,
+      compactMode, activeIconStyle, getHomeName, dragCrossRoomBlocked, crossRoomAdvice,
+      isTouchDevice, editMode, groupByRoom, dashboardScenes]);
   // Same hook, same settings, a different reading of the image. Solids and
   // gradients ignore the argument, so those answer identically to the above and
   // need no special case.
@@ -6347,6 +6501,10 @@ const Dashboard = () => {
     background: displayedBackground,
     sampledTopColor: bgImageTopColor,
     isDark: isDarkBackground,
+    // The raw whole-image figure, not `effectiveLuminance`: canvas-tint applies
+    // the wallpaper's brightness itself, and handing it a value that already
+    // carries it would apply it twice.
+    wallpaperLuminance: bgImageLuminance,
     isNativeShell: isInMacApp || isInMobileApp,
   });
 
@@ -7000,303 +7158,606 @@ const Dashboard = () => {
 
 
   // Right menu for header (three dots menu)
-  const headerRightMenu = (
+  /**
+   * The ⋯ menu, as data.
+   *
+   * One list drives two renderers: the web `DropdownMenu` below and, on iOS
+   * with the native header preview on (parob/homecast-cloud#120), a `UIMenu`
+   * on the bar's own ⋯ button. Item ids are what the native side hands back;
+   * `symbol` is the SF Symbol the native side draws.
+   */
+  type OverflowItem = {
+    id: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    symbol: string;
+    onSelect: () => void;
+    destructive?: boolean;
+    disabled?: boolean;
+    spin?: boolean;
+    tour?: string;
+  };
+  type OverflowSection = {
+    id: string;
+    /** Drawn as the rounded context card with a title and a refresh control. */
+    title?: string;
+    /** A plain section that wants a separator above it. */
+    separator?: boolean;
+    items: OverflowItem[];
+  };
+
+  const refreshing = accessoriesLoading || collectionsLoading;
+  const refreshItem: OverflowItem = { id: 'refresh', label: 'Refresh', icon: RefreshCw, symbol: 'arrow.clockwise', onSelect: refreshAll, disabled: refreshing, spin: refreshing };
+  const overflowSections: OverflowSection[] = [];
+
+  if (selectedCollectionId && selectedCollectionGroupId && hasContentAccess) {
+    overflowSections.push({
+      id: 'group',
+      title: collectionPayload.groups.find(g => g.id === selectedCollectionGroupId)?.name || 'Group',
+      items: [
+        { id: 'group-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          const collectionPayloadForGroup = collection ? parseCollectionPayload(collection.payload) : { groups: [], items: [] };
+          const group = collectionPayloadForGroup.groups.find(g => g.id === selectedCollectionGroupId);
+          if (group) setSidebarShareGroup({ collectionId: selectedCollectionId, groupId: selectedCollectionGroupId, groupName: group.name });
+        } },
+        { id: 'group-select', label: 'Select Accessories', icon: Plus, symbol: 'plus', onSelect: () => setCollectionAddItemsOpen(true) },
+        { id: 'group-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
+          setBackgroundSettingsTarget({ type: 'collectionGroup', id: selectedCollectionGroupId!, name: group?.name || 'Group', parentId: selectedCollectionId });
+          setBackgroundSettingsOpen(true);
+        } },
+        { id: 'group-rename', label: 'Rename', icon: Pencil, symbol: 'pencil', onSelect: () => {
+          const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
+          if (group) setSidebarRenamingGroup({ id: group.id, name: group.name });
+        } },
+        { id: 'group-delete', label: 'Delete', icon: Trash2, symbol: 'trash', destructive: true, onSelect: () => setSidebarDeletingGroupId(selectedCollectionGroupId!) },
+      ],
+    });
+  } else if (selectedCollectionId && hasContentAccess) {
+    overflowSections.push({
+      id: 'collection',
+      title: selectedCollection?.name || 'Collection',
+      items: [
+        { id: 'collection-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          if (collection) setSidebarShareCollection(collection);
+        } },
+        { id: 'collection-select', label: 'Select Accessories', icon: Plus, symbol: 'plus', onSelect: () => setCollectionAddItemsOpen(true) },
+        { id: 'collection-group', label: 'Add Group', icon: FolderPlus, symbol: 'folder.badge.plus', onSelect: () => setCollectionAddingGroup(true) },
+        { id: 'collection-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          setBackgroundSettingsTarget({ type: 'collection', id: selectedCollectionId, name: selectedCollection?.name || 'Collection' });
+          setBackgroundSettingsOpen(true);
+        } },
+        { id: 'collection-rename', label: 'Rename', icon: Pencil, symbol: 'pencil', onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          if (collection) setSidebarRenamingCollection(collection);
+        } },
+        { id: 'collection-delete', label: 'Delete', icon: Trash2, symbol: 'trash', destructive: true, onSelect: () => {
+          const collection = allCollections.find(c => c.id === selectedCollectionId);
+          if (collection) setSidebarDeletingCollection(collection);
+        } },
+      ],
+    });
+  } else if (selectedRoomId && selectedHomeId && hasContentAccess) {
+    overflowSections.push({
+      id: 'room',
+      title: rooms.find(r => r.id === selectedRoomId)?.name || 'Room',
+      items: [
+        { id: 'room-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const room = rooms.find(r => r.id === selectedRoomId);
+          if (room) setSidebarShareRoom({ room, homeId: selectedHomeId! });
+        } },
+        { id: 'room-analytics', label: 'Analytics', icon: LineChart, symbol: 'chart.xyaxis.line', onSelect: () => {
+          const room = rooms.find(r => r.id === selectedRoomId);
+          openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null, homeId: selectedHomeId ?? undefined });
+        } },
+        { id: 'room-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          const room = rooms.find(r => r.id === selectedRoomId);
+          setBackgroundSettingsTarget({ type: 'room', id: selectedRoomId!, name: room?.name || 'Room' });
+          setBackgroundSettingsOpen(true);
+        } },
+        // Hide Room used to sit here. Hiding the room you are standing in
+        // sent you somewhere else to prove it worked; it now lives on the
+        // room's own sidebar row, next to every other room you might hide.
+        // The room header has its own menu branch, and creating was only in
+        // the home one — so viewing a room offered no way to add anything
+        // to it. Pre-selects this room, since that is where you asked.
+        { id: 'room-virtual', label: 'Add Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+      ],
+    });
+  } else if (selectedHomeId && hasContentAccess) {
+    overflowSections.push({
+      id: 'home',
+      title: homes.find(h => h.id === selectedHomeId)?.name || 'Home',
+      items: [
+        { id: 'home-share', label: 'Share', icon: Share2, symbol: 'square.and.arrow.up', tour: 'share-menu-item', onSelect: () => {
+          const home = homes.find(h => h.id === selectedHomeId);
+          if (home) setSidebarShareHome(home);
+        } },
+        { id: 'home-analytics', label: 'Analytics', icon: LineChart, symbol: 'chart.xyaxis.line', onSelect: () => openAnalyticsScoped({ level: 'home', homeId: selectedHomeId ?? undefined }) },
+        { id: 'home-room-group', label: 'Add Room Group', icon: Layers, symbol: 'square.3.layers.3d', onSelect: () => {
+          const home = homes.find(h => h.id === selectedHomeId);
+          if (home) { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); }
+        } },
+        { id: 'home-virtual', label: 'Add Accessory', icon: Blocks, symbol: 'square.grid.2x2', onSelect: () => openHelperEditor({ roomId: selectedRoomId || undefined }) },
+        { id: 'home-background', label: 'Background', icon: ImageIcon, symbol: 'photo', tour: 'background-menu-item', onSelect: () => {
+          const home = homes.find(h => h.id === selectedHomeId);
+          setBackgroundSettingsTarget({ type: 'home', id: selectedHomeId!, name: home?.name || 'Home' });
+          setBackgroundSettingsOpen(true);
+        } },
+        // Hide Home moved to the home's sidebar row, for the same reason as
+        // Hide Room above.
+      ],
+    });
+  } else if (hasContentAccess) {
+    overflowSections.push({ id: 'refresh', items: [refreshItem] });
+  }
+
+  if (selectedHomeId && !selectedCollectionId && hasContentAccess) {
+    const section = overflowSections.find(section => section.id === 'home' || section.id === 'room');
+    section?.items.unshift(
+      { id: 'home-automations', label: 'Automations', icon: Zap, symbol: 'bolt.badge.clock', onSelect: () => setAutomationsOpen(true) },
+      ...(!isViewOnly ? [{ id: 'home-scene', label: 'Create Scene', icon: Plus, symbol: 'plus', onSelect: dashboardScenes.createScene }] : []),
+    );
+  }
+
+  const generalItems: OverflowItem[] = [];
+  // Touch reveals hidden things by entering Edit Layout, which shows them
+  // automatically. The Mac has no edit mode, so without this the only way
+  // to find something you had hidden is to already know it is there and
+  // right-click the tile next to it.
+  if (!isTouchDevice && hasContentAccess) {
+    generalItems.push(showHiddenItems
+      ? { id: 'hidden-hide', label: 'Hide Hidden Items', icon: EyeOff, symbol: 'eye.slash', onSelect: handleToggleShowHidden }
+      : { id: 'hidden-show', label: 'Show Hidden Items', icon: Eye, symbol: 'eye', onSelect: handleToggleShowHidden });
+  }
+  if (isTouchDevice && hasContentAccess) {
+    generalItems.push({ id: 'edit-layout', label: editMode ? 'Done Editing' : 'Edit Layout', icon: Pencil, symbol: 'pencil', onSelect: () => setEditModeAndTidy(!editMode) });
+  }
+  generalItems.push({ id: 'settings', label: 'Settings', icon: Settings, symbol: 'gearshape', onSelect: () => setSettingsOpen(true) });
+  if (hasStagingAccess) {
+    generalItems.push({ id: 'environment', label: config.isStaging ? 'Switch to Production' : 'Switch to Staging', icon: FlaskConical, symbol: 'flask', onSelect: () => {
+      const targetEnv = config.isStaging ? 'production' : 'staging';
+      const targetUrl = config.isStaging ? 'https://homecast.cloud/portal' : 'https://staging.homecast.cloud/portal';
+      const w = window as Window & { homekit?: { call: (method: string, payload: Record<string, unknown>, callbackId: string) => void } };
+      if (w.homekit?.call) {
+        // Native iOS/Mac app: switch WebView URL via bridge
+        w.homekit.call('settings.setEnvironment', { environment: targetEnv }, `env-switch-${Date.now()}`);
+      } else {
+        // Browser/Tauri: persist preference via cookie (shared across subdomains
+        // unlike localStorage which is per-origin) and navigate directly
+        document.cookie = 'homecast-env=' + targetEnv + ';domain=.homecast.cloud;path=/;max-age=31536000;secure;samesite=lax';
+        localStorage.setItem('homecast-environment', targetEnv); // backward compat with old Tauri builds
+        window.location.href = targetUrl;
+      }
+    } });
+  }
+  // Only where the admin panel actually exists: it ships in the cloud
+  // package, and a build without that (the community build, a dev checkout
+  // without `src/cloud/`) rendered a null component and crashed the page.
+  if (isAdmin && !isCommunity && AdminDashboard) {
+    generalItems.push({ id: 'admin', label: 'Admin', icon: Server, symbol: 'server.rack', onSelect: () => navigate('/portal/admin') });
+  }
+  overflowSections.push({ id: 'general', separator: overflowSections[0]?.id === 'refresh', items: generalItems });
+  if (!isCommunity || !isRelayCapable()) {
+    overflowSections.push({ id: 'session', separator: true, items: [
+      { id: 'sign-out', label: 'Sign Out', icon: LogOut, symbol: 'rectangle.portrait.and.arrow.right', onSelect: isCommunity ? resetAndUninstall : logout },
+    ] });
+  }
+
+  // The same list, in the shape the native bar reads. A context card's
+  // refresh control becomes a plain item there. Rebuilt every render, like the
+  // JSX it mirrors — `AppHeader` publishes it only when its content changes.
+  // No hooks here: this sits below an early return.
+  const nativeMenu: NativeHeaderMenuSection[] = overflowSections.map(section => ({
+    id: section.id,
+    ...(section.title ? { title: section.title } : {}),
+    items: [...section.items, ...(section.title ? [refreshItem] : [])].map(item => ({
+      id: `${section.id}:${item.id}`,
+      label: item.label,
+      symbol: item.symbol,
+      ...(item.destructive ? { destructive: true } : {}),
+      ...(item.disabled ? { disabled: true } : {}),
+    })),
+  }));
+  // A fresh closure each render is fine: the header keeps the latest one in a
+  // ref, so a native pick always runs against this render's sections.
+  const handleNativeMenuAction = (itemId: string) => {
+    const [sectionId, id] = itemId.split(':');
+    const section = overflowSections.find(s => s.id === sectionId);
+    if (!section) return;
+    const item = id === 'refresh' && section.title ? refreshItem : section.items.find(i => i.id === id);
+    item?.onSelect();
+  };
+  // The big text at the top of the native header: the room, room group or
+  // collection being viewed. Empty on the home view, where the home name is
+  // the large text and hands over to the bar's title on scroll.
+  const nativeHeading = selectedCollectionId
+    ? ((selectedCollectionGroupId && collectionPayload.groups.find(g => g.id === selectedCollectionGroupId)?.name) || selectedCollection?.name || '')
+    : (selectedRoomId || selectedRoomGroupId) ? (statusAreaName ?? '') : '';
+
+  // What the native bar should look like: light-on-dark whenever the page is.
+  const nativeAppearance: 'dark' | 'light' = isDarkBackground ? 'dark' : 'light';
+
+  // What the native ☰ menu offers (parob/homecast-cloud#120). Homes are not
+  // here — the title menu has them — so this is the current home's rooms and
+  // room groups, then the collections. The web drawer stays one item away for
+  // everything it does that a menu cannot (reorder, hide, create).
+  const normalizeRoomId = (id: string) => id.toLowerCase().replace(/-/g, '');
+  const onWholeHome = !selectedRoomId && !selectedRoomGroupId && !selectedCollectionId;
+  // `icon` is for the web rendering of the same menu (mobile web has no
+  // native bar); it is a function, so JSON drops it on the way to native.
+  type NavItem = NativeHeaderNavItem & { icon?: React.ComponentType<{ className?: string }>; children?: NavItem[] };
+  type NavSection = { id: string; title?: string; items: NavItem[] };
+  const roomItem = (room: { id: string; name: string }): NavItem => ({
+    id: `room:${room.id}`,
+    label: room.name,
+    symbol: getRoomSymbol(room.name),
+    icon: getRoomIcon(room.name),
+    selected: !selectedCollectionId && selectedRoomId === room.id,
+  });
+  const nativeNavigation: NavSection[] = [];
+  if (selectedHomeId && hasContentAccess) {
+    const roomItems: NavItem[] = [
+      { id: 'home', label: 'All Rooms', symbol: 'house', icon: House, selected: onWholeHome },
+    ];
+    for (const group of roomGroups) {
+      const members = group.roomIds
+        .map((rid) => rooms.find((r) => normalizeRoomId(r.id) === normalizeRoomId(rid)))
+        .filter((r): r is NonNullable<typeof r> => !!r);
+      roomItems.push({
+        id: `roomgroup:${group.entityId}`,
+        label: group.name,
+        symbol: 'square.3.layers.3d',
+        icon: Layers,
+        children: [
+          { id: `roomgroup:${group.entityId}`, label: 'All', symbol: 'square.3.layers.3d', icon: Layers, selected: !selectedCollectionId && selectedRoomGroupId === group.entityId && !selectedRoomId },
+          ...members.map(roomItem),
+        ],
+      });
+    }
+    roomItems.push(...visibleRooms.map(roomItem));
+    nativeNavigation.push({ id: 'rooms', items: roomItems });
+  }
+  if (hasContentAccess && allCollections.length > 0) {
+    nativeNavigation.push({
+      id: 'collections',
+      title: 'Collections',
+      items: allCollections.map((collection) => {
+        const groups = parseCollectionPayload(collection.payload).groups;
+        const selectedHere = selectedCollectionId === collection.id;
+        if (groups.length === 0) {
+          return { id: `collection:${collection.id}`, label: collection.name, symbol: 'folder', icon: Folder, selected: selectedHere };
+        }
+        return {
+          id: `collection:${collection.id}`,
+          label: collection.name,
+          symbol: 'folder',
+          icon: Folder,
+          children: [
+            { id: `collection:${collection.id}`, label: 'All', symbol: 'folder', icon: Folder, selected: selectedHere && !selectedCollectionGroupId },
+            ...groups.map((group) => ({
+              id: `collectiongroup:${collection.id}/${group.id}`,
+              label: group.name,
+              symbol: 'rectangle.3.group',
+              icon: Layers,
+              selected: selectedHere && selectedCollectionGroupId === group.id,
+            })),
+          ],
+        };
+      }),
+    });
+  }
+  // Mobile web has no native bar and, now, no ☰: the home name in the page
+  // heading carries the same menu the native title does — homes first, then
+  // this home's rooms and groups, then the collections.
+  const showWebHomeMenu = isMobile && !nativeHeaderActive && hasContentAccess;
+  // The phone's web heading is drawn at the native bar's large-title size.
+  // On a room or group page the path (home, group) goes small on the line
+  // above and only the page's own name is large; the separator before that
+  // name is then a line break, not a slash.
+  const largeHeading = isMobile && !nativeHeaderActive;
+  const crumbsClass = largeHeading ? 'block text-[15px] leading-5 tracking-normal opacity-80 mb-0.5 truncate' : 'contents';
+  const crumbNameClass = largeHeading ? 'block truncate' : '';
+  const renderNavItems = (items: NavItem[]): React.ReactNode => items.map((item) => {
+    const Icon = item.icon;
+    if (item.children && item.children.length > 0) {
+      // A submenu opens beside its parent, and on a phone there is no room
+      // beside a 300px menu on either side: it landed off the screen. So a
+      // group is flattened into the list there — the group itself as a row
+      // (its first child is "All of <group>", the same target), then its
+      // members indented beneath it. What iOS does with a submenu, in effect:
+      // shows it in place.
+      if (isMobile) {
+        // `children` is typed through the wire shape's intersection, which
+        // loses `icon`; every child here was built as a NavItem.
+        const children = item.children as NavItem[];
+        const self = children.find((c) => c.id === item.id) ?? children[0];
+        const members = children.filter((c) => c !== self);
+        return (
+          <React.Fragment key={item.id}>
+            <DropdownMenuItem onClick={() => handleNativeNavigate(self.id)}>
+              {Icon && <Icon className="h-4 w-4 mr-2" />}
+              <span className="truncate">{item.label}</span>
+              {self.selected && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+            {members.map((member) => {
+              const MemberIcon = member.icon;
+              return (
+                <DropdownMenuItem key={member.id} className="pl-8" onClick={() => handleNativeNavigate(member.id)}>
+                  {MemberIcon && <MemberIcon className="h-4 w-4 mr-2 opacity-70" />}
+                  <span className="truncate">{member.label}</span>
+                  {member.selected && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </React.Fragment>
+        );
+      }
+      return (
+        <DropdownMenuSub key={item.id}>
+          <DropdownMenuSubTrigger>
+            {Icon && <Icon className="h-4 w-4 mr-2" />}
+            {item.label}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>{renderNavItems(item.children)}</DropdownMenuSubContent>
+        </DropdownMenuSub>
+      );
+    }
+    return (
+      <DropdownMenuItem key={item.id} onClick={() => handleNativeNavigate(item.id)}>
+        {Icon && <Icon className="h-4 w-4 mr-2" />}
+        <span className="truncate">{item.label}</span>
+        {item.selected && <Check className="ml-auto h-4 w-4" />}
+      </DropdownMenuItem>
+    );
+  });
+  // The connection dot sits beside the home name in the heading, after the
+  // chevron — the same spot the iOS native bar draws its own. Only on the
+  // whole-home heading; a breadcrumb has enough in it already.
+  const headingStatusDot = (
+    <span className="ml-2 inline-flex items-center align-middle">
+      <StatusBadge variant="inline" inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
+    </span>
+  );
+  // Between crumbs: a slash on the desktop line, a small chevron on the
+  // phone's path line ("George Street › Bedrooms"). Nothing after the last
+  // crumb on a phone — the page's own name is on the line below.
+  const crumbSeparator = (last: boolean): React.ReactNode => {
+    if (largeHeading) return last ? null : <ChevronRight className="inline h-3.5 w-3.5 mx-1 opacity-50 align-[-2px]" />;
+    return <span className="mx-2 opacity-40">/</span>;
+  };
+  // The switcher's rows — homes, then this home's rooms, groups and
+  // collections — shared by the home name, the room name and the bar's
+  // collapsed title on a phone, so all three open the same thing.
+  const renderSwitcherItems = (): React.ReactNode => (
     <>
+      {nativeHomes.length > 1 && (
+        <>
+          {nativeHomes.map((home) => (
+            <DropdownMenuItem key={home.id} onClick={() => handleSelectHome(home.id)}>
+              <House className="h-4 w-4 mr-2" />
+              <span className="truncate">{home.name}</span>
+              {home.id === statusHomeId && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+        </>
+      )}
+      {nativeNavigation.map((section, i) => (
+        <React.Fragment key={section.id}>
+          {i > 0 && <DropdownMenuSeparator />}
+          {section.title && <DropdownMenuLabel className="text-xs text-muted-foreground">{section.title}</DropdownMenuLabel>}
+          {renderNavItems(section.items)}
+        </React.Fragment>
+      ))}
+    </>
+  );
+  // The disc chevron the heading and the native bar draw after a name.
+  const discChevron = (
+    <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full transition-colors ${isDarkBackground ? 'bg-white/20 group-data-[state=open]/title:bg-white/35' : 'bg-black/10 group-data-[state=open]/title:bg-black/20'}`}>
+      <ChevronDown className="h-3 w-3" strokeWidth={3} />
+    </span>
+  );
+  // The bar's collapsed title on a phone: the page's name and the switcher,
+  // shown once the big heading has scrolled under the bar.
+  // The same pair the native bar carries: the page's name with the chevron,
+  // and on a room, group or collection page the home's name small beneath.
+  const compactPageName = statusAreaName || (selectedCollectionId ? (selectedCollection?.name ?? '') : (statusHomeName ?? ''));
+  const compactHomeName = compactPageName && statusHomeName && compactPageName !== statusHomeName ? statusHomeName : null;
+  const compactTitle = largeHeading && hasContentAccess && compactPageName ? (
+    <div className={`transition-opacity duration-base ${headingHidden ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} aria-hidden={!headingHidden}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild plain>
+          <button type="button" className={`group/title flex max-w-full flex-col items-center justify-center rounded-full px-3.5 ${compactHomeName ? 'py-1' : 'h-[max(2.5rem,40px)]'} leading-tight ${headerGlassClass(headerInkLight)}`}>
+            <span className="flex max-w-full items-center gap-1.5 text-[15px] font-semibold">
+              <span className="truncate">{compactPageName}</span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={3} />
+            </span>
+            {compactHomeName && <span className="block max-w-full truncate text-[11px] font-medium opacity-70">{compactHomeName}</span>}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent scrim align="center" className="min-w-[220px]">
+          {renderSwitcherItems()}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  ) : null;
+  const renderHomeTitle = (name: string, className?: string, onPlainClick?: () => void): React.ReactNode => {
+    const isHeading = !className && !onPlainClick && !(nativeHeaderActive && isMobile);
+    // On a phone a crumb is a plain link back: the switcher lives on the
+    // page's own name below, not on both.
+    //
+    // No chevron on it. This first carried one, and the report it came from
+    // said plainly that it was not what the native bar draws
+    // (parob/homecast-cloud#157): UIKit puts the back button in the top bar
+    // and leaves the path line as text. The chevron moved there — see
+    // `headerBackButton` — and this went back to what it was.
+    if (!showWebHomeMenu || (className && largeHeading)) {
+      if (onPlainClick) return <button type="button" data-expanded-overlay-dismiss className={className} onClick={onPlainClick}>{name}</button>;
+      return <>{name}{isHeading && headingStatusDot}</>;
+    }
+    // As a heading the chevron is the native bar's: a small filled disc after
+    // the name, brighter while the menu is up. In a breadcrumb it is just a
+    // glyph. `plain` keeps the shared trigger from painting a white slab
+    // behind the words when the menu opens.
+    const asHeading = !className;
+    return (
+      <><DropdownMenu>
+        <DropdownMenuTrigger asChild plain>
+          {/* As a heading, a pill: the menu's scrim is cut out around its
+              trigger in the trigger's own shape, and a square box around
+              the words left a hard-edged rectangle of undimmed page. The
+              negative margins keep the text where it was. */}
+          <button type="button" data-expanded-overlay-dismiss data-tour="home-selector" className={`group/title inline-flex items-center rounded-full ${asHeading ? 'gap-2.5 max-w-full px-3 -mx-3 py-1 -my-1' : 'gap-1.5 px-2 -mx-2 py-0.5 -my-0.5'} ${className ?? ''}`}>
+            <span className="truncate">{name}</span>
+            {asHeading ? discChevron : (
+              <ChevronDown className="h-4 w-4 shrink-0" />
+            )}
+          </button>
+        </DropdownMenuTrigger>
+        {/* The pill's negative margin pulls the trigger's box past the text;
+            the menu lines up with the words, not the box. */}
+        <DropdownMenuContent data-tour="home-navigation-menu" scrim align="start" alignOffset={asHeading ? 15 : 10} className="min-w-[220px]">
+          {renderSwitcherItems()}
+        </DropdownMenuContent>
+      </DropdownMenu>{isHeading && headingStatusDot}</>
+    );
+  };
+
+  // The native pull-to-refresh (parob/homecast-cloud#120). The web's own
+  // pull is off under the bar — the document scrolls there, not its inner
+  // container — so UIKit's refresh control on the web view's scroll view
+  // takes over, and a deep pull means what a 500px pull meant here: the
+  // hard-reload countdown. Done is reported at once either way; `refreshAll`
+  // shows its own loading state and the countdown is its own screen.
+  const handleNativeRefresh = (kind: NativeHeaderRefreshKind) => {
+    if (kind === 'hard') startHardReloadCountdown();
+    else refreshAll();
+    publishRefreshDone();
+  };
+
+  const handleNativeNavigate = (itemId: string) => {
+    const [kind, rest] = [itemId.slice(0, itemId.indexOf(':') === -1 ? itemId.length : itemId.indexOf(':')), itemId.slice(itemId.indexOf(':') + 1)];
+    switch (kind) {
+      case 'home':
+        if (selectedHomeId) handleSelectHome(selectedHomeId);
+        break;
+      case 'room':
+        if (selectedCollectionId && selectedHomeId) handleSelectHome(selectedHomeId);
+        handleSelectRoom(rest);
+        break;
+      case 'roomgroup':
+        if (selectedCollectionId && selectedHomeId) handleSelectHome(selectedHomeId);
+        handleSelectRoomGroup(rest);
+        break;
+      case 'collection': {
+        const collection = allCollections.find((c) => c.id === rest);
+        if (collection) handleSelectCollection(collection);
+        break;
+      }
+      case 'collectiongroup': {
+        const [collectionId, groupId] = rest.split('/');
+        const collection = allCollections.find((c) => c.id === collectionId);
+        if (collection) {
+          handleSelectCollection(collection);
+          handleSelectCollectionGroup(groupId);
+        }
+        break;
+      }
+      case 'menu':
+        // Everything the drawer does that a menu cannot: the real web drawer.
+        activateHeaderControl('menu');
+        break;
+    }
+  };
+
+  const renderOverflowItem = (item: OverflowItem) => (
+    <DropdownMenuItem key={item.id} data-tour={item.tour} onClick={item.onSelect} disabled={item.disabled} className={item.destructive ? 'text-destructive focus:text-destructive' : undefined}>
+      <item.icon className={`h-4 w-4 mr-2 ${item.spin ? 'animate-spin' : ''}`} />
+      {item.label}
+    </DropdownMenuItem>
+  );
+
+  // Search and ⋯ share one glass capsule, as they do in the iOS native bar
+  // (parob/homecast-cloud#120): the same two controls, the same shape, on
+  // every platform.
+  // iOS's back button, where iOS actually puts it: a bare chevron at the
+  // LEADING edge of the top bar, opposite the search and ⋯ controls.
+  //
+  // This was first built as a chevron on the path line above the room's name,
+  // and the report it came from said that is not the native look
+  // (parob/homecast-cloud#157). It is not: `NativeHeaderBar.swift` sets
+  // `backButtonDisplayMode = .minimal` on the pushed controller, which is a
+  // chevron ALONE in the navigation bar — no title beside it — while the page
+  // below keeps its own small path line as plain text. So the glyph belongs in
+  // the bar and the crumb goes back to being a crumb.
+  //
+  // It wears the same glass capsule as its neighbours rather than sitting bare
+  // on the wallpaper. UIKit can afford a bare glyph because its bar is opaque
+  // chrome; this row is transparent over a photograph, which is the whole
+  // reason `lib/header-chrome.ts` exists. Same 40px box and same classes as
+  // the ☰ button that occupies this slot when the home menu is not on the
+  // name, so the row keeps one vocabulary.
+  //
+  // Only where the web draws its own header and only off the home view: the
+  // native bar draws its own back button, and a desktop has the breadcrumb.
+  const headerBackButton = largeHeading && hasContentAccess && !onWholeHome && selectedHomeId ? (
+    // The same capsule the search and ⋯ controls sit in, with the same
+    // control inside it: `headerGlassClass` on a `p-[2px]` box, and a
+    // 36x40 `rounded-full` ghost button wearing `headerGlassControlClass`.
+    // Asked for on review — it was built at 40x40 with the glass on the
+    // button itself, copied from the ☰ trigger, which made it a slightly
+    // taller circle than the capsule opposite it.
+    <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
+      <Button
+        data-testid="header-back"
+        aria-label="Back"
+        variant="ghost"
+        size="icon"
+        className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`}
+        onClick={() => handleSelectHome(selectedHomeId)}
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </Button>
+    </div>
+  ) : null;
+
+  const headerRightMenu = (
+    <div className={`flex items-center p-[2px] transition-colors duration-300 ${headerGlassClass(headerInkLight)}`}>
     {hasContentAccess && (
-    <Button variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
+    <Button data-native-header="search" variant="ghost" size="icon" className={`h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`} disabled={isConnectingOverlay} onClick={() => { searchInitialKeyRef.current = ''; setSearchOpen(true); }}>
       <Search className="h-5 w-5" />
     </Button>
     )}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] -mr-[10px] focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`}>
-          <MoreVertical className="h-5 w-5" />
+        <Button data-native-header="overflow" data-tour="header-menu" variant="ghost" size="icon" className={`relative h-[max(2.25rem,36px)] w-[max(2.5rem,40px)] rounded-full focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-300 ${headerGlassControlClass(headerInkLight)}`}>
+          <MoreHorizontal className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent scrim align="end" className="min-w-[200px]">
-        {selectedCollectionId && selectedCollectionGroupId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
+        {overflowSections.map(section => section.title ? (
+          <div key={section.id} className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {collectionPayload.groups.find(g => g.id === selectedCollectionGroupId)?.name || 'Group'}
-              </span>
+              <span className="text-xs font-medium text-muted-foreground">{section.title}</span>
               <button
                 onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
+                disabled={refreshing}
                 className="p-1 rounded hover:bg-muted disabled:opacity-50"
               >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${refreshing ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              const collectionPayloadForGroup = collection ? parseCollectionPayload(collection.payload) : { groups: [], items: [] };
-              const group = collectionPayloadForGroup.groups.find(g => g.id === selectedCollectionGroupId);
-              if (group) setSidebarShareGroup({ collectionId: selectedCollectionId, groupId: selectedCollectionGroupId, groupName: group.name });
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCollectionAddItemsOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Select Accessories
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
-              setBackgroundSettingsTarget({
-                type: 'collectionGroup',
-                id: selectedCollectionGroupId!,
-                name: group?.name || 'Group',
-                parentId: selectedCollectionId,
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const group = collectionPayload.groups.find(g => g.id === selectedCollectionGroupId);
-              if (group) setSidebarRenamingGroup({ id: group.id, name: group.name });
-            }}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSidebarDeletingGroupId(selectedCollectionGroupId!)} className="text-destructive focus:text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
+            {section.items.map(renderOverflowItem)}
           </div>
-        ) : selectedCollectionId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {selectedCollection?.name || 'Collection'}
-              </span>
-              <button
-                onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              if (collection) setSidebarShareCollection(collection);
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCollectionAddItemsOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Select Accessories
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setCollectionAddingGroup(true)}>
-              <FolderPlus className="h-4 w-4 mr-2" />
-              Create Group
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              setBackgroundSettingsTarget({
-                type: 'collection',
-                id: selectedCollectionId,
-                name: selectedCollection?.name || 'Collection',
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              if (collection) setSidebarRenamingCollection(collection);
-            }}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const collection = allCollections.find(c => c.id === selectedCollectionId);
-              if (collection) setSidebarDeletingCollection(collection);
-            }} className="text-destructive focus:text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </div>
-        ) : selectedRoomId && selectedHomeId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {rooms.find(r => r.id === selectedRoomId)?.name || 'Room'}
-              </span>
-              <button
-                onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const room = rooms.find(r => r.id === selectedRoomId);
-              if (room) setSidebarShareRoom({ room, homeId: selectedHomeId! });
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const room = rooms.find(r => r.id === selectedRoomId);
-              openAnalyticsScoped({ level: 'category', category: 'climate', room: room?.name ?? null, homeId: selectedHomeId ?? undefined });
-            }}>
-              <LineChart className="h-4 w-4 mr-2" />
-              Analytics
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              const room = rooms.find(r => r.id === selectedRoomId);
-              setBackgroundSettingsTarget({
-                type: 'room',
-                id: selectedRoomId!,
-                name: room?.name || 'Room',
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            {/* Hide Room used to sit here. Hiding the room you are standing in
-                sent you somewhere else to prove it worked; it now lives on the
-                room's own sidebar row, next to every other room you might hide. */}
-            {/* The room header has its own menu branch, and creating was only in
-                the home one — so viewing a room offered no way to add anything
-                to it. Pre-selects this room, since that is where you asked. */}
-            <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
-              <Blocks className="h-4 w-4 mr-2" />
-              Create Virtual Accessory
-            </DropdownMenuItem>
-
-          </div>
-        ) : selectedHomeId && hasContentAccess ? (
-          <div className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-              </span>
-              <button
-                onClick={refreshAll}
-                disabled={accessoriesLoading || collectionsLoading}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <DropdownMenuItem data-tour="share-menu-item" onClick={() => {
-              const home = homes.find(h => h.id === selectedHomeId);
-              if (home) setSidebarShareHome(home);
-            }}>
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openAnalyticsScoped({ level: 'home', homeId: selectedHomeId ?? undefined })}>
-              <LineChart className="h-4 w-4 mr-2" />
-              Analytics
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => {
-              const home = homes.find(h => h.id === selectedHomeId);
-              if (home) { setCreateRoomGroupHome(home); setCreateRoomGroupDialogOpen(true); }
-            }}>
-              <Layers className="h-4 w-4 mr-2" />
-              Create Room Group
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openHelperEditor({ roomId: selectedRoomId || undefined })}>
-              <Blocks className="h-4 w-4 mr-2" />
-              Create Virtual Accessory
-            </DropdownMenuItem>
-            <DropdownMenuItem data-tour="background-menu-item" onClick={() => {
-              const home = homes.find(h => h.id === selectedHomeId);
-              setBackgroundSettingsTarget({
-                type: 'home',
-                id: selectedHomeId!,
-                name: home?.name || 'Home',
-              });
-              setBackgroundSettingsOpen(true);
-            }}>
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Background
-            </DropdownMenuItem>
-            {/* Hide Home moved to the home's sidebar row, for the same reason as
-                Hide Room above. */}
-          </div>
-        ) : hasContentAccess ? (
-          <>
-            <DropdownMenuItem onClick={refreshAll} disabled={accessoriesLoading || collectionsLoading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${accessoriesLoading || collectionsLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-        {/* Touch reveals hidden things by entering Edit Layout, which shows them
-            automatically. The Mac has no edit mode, so without this the only way
-            to find something you had hidden is to already know it is there and
-            right-click the tile next to it. */}
-        {!isTouchDevice && hasContentAccess && (
-          <DropdownMenuItem onClick={handleToggleShowHidden}>
-            {showHiddenItems ? (
-              <>
-                <EyeOff className="h-4 w-4 mr-2" />
-                Hide Hidden Items
-              </>
-            ) : (
-              <>
-                <Eye className="h-4 w-4 mr-2" />
-                Show Hidden Items
-              </>
-            )}
-          </DropdownMenuItem>
-        )}
-        {isTouchDevice && hasContentAccess && (
-          <DropdownMenuItem onClick={() => setEditModeAndTidy(!editMode)}>
-            <Pencil className="h-4 w-4 mr-2" />
-            {editMode ? 'Done Editing' : 'Edit Layout'}
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
-          <Settings className="h-4 w-4 mr-2" />
-          Settings
-        </DropdownMenuItem>
-        {hasStagingAccess && (
-          <DropdownMenuItem onClick={() => {
-            const targetEnv = config.isStaging ? 'production' : 'staging';
-            const targetUrl = config.isStaging ? 'https://homecast.cloud/portal' : 'https://staging.homecast.cloud/portal';
-            const w = window as Window & { homekit?: { call: (method: string, payload: Record<string, unknown>, callbackId: string) => void } };
-            if (w.homekit?.call) {
-              // Native iOS/Mac app: switch WebView URL via bridge
-              w.homekit.call('settings.setEnvironment', { environment: targetEnv }, `env-switch-${Date.now()}`);
-            } else {
-              // Browser/Tauri: persist preference via cookie (shared across subdomains
-              // unlike localStorage which is per-origin) and navigate directly
-              document.cookie = 'homecast-env=' + targetEnv + ';domain=.homecast.cloud;path=/;max-age=31536000;secure;samesite=lax';
-              localStorage.setItem('homecast-environment', targetEnv); // backward compat with old Tauri builds
-              window.location.href = targetUrl;
-            }
-          }}>
-            <FlaskConical className="h-4 w-4 mr-2" />
-            {config.isStaging ? 'Switch to Production' : 'Switch to Staging'}
-          </DropdownMenuItem>
-        )}
-        {isAdmin && !isCommunity && (
-          <DropdownMenuItem onClick={() => navigate('/portal/admin')}>
-            <Server className="h-4 w-4 mr-2" />
-            Admin
-          </DropdownMenuItem>
-        )}
-        {(!isCommunity || !isRelayCapable()) && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={isCommunity ? resetAndUninstall : logout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </DropdownMenuItem>
-          </>
-        )}
+        ) : (
+          <React.Fragment key={section.id}>
+            {section.separator && <DropdownMenuSeparator />}
+            {section.items.map(renderOverflowItem)}
+          </React.Fragment>
+        ))}
         {hasStagingAccess && (() => {
           const appVer = appVersionLabel(window);
           const webVer = config.version !== 'dev' ? config.version : null;
@@ -7323,7 +7784,7 @@ const Dashboard = () => {
         })()}
       </DropdownMenuContent>
     </DropdownMenu>
-    </>
+    </div>
   );
 
   return (
@@ -7339,20 +7800,41 @@ const Dashboard = () => {
         onRecordingHomesChange={setRecordingHomeIds} homeId={selectedHomeId} homeIds={allHomeIds} onOpenHistory={setHistoryTarget} onOpenAnalytics={openAnalyticsScoped}>
     <BackgroundContext.Provider value={backgroundContextValue}>
         {/* Main container */}
-        {/* Main container — 120vh extends behind iOS 26 Safari bottom Liquid Glass bar.
+        {/* Main container — at least the dynamic viewport tall, so the wallpaper
+             extends behind iOS 26 Safari's bottom Liquid Glass bar. It was 120vh,
+             which let a short page scroll a fifth of a screen into nothing.
              Native app uses fixed inset-0 (no Liquid Glass bars in WKWebView). */}
-        {/* No bg-background under a wallpaper. This box is 120vh of opaque
+        {/* No bg-background under a wallpaper. This box is a viewport of opaque
             white spanning the whole document, so it is the surface a gap
             actually exposes when Safari moves the viewport — the backdrop and
             the wallpaper behind it already paint everything that should show.
             Without a wallpaper it still needs the theme colour. */}
         <div
           className={
-            isInMobileApp || isInMacApp
-              ? 'fixed inset-0'
+            // Under the iOS native header the document itself scrolls (see
+            // parob/homecast-cloud#120), so the shell must be in flow: a fixed
+            // box pins the document at viewport height and UIKit never sees
+            // a scroll.
+            shellScrolls
+              ? `fixed inset-0${hasBackground || isInMobileApp || isInMacApp ? '' : ' bg-background'}`
               : hasBackground ? 'relative' : 'relative bg-background'
           }
-          style={isInMobileApp || isInMacApp ? undefined : { minHeight: '120vh' }}
+          // A phone browser's page starts 10px down, as a MARGIN. iOS 26
+          // Safari decides what its status bar band shows by hit-testing a
+          // point 8px inside the top of the viewport (WebKit's
+          // LocalFrameView::fixedContainerEdges — a 4px inset, then 4px in)
+          // and walking up to the first fixed or sticky ancestor; the gap
+          // keeps this container's tree clear of that point at rest. Hacker
+          // News has the gap by accident, from body's default 8px margin;
+          // Tailwind's preflight zeroes ours. The sticky wallpaper sticks at
+          // the same 10px (`--band-gap`) so the first scroll does not move
+          // it, and its box reaches up past the gap regardless. Measured on
+          // the iPhone 17 Pro simulator, 2026-09-18.
+          style={isInMobileApp || isInMacApp || shellScrolls
+            ? undefined
+            : phoneBrowser
+              ? { minHeight: '100dvh', marginTop: 'var(--band-gap)', '--band-gap': '10px' } as React.CSSProperties
+              : { minHeight: '100dvh' }}
         >
           {/* The backdrop colour paints past the safe areas — a plain inset-0
               stops at them, leaving bars in landscape — while the container
@@ -7362,21 +7844,93 @@ const Dashboard = () => {
               there is what showed as white above and below the wallpaper.
               Matches MainLayout: over a dark wallpaper the backdrop has to be
               black, not the theme's white. */}
-          <div
-            aria-hidden
-            className={cn(
-              "fixed-full-screen pointer-events-none -z-10",
-              hasBackground && isDarkBackground ? "bg-black" : "bg-background",
-            )}
-          />
-          <BackgroundImage
-            settings={activeBackground}
-            entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
-            autoBackgroundsEnabled={autoBackgrounds}
-            onLuminanceChange={setBgImageLuminance}
-            onHeaderLuminanceChange={setBgHeaderLuminance}
-            onTopColorChange={setBgImageTopColor}
-          />
+          {/* A phone browser's wallpaper is a sticky layer, not a fixed one, so
+              it paints into iOS 26 Safari's bar bands and the page runs under
+              the bars over an unbroken wallpaper — see `.sticky-wallpaper` in
+              index.css for the mechanism and the measurements. The reach past
+              the viewport covers the bands: the status bar alone above (~62pt),
+              or status bar plus URL bar for a Safari set to keep its bar at
+              the top (~140pt) — the page cannot tell which, so it covers the
+              deeper one; the URL bar's tallest state below. Each end fades
+              out over its last 70px so an edge that does come into view meets
+              the canvas softly. The cost is framing: `object-fit: cover` on
+              the taller box scales a landscape wallpaper up by the added
+              height. Everything else keeps the fixed layer. */}
+          {/* No negative z-index on this one, unlike the fixed layer below.
+              Safari's bars are glass over the page, and what shows through
+              them past the viewport's edges is the layer tree there — this
+              layer's overhang under the tiles. A negative z-index here
+              resolves in the ROOT stacking context (this container is
+              `relative`, not a stacking context), and a negative-z layer of
+              the root is not drawn past the viewport: the bands showed the
+              flat canvas colour instead of the wallpaper. At z auto it is.
+              The content still covers it on screen because it comes later
+              in tree order inside a positioned wrapper (`relative`, below),
+              and the header, the edit bar and every portal carry z-indices
+              of their own. Measured on the iPhone 17 Pro simulator,
+              2026-09-18. */}
+          {phoneBrowser ? (
+            <div
+              aria-hidden
+              className="sticky-wallpaper"
+              style={{
+                '--band-reach-top': '160px',
+                '--band-reach-bottom': '120px',
+                '--band-fade-top': '40px',
+                // How far into the screen each canvas-coloured scrim runs
+                // before the wallpaper is clear: a short one under the status
+                // bar, a longer one above the URL bar, where the wallpaper's
+                // own bottom colour has furthest to travel to meet the canvas.
+                '--top-scrim-run': '70px',
+                '--bottom-scrim-run': '120px',
+              } as React.CSSProperties}
+            >
+              {/* The backdrop under the image, in the canvas colour rather
+                  than black: it is what shows until the image has decoded,
+                  and what an overlay's flat bands read (see EdgeSampleSlivers
+                  — black here gave a black bar under the URL bar whenever a
+                  menu was open). */}
+              <div
+                className="sticky-full-screen pointer-events-none"
+                style={{ background: 'var(--canvas-tint, #000)' }}
+              />
+              <BackgroundImage
+                placement="sticky"
+                settings={activeBackground}
+                entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
+                autoBackgroundsEnabled={autoBackgrounds}
+                onLuminanceChange={setBgImageLuminance}
+                onHeaderLuminanceChange={setBgHeaderLuminance}
+                onTopColorChange={setBgImageTopColor}
+              />
+              {/* The wallpaper meets the canvas colour at both of its edges —
+                  see index.css. What iOS 26 Safari shows through its bars is
+                  the document behind this layer (the tiles over the canvas),
+                  and the canvas past the page's ends, so every band is this
+                  one colour: the scrims are what let the wallpaper arrive at
+                  it softly rather than being cut by it. */}
+              {hasBackground && <div className="sticky-top-scrim" />}
+              {hasBackground && <div className="sticky-bottom-scrim" />}
+            </div>
+          ) : (
+            <>
+              <div
+                aria-hidden
+                className={cn(
+                  "fixed-full-screen pointer-events-none -z-10",
+                  hasBackground && isDarkBackground ? "bg-black" : "bg-background",
+                )}
+              />
+              <BackgroundImage
+                settings={activeBackground}
+                entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
+                autoBackgroundsEnabled={autoBackgrounds}
+                onLuminanceChange={setBgImageLuminance}
+                onHeaderLuminanceChange={setBgHeaderLuminance}
+                onTopColorChange={setBgImageTopColor}
+              />
+            </>
+          )}
 
           {/* Tiles used to be sliced flat at both physical screen edges, with
               the floating header buttons landing on top of whatever tile text
@@ -7395,20 +7949,37 @@ const Dashboard = () => {
               Heights are `scrimTopHeight` / `scrimBottomHeight`, which are
               deliberately no longer the scroller's padding expressions — see
               the note where they are declared for what each one trades. */}
-          {isInMobileApp && (
-            <>
-              <div
-                aria-hidden
-                className="scroll-scrim scroll-scrim-top z-[10000]"
-                style={{ '--scroll-scrim-size': `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))` } as React.CSSProperties}
-              />
-              <div
-                aria-hidden
-                className="scroll-scrim scroll-scrim-bottom z-[10000]"
-                style={{ '--scroll-scrim-size': `calc(${scrimBottomHeight}px + var(--safe-area-bottom, 0px))` } as React.CSSProperties}
-              />
-            </>
-          )}
+          {/* The iOS native header draws its own scroll-edge effect, so the
+              page's top scrim would double it (parob/homecast-cloud#120).
+
+              App shells only — never a phone browser. iOS 26 Safari keeps its
+              bars OUTSIDE the viewport and paints the document into the bands
+              behind their glass, the way it does for any page, but stops the
+              moment a fixed element sits in its top few pixels: the bands
+              turn into one flat sampled colour and the content is cut off at
+              the viewport edge. These strips (and the sampling slivers they
+              needed) were exactly that, so the page read as clipped between
+              two flat bars. Without them the tiles and the title run under
+              the status bar and the URL bar like every other site. The header
+              is the other fixed thing at the top; see AppHeader for its
+              10px offset. Measured on the iPhone 17 Pro simulator, 2026-09-17. */}
+          {isInMobileApp && !nativeHeaderActive && (() => {
+            // The bottom strip is for the app's tab bar and home indicator.
+            // The status bar and home indicator are the page's own to fade
+            // under, so nothing is painted solid (`--scroll-scrim-solid` 0).
+            const topStyle = { '--scroll-scrim-size': `calc(${scrimTopHeight}px + var(--safe-area-top, 0px))`, '--scroll-scrim-solid': '0px' } as React.CSSProperties;
+            const bottomStyle = { '--scroll-scrim-size': `calc(${scrimBottomHeight}px + var(--safe-area-bottom, 0px))`, '--scroll-scrim-solid': '0px' } as React.CSSProperties;
+            return (
+              <>
+                <div aria-hidden className="scroll-scrim scroll-scrim-top z-[10000]" style={topStyle} />
+                <div aria-hidden className="scroll-scrim scroll-scrim-bottom z-[10000]" style={bottomStyle} />
+                {/* The tint wash, on its own plain layer — see .scroll-scrim-wash
+                    for why it is not part of the blur strip. */}
+                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-top z-[10000]" style={topStyle} />
+                <div aria-hidden className="scroll-scrim-wash scroll-scrim-wash-bottom z-[10000]" style={bottomStyle} />
+              </>
+            );
+          })()}
 
 
       {/* One status bubble, in leftBadge.
@@ -7422,16 +7993,24 @@ const Dashboard = () => {
           Local Mode has to survive the states where search does not, and
           leftBadge is passed unconditionally, outside the hasContentAccess
           guard that gates the search button. */}
-      <AppHeader isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /><StatusBadge inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} /></>} isDarkBackground={isDarkBackground}>
+      <AppHeader nativeTitle={statusHomeName ?? undefined} nativeHeading={nativeHeading} nativeLargeTitle={isMobile} nativeShowMenu={isMobile && hasContentAccess} nativeHomes={nativeHomes} nativeCurrentHomeId={statusHomeId} onNativeSelectHome={handleSelectHome} nativeMenu={nativeMenu} onNativeMenuAction={handleNativeMenuAction} nativeAppearance={nativeAppearance} nativeNavigation={nativeNavigation} onNativeNavigate={handleNativeNavigate} onNativeRefresh={handleNativeRefresh} centerTitle={compactTitle} isInMacApp={isInMacApp} isInMobileApp={isInMobileApp} fullWidth={fullWidth} rightMenu={headerRightMenu} leftBadge={<><StagingSyncLabel isDarkBackground={headerInkLight} /></>} isDarkBackground={isDarkBackground}>
           <div className="flex items-center gap-[max(0.75rem,12px)]">
+            {headerBackButton}
             {/* Mobile menu button - hidden during onboarding (no content) */}
             {isMobile && hasContentAccess && (
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-                <SheetTrigger asChild>
-                  <Button data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] rounded-full transition-colors duration-300 ${headerControlClass(headerInkLight, headerHaloStrong)}`}>
+                {/* No ☰ once the home name carries the menu; the drawer is
+                    still there behind the edge swipe for what a menu cannot
+                    do (reorder, hide, create). */}
+                {!showWebHomeMenu && <SheetTrigger asChild>
+                  {/* `data-native-header` is what a tap on the iOS native bar
+                      clicks — see `native/native-header.ts`. Keeping the route
+                      through the real trigger is what lets that preview exist
+                      without lifting this Sheet into controlled state. */}
+                  <Button data-native-header="menu" data-tour="sidebar-menu" variant="ghost" size="icon" className={`h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] transition-colors duration-300 ${headerGlassClass(headerInkLight)} ${headerGlassControlClass(headerInkLight)}`}>
                     <Menu className="h-5 w-5" />
                   </Button>
-                </SheetTrigger>
+                </SheetTrigger>}
                 {/* The Mac app hides its title bar but the traffic lights still
                     sit there, so the drawer's contents have to clear the same
                     33px the header reserves. Inset the padding rather than the
@@ -7883,9 +8462,8 @@ const Dashboard = () => {
       {/* Edit Layout's toolbar. A solid full-width bar that covers the app header
           rather than floating over it: while editing, none of the header's normal
           controls apply, and leaving them visible but inert invited taps that did
-          nothing. The burger stays, because the sidebar is half of what you came
-          here to arrange — homes and rooms live in it. The Sheet it opens is
-          z-[10015], above this bar, so it still works.
+          nothing. There is no burger either: homes and rooms are in the home
+          name's own menu now, and the drawer is still an edge swipe away.
 
           There is no Show hidden control: editing always reveals hidden things,
           sorted to the end of the grid. You cannot bring back what you cannot
@@ -7903,8 +8481,15 @@ const Dashboard = () => {
           // The same glass the tab bar and the header bubbles use, rather than a
           // flat panel — it sits directly over the widgets and looked like a
           // different kind of surface pasted on top of them.
-          className={`fixed top-0 left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
-            editMode ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
+          // A phone browser's bar sits where its header does — 10px down, a
+          // 40px row — so Done stays on the header's centre-line, where the
+          // toasts are centred. It is a cover while it is up, so the bands go
+          // flat regardless; this is about the geometry matching. PARKED, it
+          // has to clear Safari's top ~8px too: translated up by its own
+          // height alone it sat at -30..+10 and the bands were flat on every
+          // page (see AppHeader for the rule), so it parks 12px further up.
+          className={`fixed ${phoneBrowser ? 'top-[10px]' : 'top-0'} left-0 right-0 z-[10002] safe-area-top safe-area-x transition-[transform,opacity] duration-base ease-standard ${
+            editMode ? 'translate-y-0 opacity-100' : `${phoneBrowser ? 'translate-y-[calc(-100%-12px)]' : '-translate-y-full'} opacity-0 pointer-events-none`
           } ${isDarkBackground ? 'material-regular-dark text-white' : 'material-regular'}`}
           // Out of the tree for anyone not looking at it, and unreachable by
           // pointer or keyboard — it is off-screen but still rendered, and an
@@ -7915,38 +8500,30 @@ const Dashboard = () => {
           aria-hidden={!editMode}
           {...(editMode ? {} : INERT)}
           data-testid="edit-layout-bar"
+          // Under the iOS native bar this toolbar is drawn beneath it, so the
+          // native ⋯ menu and title selector would sit over Done and stay
+          // live. Declaring the toolbar a cover hides the bar for the duration,
+          // the way an open sheet does — see `NATIVE_HEADER_COVER_SELECTOR`.
+          {...{ [NATIVE_HEADER_COVER_ATTR]: editMode ? 'true' : 'false' }}
         >
           <div className={`mx-auto w-full px-4 ${fullWidth ? '' : 'max-w-7xl'}`}>
-            <div className="flex items-center justify-between gap-2 h-[80px]">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Open menu"
-                // Redundant once the sidebar is on screen in its own right —
-                // which is what happens when you turn a phone sideways.
-                //
-                // The inset mirrors AppHeader's left cluster (`px-[max(0.5rem,8px)]`
-                // inside the same `px-4` container) rather than pulling the other
-                // way. This bar covers the header, so the burger is the one control
-                // drawn in both — a different inset here and it jumps 20px left the
-                // moment Edit Layout comes on, which is what it used to do.
-                className={`md:hidden flex items-center justify-center h-[max(2.5rem,40px)] w-[max(2.5rem,40px)] ml-[max(0.5rem,8px)] rounded-full ${isDarkBackground ? 'text-white active:bg-white/10' : 'text-foreground active:bg-muted'}`}
-              >
-                <Menu className="h-5 w-5" />
-              </button>
+            <div className={`flex items-center justify-between gap-2 ${phoneBrowser ? 'h-10' : 'h-[80px]'}`}>
+              {/* No burger. The sidebar used to be half of what you came here
+                  to arrange, but the home name's own menu now covers homes
+                  and rooms and the drawer is still an edge swipe away — and
+                  on a phone the ☰ was the one control drawn in both this bar
+                  and the header. An invisible twin of Done keeps the title
+                  centred between the two edges. */}
+              <span className="px-3 py-1.5 text-sm font-semibold invisible" aria-hidden>Done</span>
               {/* The gesture is not discoverable on its own — nothing on screen
                   says a hold does anything — so the bar that appears when you
                   find it explains what you can do next. `min-w-0` and wrapping
                   rather than truncating: an instruction cut off mid-sentence is
                   worse than one on a second line.
 
-                  Kept short because the bar does NOT have the room it was
-                  written for. Between the burger and Done this column is 196px
-                  on a 390pt phone and 234px on a 430pt one; "Press and hold a
-                  widget or menu item to rearrange" measures 248px, so it wrapped
-                  on every iPhone narrower than ~430 and cleared that one by 7px.
-                  This fits with room to spare down to a 375pt SE, which is what
-                  keeps the subtitle at the two lines it is meant to be —
-                  edit-layout-header.spec.ts holds it to that at three widths. */}
+                  Keep both instructions short enough for the column between
+                  Done and its invisible twin. The browser test checks that
+                  each stays on one line at narrow phone widths. */}
               <div className="flex min-w-0 flex-1 flex-col items-center">
                 <span className="text-sm font-semibold leading-tight">Editing Layout</span>
                 <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/60' : 'text-muted-foreground'}`}>
@@ -7957,7 +8534,7 @@ const Dashboard = () => {
                     back into place — without saying so, a tile appearing at the
                     bottom reads as the mode having moved it. */}
                 <span className={`text-[11px] leading-tight text-center ${isDarkBackground ? 'text-white/45' : 'text-muted-foreground/70'}`}>
-                  Hidden items are moved to the end
+                  Hidden items appear last
                 </span>
               </div>
               <button
@@ -8046,7 +8623,7 @@ const Dashboard = () => {
         collectionItemIds={searchCollectionItemIds}
       />
 
-      <div className={`${isInMobileApp || isInMacApp ? 'absolute inset-0' : 'relative min-h-[120vh]'} flex justify-center`}>
+      <div className={`${shellScrolls ? 'absolute inset-0' : isInMobileApp || isInMacApp ? 'relative' : 'relative min-h-[100dvh]'} flex justify-center`}>
         <div className={`flex w-full ${isInMacApp || fullWidth ? '' : 'max-w-7xl'}`}>
         {/* Sidebar - hidden on mobile, shown via Sheet. Hidden entirely during onboarding (no content). */}
         <aside
@@ -8054,7 +8631,16 @@ const Dashboard = () => {
           // floating rather than tucked into the corner. Written as calc so the
           // rem stays the rem the rest of the padding uses.
           className={`hidden ${hasContentAccess ? 'md:block' : ''} ${isInMacApp ? 'pt-[calc(2rem+5px)]' : isInMobileApp ? '' : 'pt-[calc(0.75rem+5px)]'} pl-[calc(0.75rem+5px)] pr-1 pb-3 ${!(isInMobileApp || isInMacApp) ? 'sticky top-0 self-start h-screen' : ''}`}
-          style={{ width: sidebarWidth, ...(isInMobileApp ? { paddingTop: 'calc(17px + var(--safe-area-top, 0px))' } : undefined) }}
+          style={{
+            width: sidebarWidth,
+            ...(isInMobileApp ? {
+              // The same gap above as beside: the panel's left inset is
+              // 0.75rem + 5px, and the top used to be a flat 17px.
+              paddingTop: nativeHeaderActive
+                ? 'calc(0.75rem + 5px + var(--native-header-inset, 0px))'
+                : 'calc(0.75rem + 5px + var(--safe-area-top, 0px))',
+            } : undefined),
+          }}
         >
           <div className={`rounded-2xl scroll-clip transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
             <div
@@ -8358,16 +8944,35 @@ const Dashboard = () => {
         </aside>
 
         {/* Main Content */}
-        <main className={`relative flex-1 min-w-0 ${isInMobileApp || isInMacApp ? 'overflow-hidden' : ''}`}>
+        <main className={`relative flex-1 min-w-0 ${shellScrolls ? 'overflow-hidden' : ''}`}>
+          {/* While the iOS native header is on, the DOCUMENT scrolls, not this
+              container: UIKit collapses the large title and draws the
+              scroll-edge effect from the web view's own scroll view, and an
+              inner scroller is invisible to it. */}
           <div
-            className={`${isInMobileApp || isInMacApp ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
+            // When this container is the scroller, the document is not, and
+            // `window.scrollTo` cannot reach it. `ScrollToTop` resets every
+            // element carrying this attribute on a view change.
+            data-app-scroller={shellScrolls ? '' : undefined}
+            className={`${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
-              paddingTop: `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
-              paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`
-            } : { paddingTop: isInMacApp ? undefined : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
+              // Under the iOS native header the content runs beneath the bar
+              // and starts below its large-title height instead. A little
+              // above the band's bottom edge: the name sits centred in a
+              // 52pt band, so its baseline is well clear, and the Home app
+              // runs its first row about 12pt under the title.
+              paddingTop: nativeHeaderActive
+                ? 'calc(var(--native-header-inset, 0px) + 4px)'
+                : `calc(${editBarHeight}px + var(--safe-area-top, 0px))`,
+              paddingBottom: `calc(${bottomBandHeight}px + var(--safe-area-bottom, 0px))`,
+              // A phone on its side: keep the grid clear of the Dynamic
+              // Island and the rounded corner on the right, as the sidebar
+              // now is on the left.
+              paddingRight: 'var(--safe-area-right, 0px)'
+            } : { paddingTop: isInMacApp ? undefined : phoneBrowser ? phoneBrowserPageTop : editBarHeight, ...(isPhone && pinnedTabs.length > 0 ? { paddingBottom: showAdsenseBanner ? '220px' : '120px' } : showAdsenseBanner ? { paddingBottom: '140px' } : {}) }}
           >
             <PullToRefresh
-              isPullable={!(isTouchDevice && editMode)}
+              isPullable={!(isTouchDevice && editMode) && !nativeHeaderActive}
               onRefresh={handlePullRefresh}
               pullDownThreshold={67}
               maxPullDownDistance={95}
@@ -8379,7 +8984,7 @@ const Dashboard = () => {
             {/* The hold-anywhere target. This wrapper already fills the
                 viewport, so the empty space below the last tile is covered,
                 and the sidebar and header are outside <main> entirely. */}
-            <div ref={dashboardBodyRef} className="px-3 pt-2 md:px-6 md:pt-3 min-h-[calc(100%+1px)]">
+            <div ref={dashboardBodyRef} className="px-3 pt-2 md:px-6 md:pt-3 min-h-full">
               {/* Pending Invitations Modal */}
               <Dialog open={pendingInvitationsOpen} onOpenChange={setPendingInvitationsOpen}>
                 <DialogContent className="sm:max-w-lg" style={{ zIndex: 10010 }}>
@@ -8428,17 +9033,8 @@ const Dashboard = () => {
                   </div>
                 </DialogContent>
               </Dialog>
-              {/* Transient relay drop on an already-loaded home: keep the
-                  dashboard visible, just flag that it's reconnecting. Deliberately
-                  quiet — amber read as an error for something that usually resolves
-                  itself, so this borrows the toast's glass pill instead. The home
-                  name is dropped: it is already the title directly above. */}
-              {relayReconnecting && (
-                <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-xl animate-in fade-in duration-300">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Connecting…
-                </div>
-              )}
+              {/* The header badge already explains the current home route.
+                  Keep cached content visible without a second status headline. */}
               {/* Enrollment Setup View */}
               {selectedEnrollmentId && (() => {
                 const enrollment = pendingEnrollments.find(e => e.id === selectedEnrollmentId)
@@ -8540,7 +9136,7 @@ const Dashboard = () => {
                   progress={gridProgress}
                   tone={isDarkBackground ? 'dark' : 'light'}
                   compact={compactMode}
-                  label={`Connecting to ${homes.find(h => h.id === selectedHomeId)?.name || 'your home'}\u2026`}
+                  label={unavailableHomePresentation(selectedHomeServing)?.label ?? `Connecting to ${homes.find(h => h.id === selectedHomeId)?.name || 'your home'}\u2026`}
                 />
               ) : (!tutorialDemoActive && showRelayOfflineSetup) ? (
                 <SetupState
@@ -8633,8 +9229,23 @@ const Dashboard = () => {
                    stays: remounting on home/group/room change is what resets
                    widget state. */
                 <div key={`${selectedHomeId}-${selectedRoomGroup?.entityId || 'all'}-${selectedRoomId || 'all'}`}>
-                {/* Header with title */}
-                <h2 className={`text-base font-bold truncate mb-4 ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
+                {/* Header with title. Under the iOS native header the bar's
+                    large title IS this heading, so it is not drawn twice — but
+                    the connection badge inside it is still what the native dot
+                    clicks and what its popover anchors to, and an anchor inside
+                    a display:none heading measures 0×0 and drops the popover at
+                    the screen's origin (measured). So it is mounted out here
+                    instead, parked by its own fixed position. */}
+                {/* Under the native bar the dot's anchor is parked `fixed` (see
+                    StatusBadge), but the inline wrapper still opened a 30px line
+                    box above the pills — a block of no height holds it without
+                    one. */}
+                {nativeHeaderActive && isMobile && <div className="h-0">{headingStatusDot}</div>}
+                {/* On a phone the heading is the iOS bar's large title, 34pt
+                    bold — the same size the native bar draws, so the two
+                    builds read alike. A room or group page keeps its path,
+                    small, on a line above the big name. */}
+                <h2 ref={headingRef} className={`font-bold mb-[4px] ${largeHeading ? 'text-[34px] leading-[41px] tracking-tight' : 'text-base truncate'} ${nativeHeaderActive && isMobile ? 'hidden' : ''} ${isDarkBackground ? 'text-white' : 'text-muted-foreground'}`}>
                   {selectedRoomId ? (
                     (() => {
                       const parentGroup = roomGroups.find(g => g.roomIds.some(rid => rid.toLowerCase().replace(/-/g, '') === selectedRoomId.toLowerCase().replace(/-/g, '')));
@@ -8642,18 +9253,13 @@ const Dashboard = () => {
                       const roomName = currentRoom?.name || 'Room';
                       return (
                         <>
+                          <span className={crumbsClass}>
                           {selectedHomeId ? (
-                            <button
-                              type="button"
-                              className={BREADCRUMB_LINK_CLASS}
-                              onClick={() => handleSelectHome(selectedHomeId)}
-                            >
-                              {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-                            </button>
+                            renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                           ) : (
                             <span className="opacity-60">Home</span>
                           )}
-                          <span className="mx-2 opacity-40">/</span>
+                          {crumbSeparator(!parentGroup)}
                           {parentGroup && (
                             <>
                               <button
@@ -8663,14 +9269,31 @@ const Dashboard = () => {
                               >
                                 {parentGroup.name}
                               </button>
-                              <span className="mx-2 opacity-40">/</span>
+                              {crumbSeparator(true)}
                             </>
                           )}
+                          </span>
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <span className="cursor-pointer">{roomName}</span>
+                            <DropdownMenuTrigger asChild plain>
+                              {largeHeading ? (
+                                <button type="button" className="group/title inline-flex items-center gap-2.5 max-w-full rounded-full px-3 -mx-3 py-1 -my-1">
+                                  <span className="truncate">{roomName}</span>
+                                  {discChevron}
+                                </button>
+                              ) : (
+                                <span className={`cursor-pointer ${crumbNameClass}`}>{roomName}</span>
+                              )}
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
+                            <DropdownMenuContent scrim={largeHeading} align="start" alignOffset={largeHeading ? 15 : 0} className={largeHeading ? 'min-w-[220px]' : undefined}>
+                              {/* On a phone the room's name is the switcher, like the
+                                  home's; the room's own actions follow under its name. */}
+                              {largeHeading && (
+                                <>
+                                  {renderSwitcherItems()}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuLabel className="text-xs text-muted-foreground">{roomName}</DropdownMenuLabel>
+                                </>
+                              )}
                               {selectedHomeId && canShare && (
                                 <DropdownMenuItem onClick={() => {
                                   if (currentRoom) setSidebarShareRoom({ room: currentRoom, homeId: selectedHomeId });
@@ -8729,23 +9352,33 @@ const Dashboard = () => {
                     })()
                   ) : selectedRoomGroup ? (
                     <>
+                      <span className={crumbsClass}>
                       {selectedHomeId ? (
-                        <button
-                          type="button"
-                          className={BREADCRUMB_LINK_CLASS}
-                          onClick={() => handleSelectHome(selectedHomeId)}
-                        >
-                          {homes.find(h => h.id === selectedHomeId)?.name || 'Home'}
-                        </button>
+                        renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home', BREADCRUMB_LINK_CLASS, () => handleSelectHome(selectedHomeId))
                       ) : (
                         <span className="opacity-60">Home</span>
                       )}
-                      <span className="mx-2 opacity-40">/</span>
+                      {crumbSeparator(true)}
+                      </span>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <span className="cursor-pointer">{selectedRoomGroup.name}</span>
+                        <DropdownMenuTrigger asChild plain>
+                          {largeHeading ? (
+                            <button type="button" className="group/title inline-flex items-center gap-2.5 max-w-full rounded-full px-3 -mx-3 py-1 -my-1">
+                              <span className="truncate">{selectedRoomGroup.name}</span>
+                              {discChevron}
+                            </button>
+                          ) : (
+                            <span className={`cursor-pointer ${crumbNameClass}`}>{selectedRoomGroup.name}</span>
+                          )}
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
+                        <DropdownMenuContent scrim={largeHeading} align="start" alignOffset={largeHeading ? 15 : 0} className={largeHeading ? 'min-w-[220px]' : undefined}>
+                          {largeHeading && (
+                            <>
+                              {renderSwitcherItems()}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel className="text-xs text-muted-foreground">{selectedRoomGroup.name}</DropdownMenuLabel>
+                            </>
+                          )}
                           <DropdownMenuItem onClick={() => {
                             setEditingRoomGroup({
                               groupId: selectedRoomGroup.entityId,
@@ -8780,130 +9413,18 @@ const Dashboard = () => {
                       </DropdownMenu>
                     </>
                   ) : (
-                    homes.find(h => h.id === selectedHomeId)?.name || 'Home'
+                    renderHomeTitle(homes.find(h => h.id === selectedHomeId)?.name || 'Home')
                   )}
                 </h2>
-                {/* Summary row: scenes/automations/status pills, or — on a room
-                    or room group — the sensor bubbles inline. A whole home's
-                    bubbles aggregate every room, so there they sit behind the
-                    Status pill with the other collapsible sections. */}
-                {/* Animated, because entering Edit Layout can rewrap this row:
-                    its pills each gain a control, and it reveals sections that
-                    are hidden the rest of the time. On a narrow phone that is a
-                    second line — a 32px step, landing while a tile is being
-                    dragged. Measured, not guessed: see AutoHeight. */}
-                <AutoHeight>
-                {/* One line that scrolls, rather than wrapping to two.
-                    Wrapping was what made this row change height at all — the
-                    edit variant is wider, so on a narrow phone it took a second
-                    line and pushed the grid down. Scrolling sideways keeps it one
-                    line whatever it holds, so the height stops depending on the
-                    viewport.
-
-                    `w-max` on the row inside: in a scroller the children would
-                    otherwise shrink to fit rather than overflow, and the pills
-                    would squash instead of scrolling.
-
-                    `overflow-x: auto` forces `overflow-y` to compute to `auto`
-                    as well, so anything overhanging the row would be clipped
-                    rather than drawn over the edge — the trap MobileTabBar
-                    documents. Nothing here overhangs: the edit badge is tucked
-                    2px into the pill's line box (`-my-0.5`), and the pill's own
-                    `py-1` is 4px, so the badge stays inside the pill. */}
-                <div className="overflow-x-auto scrollbar-hidden">
-                {/* The row's spacing is padding, not margin, so it is inside the
-                    measured height: a margin would sit outside the animated box
-                    and, on a home with every section hidden, `empty:hidden`
-                    would collapse the row while leaving its gap behind. */}
-                <div className="flex w-max items-center gap-2 pb-4 empty:hidden">
-                  {isWholeHomeView && editingSummaryRow ? (
-                    /* Editing: a stand-in row that can show a hidden section as
-                       well as hide a shown one, and that opens nothing. */
-                    <SummarySectionEditPills
-                      layout={homeLayout}
-                      isDarkBackground={isDarkBackground}
-                      openSection={openSummarySection}
-                      onToggleOpen={handleToggleSummaryOpen}
-                      onToggleHidden={handleToggleSummarySection}
-                    />
-                  ) : isWholeHomeView ? (
-                    <>
-                      {showScenes && <ScenesPill
-                        homeId={selectedHomeId!}
-                        accessories={actionAccessories}
-                        homeLayout={homeLayout}
-                        open={scenesOpen}
-                        onToggle={() => { setAutomationsOpen(false); setStatusOpen(false); setScenesOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
-                        hideAccessoryCounts={hideAccessoryCounts}
-                      />}
-                      {showAutomations && <AutomationsPill
-                        homeId={selectedHomeId!}
-                        open={automationsOpen}
-                        onToggle={() => { setScenesOpen(false); setStatusOpen(false); setAutomationsOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
-                        hideAccessoryCounts={hideAccessoryCounts}
-                        demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
-                      />}
-                      {showStatus && <StatusPill
-                        accessories={summaryAccessories}
-                        open={statusOpen}
-                        onToggle={() => { setScenesOpen(false); setAutomationsOpen(false); setStatusOpen(o => !o); }}
-                        isDarkBackground={isDarkBackground}
-                      />}
-                    </>
-                  ) : (
-                    <AreaSummary
-                      accessories={summaryAccessories}
-                      isDarkBackground={isDarkBackground}
-                      analyticsScope={statusAnalyticsScope}
-                      areaName={statusAreaName}
-                    />
-                  )}
-                </div>
-                </div>
-                </AutoHeight>
-                {/* Bodies are gated on the same flags as their pills: leaving a
-                    section mounted behind a hidden pill would keep its queries
-                    live and could strand it open with no way to close it. */}
-                {isWholeHomeView && (
-                  <>
-                    {showScenes && <ScenesSection
-                      homeId={selectedHomeId!}
-                      accessories={actionAccessories}
-                      homeLayout={homeLayout}
-                      compact={compactMode}
-                      isDarkBackground={isDarkBackground}
-                      open={scenesOpen}
-                      isViewOnly={isViewOnly}
-                      dndEnabled
-                      onRunAction={runHomeAction}
-                      onToggleActionHidden={selectedHomeId && !isViewOnly ? handleToggleHomeActionHidden : undefined}
-                      onReorderCards={selectedHomeId && !isViewOnly ? handleReorderSceneCards : undefined}
-                      onToggleSceneHidden={selectedHomeId && !isViewOnly ? handleToggleSceneHidden : undefined}
-                      showHidden={showHiddenItems}
-                    />}
-                    {showAutomations && <AutomationsSection
-                      homeId={selectedHomeId!}
-                      compact={compactMode}
-                      isDarkBackground={isDarkBackground}
-                      open={automationsOpen}
-                      demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
-                      homeLayout={homeLayout}
-                      onReorderCards={selectedHomeId && !isViewOnly ? handleReorderAutomationCards : undefined}
-                      onToggleAutomationHidden={selectedHomeId && !isViewOnly ? handleToggleAutomationHidden : undefined}
-                      showHidden={showHiddenItems}
-                    />}
-                    {showStatus && <AnimatedCollapse open={statusOpen}>
-                      <AreaSummary
-                        accessories={summaryAccessories}
-                        isDarkBackground={isDarkBackground}
-                        className={compactMode ? 'mb-3' : 'mb-6'}
-                        areaName={statusAreaName}
-                      />
-                    </AnimatedCollapse>}
-                  </>
-                )}
+                {(!isWholeHomeView || showStatus) && <AreaSummary
+                  accessories={summaryAccessories}
+                  isDarkBackground={isDarkBackground}
+                  analyticsScope={statusAnalyticsScope}
+                  areaName={statusAreaName}
+                  appearance="inline"
+                  className="mb-[8px]"
+                />}
+                <SceneGridSizing>
                 <DndContext
                   sensors={activeSensors}
                   collisionDetection={closestCenter}
@@ -8931,6 +9452,11 @@ const Dashboard = () => {
                       .filter(group => !selectedHomeId || !isGroupHidden(selectedHomeId, group.id, contextId));
                     const ungrouped = roomAccessories.filter(accessory => !groupedAccessoryIds.has(accessory.id));
                     const displayAccessories = filterAccessories(ungrouped, contextId);
+                    const roomSceneCards = dashboardScenes.cards.filter(card => {
+                      if (!groupByRoom) return filteredRooms.some(([name]) => card.roomId
+                        ? rooms.find(r => r.id === card.roomId)?.name === name : name === HOME_LEVEL_ROOM);
+                      return card.roomId ? card.roomId === room?.id : roomName === HOME_LEVEL_ROOM;
+                    });
 
                     // Hide room if it has no visible items (unless showHiddenItems is on)
                     // Helper accessories hide exactly like real ones: the id goes in
@@ -8942,7 +9468,7 @@ const Dashboard = () => {
                     // again the moment you went looking for it.
                     const roomRevealed = revealHiddenRooms && !!room && !!selectedHomeId
                       && isRoomHiddenState(selectedHomeId, room.id, 'home');
-                    if (!showHiddenItems && !roomRevealed && roomGroups.length === 0 && displayAccessories.length === 0) return null;
+                    if (!showHiddenItems && !roomRevealed && roomGroups.length === 0 && displayAccessories.length === 0 && roomSceneCards.length === 0) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
                     visibleRoomIdx++;
@@ -8956,7 +9482,7 @@ const Dashboard = () => {
                        either. See `[data-hidden-exiting]` in index.css. */
                     <div key={roomName} data-room-container data-room-name={roomName} {...(roomRevealed ? { 'data-hidden-item': 'true' } : {})} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
                       {/* Only show room name header when viewing all rooms (not a specific room) */}
-                      {groupByRoom && !selectedRoomId && roomName !== HOME_LEVEL_ROOM && (() => {
+                      {groupByRoom && !selectedRoomId && (() => {
                         // A hidden room only reaches here while hidden things are
                         // being shown, and it comes last — see filteredRooms.
                         const roomHidden = !!(room && selectedHomeId && isRoomHiddenState(selectedHomeId, room.id, 'home'));
@@ -8993,10 +9519,10 @@ const Dashboard = () => {
                               // the same trap for grid items.
                               className={`min-w-0 truncate text-sm font-semibold selectable text-left transition-opacity hover:opacity-100 ${roomHidden ? 'opacity-40' : ''} ${isDarkBackground ? 'text-white/70 hover:text-white' : 'text-muted-foreground/70 hover:text-muted-foreground'}`}
                             >
-                              {roomName}
+                              {roomName === HOME_LEVEL_ROOM ? 'Scenes' : roomName}
                               {/* Helper accessories are tiles in this room too, so a
                                   count that excluded them read as wrong beside them. */}
-                              {!hideAccessoryCounts && ` (${roomAccessories.length})`}
+                              {!hideAccessoryCounts && ` (${roomAccessories.length + roomSceneCards.length})`}
                             </button>
                             {/* Says it in a word rather than by the dimming alone,
                                 which on a photographic wallpaper is not a reliable
@@ -9007,12 +9533,17 @@ const Dashboard = () => {
                               </span>
                             )}
                             {canToggleRoom && (
-                              <EditActionButton
-                                size="tile"
-                                label={roomHidden ? 'Unhide' : 'Hide'}
-                                ariaLabel={`${roomHidden ? 'Unhide' : 'Hide'} ${roomName}`}
-                                onClick={() => toggleRoomVisibility(selectedHomeId!, room!.id, ['home'])}
-                              />
+                              // The badge is taller than the heading's line box.
+                              // Let it overhang without growing every room when
+                              // editing starts (or shrinking them all on Done).
+                              <span className="-my-0.5 shrink-0">
+                                <EditActionButton
+                                  size="tile"
+                                  label={roomHidden ? 'Unhide' : 'Hide'}
+                                  ariaLabel={`${roomHidden ? 'Unhide' : 'Hide'} ${roomName}`}
+                                  onClick={() => toggleRoomVisibility(selectedHomeId!, room!.id, ['home'])}
+                                />
+                              </span>
                             )}
                           </div>
                         );
@@ -9047,15 +9578,16 @@ const Dashboard = () => {
 
                         // Get unified ordered items (groups and accessories interleaved)
                         const orderedItems = selectedHomeId
-                          ? getOrderedItems(selectedHomeId, contextId, roomGroups, displayAccessories, null as any)
+                          ? getOrderedItems(selectedHomeId, contextId, roomGroups, displayAccessories, null, roomSceneCards)
                           : [
                               ...roomGroups.map(g => ({ type: 'group' as const, data: g })),
                               ...displayAccessories.map(a => ({ type: 'accessory' as const, data: a })),
+                              ...roomSceneCards.map(card => ({ type: 'scene' as const, data: card })),
                             ];
 
                         // IDs for SortableContext (unified list)
                         const allItemIds = orderedItems.map(item =>
-                          item.type === 'group' ? `group-${item.data.id}` : item.data.id
+                          item.type === 'group' ? `group-${item.data.id}` : item.type === 'scene' ? cardKey(item.data) : item.data.id
                         );
 
                         const useLazyWidgets = orderedItems.length > 30;
@@ -9065,6 +9597,17 @@ const Dashboard = () => {
                         enabled={layoutMode === 'masonry' && !compactMode && !isMobile}
                         compact={compactMode}
                         minColumnWidth={290}
+                        gridRef={deviceGridRef}
+                        // An explicit row track, and only when this grid holds a
+                        // resized tile. Without it a spanning tile has nothing
+                        // to stretch into; with it, two rows is exactly twice an
+                        // ordinary tile plus the gap, at any column width. A
+                        // grid with nothing resized gets `undefined` and is
+                        // laid out exactly as it was before this existed.
+                        style={gridRowUnitStyle(
+                          gridHasSizedWidget(homeLayout?.widgetSizes, allItemIds),
+                          deviceGridRowUnit,
+                        )}
                         // One set of column widths for every text size: the
                         // narrower set existed for the 14px setting, and the
                         // smallest is now 16px — which always took these.
@@ -9078,6 +9621,11 @@ const Dashboard = () => {
                       >
                         {/* Unified rendering of groups and accessories - interleaved based on order */}
                         {orderedItems.map((item) => {
+                          if (item.type === 'scene') return (
+                            <SortableItem key={cardKey(item.data)} id={cardKey(item.data)} disabled={isViewOnly}>
+                              <DragHandleArea>{dashboardScenes.renderCard(item.data)}</DragHandleArea>
+                            </SortableItem>
+                          );
                           if (item.type === 'group') {
                             const group = item.data;
                             const groupAccessories = getAccessoriesInGroup(group);
@@ -9119,6 +9667,13 @@ const Dashboard = () => {
                           const isHidden = selectedHomeId ? isDeviceActuallyHidden(selectedHomeId, contextId, accessory.id, accessorySurface) : false;
                           
                           const isCurrentlyHidden = isHidden;
+                          // Size, and the control for it. `undefined` unless
+                          // this widget has actually said it can grow.
+                          const sizeProps = widgetSizeProps(accessory.id);
+                          const sizeCapabilityProps = {
+                            onSizeCapability: (capability: WidgetSizeCapability) =>
+                              reportWidgetCapability(accessory.id, capability),
+                          };
 
                           /*
                            * The label names the surface, because the same
@@ -9163,6 +9718,8 @@ const Dashboard = () => {
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
                                 editMode={isTouchDevice && editMode}
+                                {...sizeProps}
+                                {...sizeCapabilityProps}
                               />
                               {getDealBadge(accessory)}
 
@@ -9188,6 +9745,8 @@ const Dashboard = () => {
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
                                 editMode={isTouchDevice && editMode}
+                                {...sizeProps}
+                                {...sizeCapabilityProps}
                                 />
                               </ExpandedOverlay>
                             </div>
@@ -9215,13 +9774,23 @@ const Dashboard = () => {
                                 onToggleShowHidden={handleToggleShowHidden}
                                 onShare={canShare ? () => selectedHomeId && setSidebarShareAccessory({ accessory, homeId: accessory.homeId || selectedHomeId }) : undefined}
                                 editMode={isTouchDevice && editMode}
+                                {...sizeProps}
+                                {...sizeCapabilityProps}
                               />
                               {getDealBadge(accessory)}
                             </div>
                           );
 
                           return (
-                            <SortableItem key={accessory.id} id={accessory.id} disabled={isHidden}>
+                            <SortableItem
+                              key={accessory.id}
+                              id={accessory.id}
+                              disabled={isHidden}
+                              // The span goes on the grid child, which is this.
+                              // `undefined` for a regular tile, so a grid with
+                              // nothing resized in it is untouched.
+                              style={widgetSizeStyle(sizeProps?.size ?? 'regular')}
+                            >
                               <LazyWidget enabled={useLazyWidgets} height={compactMode ? 80 : 140} tone={isDarkBackground ? 'dark' : 'light'}>
                                 {accessoryContent}
                               </LazyWidget>
@@ -9304,7 +9873,18 @@ const Dashboard = () => {
                           if (!selectedHomeId) return;
                           // contextId is the roomId - save to room entity layout
                           const roomId = contextId;
-                          if (!roomId || roomId === 'all') return;
+                          if (!roomId) return;
+                          if (roomId === HOME_LEVEL_CONTEXT_ID || roomId === 'all') {
+                            void updateHomeLayout(prev => ({
+                              ...prev,
+                              dashboardItemOrder: {
+                                ...prev?.dashboardItemOrder,
+                                [roomId]: mergeVisibleOrder(prev?.dashboardItemOrder?.[roomId]
+                                  ?? readRoomLayout(roomId)?.itemOrder, newOrder),
+                              },
+                            })).catch(() => toast.error('Failed to save order'));
+                            return;
+                          }
 
                           // Read current room layout from cache
                           let currentLayout: RoomLayoutData = {};
@@ -9322,7 +9902,7 @@ const Dashboard = () => {
 
                           const newLayout: RoomLayoutData = {
                             ...currentLayout,
-                            itemOrder: newOrder,
+                            itemOrder: mergeVisibleOrder(currentLayout?.itemOrder, newOrder),
                           };
 
                           // Save to room entity layout (updates cache immediately, then persists)
@@ -9387,6 +9967,7 @@ const Dashboard = () => {
                   document.body,
                 )}
                 </DndContext>
+                </SceneGridSizing>
                 </div>
               )}
             </div>
@@ -9396,6 +9977,24 @@ const Dashboard = () => {
         {showAdsenseBanner && <AdBanner onUpgrade={handleUpgrade} />}
         </div>
       </div>
+
+      {dashboardScenes.dialogs}
+      <Dialog open={automationsOpen} onOpenChange={setAutomationsOpen}>
+        <DialogContent className="max-w-3xl max-h-[85dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Automations</DialogTitle>
+            <DialogDescription>{homes.find(home => home.id === selectedHomeId)?.name}</DialogDescription>
+          </DialogHeader>
+          {selectedHomeId && <AutomationsSection
+            homeId={selectedHomeId} compact open={automationsOpen}
+            demoAutomations={tutorialDemoActive ? DEMO_AUTOMATIONS : undefined}
+            homeLayout={homeLayout}
+            onReorderCards={!isViewOnly ? handleReorderAutomationCards : undefined}
+            onToggleAutomationHidden={!isViewOnly ? handleToggleAutomationHidden : undefined}
+            showHidden={showHiddenItems}
+          />}
+        </DialogContent>
+      </Dialog>
 
       {/* Price & Deals — reachable from the widget context menu and the
           deal popover, whether or not the product is currently on offer */}
@@ -9424,6 +10023,7 @@ const Dashboard = () => {
             sit differently read as two different apps. */}
         <DialogContent
           hideCloseButton
+          ownsThemeColor
           className={`!max-w-[100vw] !w-[100vw] !rounded-none p-0 gap-0 flex flex-col overflow-hidden !h-[100dvh] !max-h-[100dvh] ${
             isMacApp
               ? 'sm:!max-w-[calc(100vw-88px)] sm:!w-[calc(100vw-88px)] sm:!rounded-2xl sm:!h-[calc(100dvh-88px)] sm:!max-h-[calc(100dvh-88px)]'
@@ -10314,9 +10914,18 @@ const Dashboard = () => {
         // touch-none + overscroll-contain stop a drag over the blur from chaining
         // to the scroller behind it. This div is a sibling of the app's scroll
         // container, not a child, so without them the page scrolls underneath.
-        "fixed inset-0 z-[99999] flex items-center justify-center backdrop-blur-sm bg-black/20 transition-opacity duration-300 touch-none overscroll-contain",
-        isConnectingOverlay ? "opacity-100" : "opacity-0 pointer-events-none"
+        // Also `invisible` once faded, not just transparent: iOS 26 Safari
+        // colours its bars by sampling the topmost paint at the page's edges,
+        // and a transparent full-screen box at z 99999 is what it found —
+        // read as black. `visibility` transitions discretely, so the fade
+        // out still plays in full and the box only leaves at the end of it.
+        "fixed inset-0 z-[99999] flex items-center justify-center backdrop-blur-sm bg-black/20 transition-[opacity,visibility] duration-300 touch-none overscroll-contain",
+        isConnectingOverlay ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
       )}>
+      {/* Only while it is actually up: this box is always mounted so it can
+          fade, and a dim registered for an invisible overlay would darken the
+          canvas for the life of the page. See EdgeSampleSlivers. */}
+      {isConnectingOverlay && <EdgeSampleSlivers dim={0.2} />}
       <div className="flex flex-col items-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
         <p className="text-white/80 text-sm">{isManualRefreshing ? 'Refreshing…' : 'Connecting…'}</p>
@@ -10345,6 +10954,8 @@ const Dashboard = () => {
     {/* Hard reload countdown */}
     {hardReloadCountdown !== null && (
       <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+        {/* Above this box's own backdrop, below the card — DOM order. */}
+        <EdgeSampleSlivers dim={0.5} />
         <div className="bg-background border rounded-xl shadow-2xl p-6 mx-4 max-w-xs w-full text-center space-y-4">
           <RotateCcw className="h-8 w-8 text-primary mx-auto" />
           <div>

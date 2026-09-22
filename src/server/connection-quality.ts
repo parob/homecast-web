@@ -81,11 +81,10 @@ export const FAILURES_FOR_STALLED = 2;
  * No threshold fixes that, which is why this is a list and not a bigger number:
  * a large enough home outgrows any value you pick.
  *
- * These are excused from the **in-flight clock only**. Every other signal still
- * applies to them — the socket state, the 30s `REQUEST_TIMEOUT`, and the failure
- * that timeout books. And ordinary requests keep feeding the in-flight clock
- * while housework runs, so the half-open socket this signal exists for stays
- * detectable mid-write rather than going blind for the length of a batch.
+ * These are excused from the in-flight clock. Their request timeouts still
+ * reach the caller. Heartbeats and unscoped requests keep measuring the link
+ * while housework runs; a timeout with continuing inbound traffic describes
+ * the request, not a connection failure.
  *
  * Progress on the work itself is not this indicator's job and never was: the
  * action's own pending ring and progress count report that, next to the control
@@ -100,14 +99,17 @@ const HOUSEWORK_ACTIONS: ReadonlySet<string> = new Set([
   'serviceGroup.set',
   /** HomeKit runs the scene; how long that takes is the scene's business. */
   'scene.execute',
+  // Native capture may take 20 seconds; the camera owns its loading state.
+  'camera.snapshot',
+  'camera.requestScreenRecording',
 ]);
 
 /**
  * Is this request housework — work whose duration says nothing about the link?
  *
- * Deliberately **not** extended to the single-accessory `characteristic.set`.
- * One write that takes eight seconds is genuinely worth reporting: it is a
- * device that is not answering, which is a fault and not a workload.
+ * Home-scoped requests are excluded separately by `oldestCountedInFlight`: a
+ * device taking time belongs on that control, not on every home’s connection
+ * indicator. Heartbeats still detect a silent socket while these requests run.
  */
 export function isHousework(action: string): boolean {
   return HOUSEWORK_ACTIONS.has(action);
@@ -117,6 +119,8 @@ export function isHousework(action: string): boolean {
 export interface InFlightRequest {
   action: string;
   sentAt: number;
+  /** A request for one home cannot diagnose this client’s connection to every home. */
+  homeId?: string;
 }
 
 /**
@@ -129,7 +133,7 @@ export interface InFlightRequest {
 export function oldestCountedInFlight(pending: Iterable<InFlightRequest>): number | null {
   let oldest: number | null = null;
   for (const request of pending) {
-    if (isHousework(request.action)) continue;
+    if (request.homeId || isHousework(request.action)) continue;
     if (oldest === null || request.sentAt < oldest) oldest = request.sentAt;
   }
   return oldest;
@@ -244,7 +248,7 @@ export interface QualityInputs {
    * map: housework does not belong in this number. See `isHousework`.
    */
   oldestInFlightSentAt: number | null;
-  /** Requests that have failed in a row, reset by any success. */
+  /** Silent transport failures in a row, reset by any response. */
   consecutiveFailures: number;
   /**
    * When the current deliberate handoff began, or null when the socket is not

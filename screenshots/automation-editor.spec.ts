@@ -1,414 +1,172 @@
-/**
- * Playwright tests for the Homecast Automation Editor.
- * Tests the key UX flows of the visual flow editor.
- *
- * Editor UX: Node-RED style
- * - Left palette always visible with 3 categories (Triggers, Actions, Logic)
- * - Single-click selects node, double-click opens config tray on right
- * - Simplified types: device_changed, schedule, webhook, set_device, run_scene, delay, notify, http_request, if, wait
- */
+/** Browser checks for the current desktop palette and phone Add Node flow. */
+import { test, expect, type Page } from '@playwright/test';
+import { setupMocks, waitForDashboard } from './mocks';
 
-import { test, expect } from '@playwright/test';
-import { setupMocks } from './mocks';
+const palette = (page: Page) => page.getByTestId('node-palette').filter({ visible: true });
+const config = (page: Page) => page.getByTestId('config-panel');
+const nodes = (page: Page) => page.locator('.react-flow__node');
 
-// Helper: open the editor directly (no template picker)
-async function openEditor(page: import('@playwright/test').Page) {
-  await page.locator('text=Automations').first().click();
-  await page.waitForTimeout(500);
+/** Automations lives behind the home's overflow menu now, not a summary pill. */
+async function openAutomations(page: Page) {
+  await page.locator('[data-tour="header-menu"]').click();
+  await page.getByRole('menuitem', { name: 'Automations', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Automations', exact: true })).toBeVisible();
+}
+
+async function openEditor(page: Page) {
+  await openAutomations(page);
   await page.getByTestId('new-automation-button').click();
   await page.getByTestId('new-advanced-automation').click();
-  await page.waitForTimeout(800);
+  await expect(page.getByTestId('automation-editor')).toBeVisible();
+}
+
+async function openPalette(page: Page) {
+  if (!(await palette(page).count())) await page.getByTestId('mobile-palette-button').click();
+  await expect(palette(page)).toBeVisible();
+  return palette(page);
+}
+
+async function addNode(page: Page, type: string) {
+  const count = await nodes(page).count();
+  await (await openPalette(page)).getByTestId(`palette-node-${type}`).getByRole('button').first().click();
+  await expect(nodes(page)).toHaveCount(count + 1);
+}
+
+async function configureNode(page: Page) {
+  await nodes(page).first().click();
+  await expect(config(page)).toBeVisible();
 }
 
 test.describe('Automation Editor', () => {
   test.beforeEach(async ({ page }) => {
     await setupMocks(page);
     await page.goto('/portal');
-    await page.waitForTimeout(2000);
+    await waitForDashboard(page);
   });
 
-  // ============================================================
-  // Flow 1: Open the editor from the "New" button
-  // ============================================================
-
-  test('opens "New" menu with HomeKit and Homecast options', async ({ page }) => {
-    const automationsHeader = page.locator('text=Automations').first();
-    await automationsHeader.click();
-    await page.waitForTimeout(500);
-
-    const newButton = page.getByTestId('new-automation-button');
-    await expect(newButton).toBeVisible();
-    await newButton.click();
-
-    const menu = page.getByTestId('new-automation-menu');
-    await expect(menu).toBeVisible();
+  test('offers HomeKit and Homecast in the creation dialog', async ({ page }) => {
+    await openAutomations(page);
+    await page.getByTestId('new-automation-button').click();
+    await expect(page.getByRole('dialog', { name: 'Create Automation' })).toBeVisible();
     await expect(page.getByTestId('new-homekit-automation')).toBeVisible();
     await expect(page.getByTestId('new-advanced-automation')).toBeVisible();
   });
 
-  test('opens flow editor dialog with left palette visible', async ({ page }) => {
+  test('opens the palette through the control provided by this viewport', async ({ page }) => {
     await openEditor(page);
-
-    const editor = page.getByTestId('automation-editor');
-    await expect(editor).toBeVisible();
-
-    // Palette should be visible immediately (always-on left sidebar)
-    await expect(page.getByTestId('node-palette')).toBeVisible();
-    await expect(page.getByTestId('palette-search')).toBeVisible();
-  });
-
-  // ============================================================
-  // Flow 2: Add nodes from the palette
-  // ============================================================
-
-  test('adds a node by clicking in the palette', async ({ page }) => {
-    await openEditor(page);
-
-    const canvas = page.locator('.react-flow');
-    await expect(canvas).toBeVisible();
-
-    // Click a trigger node in the palette
-    await page.getByTestId('palette-node-trigger-device_changed').click();
-    await page.waitForTimeout(300);
-
-    // A node should appear on the canvas
-    const nodes = page.locator('.react-flow__node');
-    await expect(nodes).toHaveCount(1);
-
-    // Single-click opens the config panel
-    await page.locator('.react-flow__node').first().click();
-    await page.waitForTimeout(300);
-    const configPanel = page.getByTestId('config-panel');
-    await expect(configPanel).toBeVisible();
-  });
-
-  test('adds multiple node types from palette', async ({ page }) => {
-    await openEditor(page);
-
-    // Add a trigger
-    await page.getByTestId('palette-node-trigger-schedule').click();
-    await page.waitForTimeout(200);
-
-    // Add an action
-    await page.getByTestId('palette-node-action-set_device').click();
-    await page.waitForTimeout(200);
-
-    // Add a logic node
-    await page.getByTestId('palette-node-logic-if').click();
-    await page.waitForTimeout(200);
-
-    // Should have 3 nodes on canvas
-    const nodes = page.locator('.react-flow__node');
-    await expect(nodes).toHaveCount(3);
-  });
-
-  // ============================================================
-  // Flow 3: Double-click opens config tray
-  // ============================================================
-
-  test('clicking a node opens config tray for Set Device', async ({ page }) => {
-    await openEditor(page);
-
-    // Add a Set Device action node
-    await page.getByTestId('palette-node-action-set_device').click();
-    await page.waitForTimeout(300);
-
-    // Click the node to open config
-    const node = page.locator('.react-flow__node').first();
-    await node.click();
-    await page.waitForTimeout(300);
-
-    // Config panel should now be open with "Select a device..." button
-    const configPanel = page.getByTestId('config-panel');
-    await expect(configPanel).toBeVisible();
-
-    const selectDeviceBtn = page.getByTestId('select-device-button');
-    await expect(selectDeviceBtn).toBeVisible();
-    await expect(selectDeviceBtn).toContainText('Select a device');
-  });
-
-  test('opens device picker from config tray', async ({ page }) => {
-    await openEditor(page);
-
-    await page.getByTestId('palette-node-action-set_device').click();
-    await page.waitForTimeout(300);
-
-    // Double-click to open config
-    await page.locator('.react-flow__node').first().dblclick();
-    await page.waitForTimeout(300);
-
-    // Click device picker button
-    await page.getByTestId('select-device-button').click();
-    await page.waitForTimeout(500);
-
-    // AccessoryPicker dialog should appear
-    const pickerDialog = page.locator('[role="dialog"]').last();
-    await expect(pickerDialog).toBeVisible();
-  });
-
-  // ============================================================
-  // Flow 4: Palette categories and search
-  // ============================================================
-
-  test('palette shows all categories', async ({ page }) => {
-    await openEditor(page);
-
-    await expect(page.getByTestId('palette-category-trigger')).toBeVisible();
-    await expect(page.getByTestId('palette-category-action')).toBeVisible();
-    await expect(page.getByTestId('palette-category-logic')).toBeVisible();
-
-    const palette = page.getByTestId('node-palette');
-    await expect(palette).toBeVisible();
-  });
-
-  test('filters nodes when searching in palette', async ({ page }) => {
-    await openEditor(page);
-
-    const searchInput = page.getByTestId('palette-search');
-    await searchInput.fill('delay');
-    await page.waitForTimeout(200);
-
-    // Only the "Delay" node should be visible
-    const visibleNodes = page.locator('[data-testid^="palette-node-"]');
-    await expect(visibleNodes).toHaveCount(1);
-    await expect(page.getByTestId('palette-node-action-delay')).toBeVisible();
-  });
-
-  // ============================================================
-  // Flow 5: Can add nodes while config tray is open
-  // ============================================================
-
-  test('palette stays visible while config tray is open', async ({ page }) => {
-    await openEditor(page);
-
-    // Add and double-click a node
-    await page.getByTestId('palette-node-trigger-device_changed').click();
-    await page.waitForTimeout(300);
-    await page.locator('.react-flow__node').first().dblclick();
-    await page.waitForTimeout(300);
-
-    // Config tray should be open
-    await expect(page.getByTestId('config-panel')).toBeVisible();
-
-    // Palette should STILL be visible
-    await expect(page.getByTestId('node-palette')).toBeVisible();
-
-    // Can add another node while config is open
-    await page.getByTestId('palette-node-action-delay').click();
-    await page.waitForTimeout(300);
-
-    const nodes = page.locator('.react-flow__node');
-    await expect(nodes).toHaveCount(2);
-  });
-
-  // ============================================================
-  // Flow 6: Name and save automation
-  // ============================================================
-
-  test('saves an automation with a name', async ({ page }) => {
-    await openEditor(page);
-
-    const nameInput = page.getByTestId('automation-name-input');
-    await nameInput.fill('My Test Automation');
-
-    // Add a node to make it dirty
-    await page.getByTestId('palette-node-trigger-schedule').click();
-    await page.waitForTimeout(300);
-
-    const saveButton = page.getByTestId('save-button');
-    await expect(saveButton).toBeEnabled();
-    await saveButton.click();
-    await page.waitForTimeout(500);
-
-    const isStillVisible = await saveButton.isVisible().catch(() => false);
-    if (isStillVisible) {
-      await expect(saveButton).toBeDisabled();
+    const p = await openPalette(page);
+    for (const category of ['trigger', 'action', 'logic']) {
+      await expect(p.getByTestId(`palette-category-${category}`)).toBeVisible();
     }
   });
 
-  // ============================================================
-  // Flow 7: Existing Homecast automation
-  // ============================================================
-
-  test('shows existing Homecast automations in the section', async ({ page }) => {
-    await page.locator('text=Automations').first().click();
-    await page.waitForTimeout(500);
-
-    const hcCard = page.locator('text=Motion Light - Living Room');
-    await expect(hcCard).toBeVisible();
-  });
-
-  test('clicking an existing Homecast automation opens the editor', async ({ page }) => {
-    await page.locator('text=Automations').first().click();
-    await page.waitForTimeout(500);
-
-    await page.locator('text=Motion Light - Living Room').click();
-    await page.waitForTimeout(500);
-
-    const editor = page.getByTestId('automation-editor');
-    await expect(editor).toBeVisible();
-
-    const nameInput = page.getByTestId('automation-name-input');
-    await expect(nameInput).toHaveValue('Motion Light - Living Room');
-
-    const nodes = page.locator('.react-flow__node');
-    const count = await nodes.count();
-    expect(count).toBeGreaterThan(0);
-  });
-
-  // ============================================================
-  // Flow 8: Delete a node from config tray
-  // ============================================================
-
-  test('deletes a node from the config tray', async ({ page }) => {
+  test('adds a node and opens its configuration with a click', async ({ page }) => {
     await openEditor(page);
-
-    await page.getByTestId('palette-node-trigger-schedule').click();
-    await page.waitForTimeout(300);
-    await expect(page.locator('.react-flow__node')).toHaveCount(1);
-
-    // Double-click to open config
-    await page.locator('.react-flow__node').first().dblclick();
-    await page.waitForTimeout(300);
-
-    // Click the delete button in config tray
-    const deleteBtn = page.getByTestId('config-panel').locator('button.text-destructive').first();
-    await deleteBtn.click();
-    await page.waitForTimeout(300);
-
-    await expect(page.locator('.react-flow__node')).toHaveCount(0);
+    await addNode(page, 'trigger-device_changed');
+    await configureNode(page);
   });
 
-  // ============================================================
-  // Flow 9: Configure a schedule trigger
-  // ============================================================
-
-  test('configures a schedule trigger with time mode', async ({ page }) => {
+  test('adds several kinds of node', async ({ page }) => {
     await openEditor(page);
-
-    await page.getByTestId('palette-node-trigger-schedule').click();
-    await page.waitForTimeout(300);
-
-    // Double-click to open config
-    await page.locator('.react-flow__node').first().dblclick();
-    await page.waitForTimeout(300);
-
-    // Config panel should show schedule tabs
-    const configPanel = page.getByTestId('config-panel');
-    await expect(configPanel).toBeVisible();
-
-    // "Time" tab should be active by default — time input should be visible
-    const timeInput = configPanel.locator('input[type="time"]');
-    await expect(timeInput).toBeVisible();
-
-    await timeInput.fill('07:30');
-    await page.waitForTimeout(200);
-
-    // The node on canvas should update its summary
-    const nodeText = page.locator('.react-flow__node').first();
-    await expect(nodeText).toContainText('07:30');
+    for (const type of ['trigger-schedule', 'action-set_device', 'logic-if']) await addNode(page, type);
+    await expect(nodes(page)).toHaveCount(3);
   });
 
-  // ============================================================
-  // Flow 10: Configure a delay action
-  // ============================================================
-
-  test('configures a delay action node', async ({ page }) => {
+  test('opens the device picker from a Set Device node', async ({ page }) => {
     await openEditor(page);
-
-    await page.getByTestId('palette-node-action-delay').click();
-    await page.waitForTimeout(300);
-
-    // Double-click to open config
-    await page.locator('.react-flow__node').first().dblclick();
-    await page.waitForTimeout(300);
-
-    const configPanel = page.getByTestId('config-panel');
-    await expect(configPanel).toBeVisible();
-
-    // Fill in minutes
-    const minutesInput = configPanel.locator('input[type="number"]').nth(1);
-    await minutesInput.fill('5');
-    await page.waitForTimeout(200);
-
-    const node = page.locator('.react-flow__node').first();
-    await expect(node).toContainText('5m');
+    await addNode(page, 'action-set_device');
+    await configureNode(page);
+    await page.getByTestId('select-device-button').click();
+    const picker = page.getByRole('dialog', { name: 'Select Device or Group', exact: true });
+    await expect(picker).toBeVisible();
+    await picker.getByText('Ceiling Light', { exact: true }).click();
+    await expect(picker).not.toBeVisible();
+    await expect(page.getByTestId('select-device-button')).toContainText('Ceiling Light');
+    await expect(config(page)).toBeVisible();
   });
 
-  // ============================================================
-  // Flow 11: Config tray Done/Cancel
-  // ============================================================
-
-  test('config tray Done closes the tray', async ({ page }) => {
+  test('collapses and restores a palette category', async ({ page }) => {
     await openEditor(page);
-
-    await page.getByTestId('palette-node-trigger-schedule').click();
-    await page.waitForTimeout(300);
-    await page.locator('.react-flow__node').first().dblclick();
-    await page.waitForTimeout(300);
-
-    await expect(page.getByTestId('config-panel')).toBeVisible();
-
-    // Click Done
-    await page.getByTestId('config-done-button').click();
-    await page.waitForTimeout(200);
-
-    await expect(page.getByTestId('config-panel')).not.toBeVisible();
+    const p = await openPalette(page);
+    const category = p.getByTestId('palette-category-trigger');
+    const node = p.getByTestId('palette-node-trigger-schedule');
+    await expect(node).toBeVisible();
+    await category.locator('button').first().click();
+    await expect(node).toHaveCount(0);
+    await category.locator('button').first().click();
+    await expect(node).toBeVisible();
   });
 
-  // ============================================================
-  // Flow 12: Unsaved changes warning
-  // ============================================================
-
-  test('warns when closing with unsaved changes', async ({ page }) => {
+  test('can add another node while configuration is open', async ({ page }) => {
     await openEditor(page);
+    await addNode(page, 'trigger-device_changed');
+    await configureNode(page);
+    await addNode(page, 'action-delay');
+    await expect(nodes(page)).toHaveCount(2);
+  });
 
-    // Make a change
-    await page.getByTestId('palette-node-trigger-schedule').click();
-    await page.waitForTimeout(300);
+  test('saves the authored name and graph', async ({ page }) => {
+    await openEditor(page);
+    await page.getByTestId('automation-name-input').fill('My Test Automation');
+    await addNode(page, 'trigger-schedule');
+    const saved = page.waitForRequest(request => {
+      if (request.method() !== 'POST') return false;
+      try { return request.postDataJSON().operationName === 'SaveHcAutomation'; } catch { return false; }
+    });
+    await page.getByTestId('save-button').click();
+    const automation = JSON.parse((await saved).postDataJSON().variables.data);
+    expect(automation.name).toBe('My Test Automation');
+    expect(automation.triggers).toHaveLength(1);
+    await expect(page.getByTestId('automation-editor')).not.toBeVisible();
+    await expect(page.getByText('Automation saved', { exact: true })).toBeVisible();
+  });
 
-    // Click close button
+  test('opens an existing automation with its name and nodes', async ({ page }) => {
+    await openAutomations(page);
+    await page.getByText('Motion Light - Living Room', { exact: true }).click();
+    await expect(page.getByTestId('automation-name-input')).toHaveValue('Motion Light - Living Room');
+    await expect(nodes(page)).not.toHaveCount(0);
+  });
+
+  test('deletes a node from its configuration', async ({ page }) => {
+    await openEditor(page);
+    await addNode(page, 'trigger-schedule');
+    await configureNode(page);
+    await config(page).getByRole('button', { name: 'Delete node', exact: true }).click();
+    await expect(nodes(page)).toHaveCount(0);
+  });
+
+  test('configures a schedule time', async ({ page }) => {
+    await openEditor(page);
+    await addNode(page, 'trigger-schedule');
+    await configureNode(page);
+    await config(page).locator('input[type="time"]').fill('07:30');
+    await expect(nodes(page).first()).toContainText('07:30');
+  });
+
+  test('configures a delay duration', async ({ page }) => {
+    await openEditor(page);
+    await addNode(page, 'action-delay');
+    await configureNode(page);
+    await config(page).locator('input[type="number"]').first().fill('5');
+    await expect(nodes(page).first()).toContainText('5m');
+  });
+
+  test('warns before discarding unsaved changes', async ({ page }) => {
+    await openEditor(page);
+    await addNode(page, 'trigger-schedule');
     await page.getByTestId('close-editor-button').click();
-    await page.waitForTimeout(300);
-
-    const discardButton = page.getByTestId('discard-changes-button');
-    await expect(discardButton).toBeVisible();
+    await expect(page.getByTestId('discard-changes-button')).toBeVisible();
+    await page.getByTestId('discard-changes-button').click();
+    await expect(page.getByTestId('automation-editor')).not.toBeVisible();
   });
 
-  // ============================================================
-  // Flow 13: Save button disabled without name
-  // ============================================================
-
-  test('save button is disabled without a name', async ({ page }) => {
+  test('requires a nonblank name to save', async ({ page }) => {
     await openEditor(page);
-
-    await page.getByTestId('palette-node-trigger-schedule').click();
-    await page.waitForTimeout(200);
-
-    const saveButton = page.getByTestId('save-button');
-    await expect(saveButton).toBeDisabled();
-
+    await addNode(page, 'trigger-schedule');
+    await page.getByTestId('automation-name-input').fill('   ');
+    await expect(page.getByTestId('save-button')).toBeDisabled();
     await page.getByTestId('automation-name-input').fill('Test');
-    await page.waitForTimeout(100);
-
-    await expect(saveButton).toBeEnabled();
-  });
-
-  // ============================================================
-  // Flow 14: HC automation card has toggle and delete
-  // ============================================================
-
-  test('HC automation card shows enable toggle and delete button', async ({ page }) => {
-    await page.locator('text=Automations').first().click();
-    await page.waitForTimeout(500);
-
-    const card = page.locator('[data-testid^="hc-automation-"]').first();
-    await expect(card).toBeVisible();
-
-    const toggle = card.locator('[role="switch"]');
-    await expect(toggle).toBeVisible();
-
-    const deleteBtn = card.locator('button').last();
-    await expect(deleteBtn).toBeVisible();
+    await expect(page.getByTestId('save-button')).toBeEnabled();
   });
 });

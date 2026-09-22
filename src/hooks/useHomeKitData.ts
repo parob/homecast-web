@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { isRelayCapable } from '@/native/homekit-bridge';
 import { isCommunity } from '@/lib/config';
-import { ingestHomesList, setRefetch } from '@/server/home-serving';
+import { beginHomesList, isHomesListCurrent, ingestHomesList, setRefetch } from '@/server/home-serving';
 import { serverConnection, getDeviceId } from '../server/connection';
 import type { HomeKitHome, HomeKitRoom, HomeKitAccessory, HomeKitServiceGroup } from '../native/homekit-bridge';
 import { isAccessoryResponsive } from '../lib/accessoryFreshness';
@@ -60,7 +60,7 @@ interface CacheEntry<T> {
   epoch?: number;
 }
 
-type CacheListener = () => void;
+type CacheListener = (reason?: 'reset') => void;
 
 /**
  * How long a rehydrated entry may be before we refuse to paint it.
@@ -80,12 +80,17 @@ class DataCache {
   private keyListeners = new Map<string, Set<CacheListener>>();
   private staleTime = 5 * 60 * 1000; // 5 minutes (matches Apollo's behavior)
   // Track pending requests globally to deduplicate across hook instances
-  private pendingRequests = new Map<string, Promise<unknown>>();
+  private pendingRequests = new Map<string, { epoch: number; promise: Promise<unknown> }>();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   /** Did this session start with usable data on disk? Reported in boot timing. */
   private hydratedCount = 0;
-  /** Bumped to ask for a re-check of everything. See revalidateAll. */
+  /** Requests started by an ended account must never publish into a new one. */
+  private sessionGeneration = 0;
+  /** Monotonic generation for all-home or one-home revalidation. */
   private revalidateEpoch = 0;
+  private allEpoch = 0;
+  private homesEpoch = 0;
+  private homeEpochs = new Map<string, number>();
   private epochListeners = new Set<CacheListener>();
 
   constructor() {
@@ -102,8 +107,10 @@ class DataCache {
     return entry.data as T;
   }
 
-  set<T>(key: string, data: T): void {
-    this.cache.set(key, { data, timestamp: Date.now(), epoch: this.revalidateEpoch });
+  set<T>(key: string, data: T, fetched = true): void {
+    // A value broadcast confirms that value, not the cached topology's source.
+    this.cache.set(key, { data, timestamp: Date.now(),
+      epoch: fetched ? this.epochFor(key) : this.cache.get(key)?.epoch });
     this.notify(key);
     this.schedulePersist();
   }
@@ -179,6 +186,18 @@ class DataCache {
     try { localStorage.removeItem(PERSIST_KEY); } catch { /* ignore */ }
   }
 
+  resetSession(): void {
+    this.sessionGeneration++;
+    this.cache.clear();
+    this.pendingRequests.clear();
+    this.hydratedCount = 0;
+    this.clearPersisted();
+    // A reset removes account data; unlike ordinary invalidation it must not
+    // ask still-mounted views to fetch it again during sign-out.
+    const listeners = new Set([...this.keyListeners.values()].flatMap(set => [...set]));
+    listeners.forEach(listener => listener('reset'));
+  }
+
   isStale(key: string): boolean {
     const entry = this.cache.get(key);
     if (!entry) return true;
@@ -186,7 +205,7 @@ class DataCache {
   }
 
   /**
-   * Ask for every cached read to be re-checked, without dropping any of it.
+   * Re-check cached reads (optionally one home), without dropping any of them.
    *
    * Deliberately NOT invalidate(): that deletes, which empties the screen and
    * flashes a loading state, and doing it on every reconnect is the footgun
@@ -205,9 +224,21 @@ class DataCache {
    * PERSIST_MAX_AGE check on the next launch — which would cost the instant
    * paint this cache exists to provide.
    */
-  revalidateAll(): void {
+  revalidateAll(homeId?: string): void {
     this.revalidateEpoch++;
+    this.homesEpoch = this.revalidateEpoch;
+    if (homeId) this.homeEpochs.set(homeId.toUpperCase(), this.revalidateEpoch);
+    else {
+      this.allEpoch = this.revalidateEpoch;
+      this.homeEpochs.clear();
+    }
     this.epochListeners.forEach(l => l());
+  }
+
+  private epochFor(key: string): number {
+    if (key === 'homes') return this.homesEpoch;
+    const homeId = key.split(':')[1]?.toUpperCase();
+    return Math.max(this.allEpoch, this.homeEpochs.get(homeId) ?? 0);
   }
 
   /**
@@ -218,7 +249,7 @@ class DataCache {
    * update could reach it, so elapsed time says nothing about freshness.
    */
   needsRevalidate(key: string): boolean {
-    return (this.cache.get(key)?.epoch ?? -1) < this.revalidateEpoch;
+    return (this.cache.get(key)?.epoch ?? -1) < this.epochFor(key);
   }
 
   subscribeRevalidate(fn: CacheListener): () => void {
@@ -293,28 +324,40 @@ class DataCache {
   }
 
   /**
-   * Check if there's already a pending request for this key
-   */
-  hasPendingRequest(key: string): boolean {
-    return this.pendingRequests.has(key);
-  }
-
-  /**
    * Get or create a pending request. Returns existing promise if one exists,
    * otherwise creates a new one using the fetcher.
    */
   async getOrFetch<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
-    // If there's already a pending request, return it
+    const session = this.sessionGeneration;
+    const epoch = this.epochFor(key);
     const existing = this.pendingRequests.get(key);
-    if (existing) {
-      return existing as Promise<T>;
+    if (existing?.epoch === epoch) {
+      return existing.promise as Promise<T>;
     }
 
-    // Create new request and track it
-    const promise = fetcher().finally(() => {
-      this.pendingRequests.delete(key);
+    // A handover must not reuse a request to the previous source. Its late
+    // success OR failure joins the current read, never replacing current data.
+    const current = () => this.needsRevalidate(key)
+      ? this.getOrFetch(key, fetcher)
+      : Promise.resolve(this.get<T>(key)!);
+    const promise = fetcher().then(
+      result => {
+        if (session !== this.sessionGeneration) throw new Error('HomeKit cache session ended');
+        if (epoch !== this.epochFor(key)) return current();
+        // Verify and publish together. A caller storing after await would
+        // reopen a gap where the route can change before the cache write.
+        this.set(key, result);
+        return result;
+      },
+      error => {
+        if (session !== this.sessionGeneration) throw new Error('HomeKit cache session ended');
+        if (epoch !== this.epochFor(key)) return current();
+        throw error;
+      },
+    ).finally(() => {
+      if (this.pendingRequests.get(key)?.promise === promise) this.pendingRequests.delete(key);
     });
-    this.pendingRequests.set(key, promise);
+    this.pendingRequests.set(key, { epoch, promise });
     return promise;
   }
 }
@@ -490,11 +533,14 @@ function useCachedData<T>(
   });
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async (force = false, _isRetry = false) => {
     if (skip) return;
+    const generation = readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     // Reset retry state on forced refetch (e.g., cache invalidation, manual refresh)
     // But NOT on retries — let the counter accumulate so retries actually stop at MAX_RETRIES
@@ -521,12 +567,6 @@ function useCachedData<T>(
     // state until you pull to refresh".
     if (hasCachedData && !isStale && !force && !cache.needsRevalidate(cacheKey)) return;
 
-    // If there's already a pending request (from another hook instance), don't start another
-    // unless we're forcing a refetch
-    if (!force && cache.hasPendingRequest(cacheKey)) {
-      return;
-    }
-
     // Only show loading spinner and clear error on first attempt.
     // During retries, keep the error visible so the UI doesn't flash.
     if (retryCountRef.current === 0) {
@@ -538,15 +578,15 @@ function useCachedData<T>(
 
     let willRetry = false;
     try {
-      // Use getOrFetch to deduplicate requests across hook instances
-      const result = await cache.getOrFetch(cacheKey, fetcher);
-      if (mountedRef.current) {
-        cache.set(cacheKey, result);
+      // Every consumer awaits the shared promise so each can settle its own
+      // loading/error state. getOrFetch deduplicates the actual request.
+      await cache.getOrFetch(cacheKey, fetcher);
+      if (isCurrent()) {
         setError(null); // Clear error on successful retry
         retryCountRef.current = 0; // Reset on success
       }
     } catch (err) {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         // Retry on failure if we haven't exceeded max retries
         if (retryCountRef.current < MAX_RETRIES) {
@@ -554,7 +594,7 @@ function useCachedData<T>(
           willRetry = true;
           console.log(`[DataCache] Fetch failed for ${cacheKey}, scheduling retry ${retryCountRef.current}/${MAX_RETRIES}`);
           retryTimerRef.current = setTimeout(() => {
-            if (mountedRef.current) {
+            if (isCurrent()) {
               fetchData(true, true);
             }
           }, RETRY_DELAY);
@@ -565,7 +605,7 @@ function useCachedData<T>(
       // first-load failure (slow big-home, relay reconnecting) shows the
       // loading spinner instead of flashing "Unable to load…". The error only
       // surfaces once retries are exhausted (or when stale data is shown).
-      if (mountedRef.current && !willRetry) {
+      if (isCurrent() && !willRetry) {
         setLoading(false);
       }
     }
@@ -576,11 +616,19 @@ function useCachedData<T>(
   const fetchDataRef = useRef(fetchData);
   fetchDataRef.current = fetchData;
   useEffect(() => {
-    const unsubscribe = cache.subscribe(() => {
+    const unsubscribe = cache.subscribe(reason => {
       if (mountedRef.current) {
+        if (reason === 'reset') {
+          readGenerationRef.current++;
+          previousDataRef.current = { key: '', data: null };
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+          setError(null);
+          setLoading(false);
+        }
         forceUpdate(n => n + 1);
         // If cache entry was deleted (invalidated), trigger a refetch
-        if (!cache.get(cacheKey)) {
+        if (reason !== 'reset' && !cache.get(cacheKey)) {
           fetchDataRef.current(true);
         }
       }
@@ -598,23 +646,27 @@ function useCachedData<T>(
   // pending, indefinitely, until someone pulled to refresh.
   useEffect(() => {
     return cache.subscribeRevalidate(() => {
-      if (mountedRef.current) fetchDataRef.current(true);
+      if (mountedRef.current && cache.needsRevalidate(cacheKey)) fetchDataRef.current(true);
     });
-  }, []);
+  }, [cacheKey]);
 
   // Fetch on mount or when dependencies change
   useEffect(() => {
     mountedRef.current = true;
+    readGenerationRef.current++;
     retryCountRef.current = 0; // Reset retries on new fetch cycle
+    setError(null);
+    setLoading(!skip && cache.get<T>(cacheKey) === null);
     fetchData();
     return () => {
       mountedRef.current = false;
+      readGenerationRef.current++;
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
     };
-  }, [fetchData]);
+  }, [fetchData, cacheKey, skip]);
 
   // Get data from cache, falling back to previous data during invalidation/refetch
   const previousDataRef = useRef<{ key: string; data: T | null }>({ key: '', data: null });
@@ -639,21 +691,25 @@ function useCachedData<T>(
 /**
  * Hook for fetching homes
  */
-export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataResult<HomeKitHome[]> {
-  const fetcher = useCallback(async () => {
-    const result = await serverConnection.request<{ homes: HomeKitHome[] }>('homes.list');
-    const homes = result?.homes ?? [];
-    // Every homes.list answer is one of the two things that may write the
-    // serving store. Community mode has no cloud and no relay but this Mac,
-    // so the fact is seeded here as a constant — `by` this device, whose id
-    // is registered with the store as a side effect of reading it.
-    const community = isCommunity && isRelayCapable();
-    if (community) getDeviceId();
-    ingestHomesList(homes, { community });
-    return homes;
-  }, []);
+async function fetchHomes(): Promise<HomeKitHome[]> {
+  const startedAt = beginHomesList();
+  const result = await serverConnection.request<{ homes: HomeKitHome[] }>('homes.list');
+  // The cache may have joined an in-flight request across a resume. Reject
+  // that old read so the existing bounded retry asks on the current connection.
+  if (!isHomesListCurrent(startedAt)) throw new Error('Connection changed while checking homes');
+  const homes = result?.homes ?? [];
+  // Every homes.list answer is one of the two things that may write the
+  // serving store. Community mode has no cloud and no relay but this Mac,
+  // so the fact is seeded here as a constant — `by` this device, whose id
+  // is registered with the store as a side effect of reading it.
+  const community = isCommunity && isRelayCapable();
+  if (community) getDeviceId();
+  ingestHomesList(homes, { community, startedAt });
+  return homes;
+}
 
-  return useCachedData<HomeKitHome[]>('homes', fetcher, options.skip ?? false);
+export function useHomes(options: UseHomeKitDataOptions = {}): UseHomeKitDataResult<HomeKitHome[]> {
+  return useCachedData<HomeKitHome[]>('homes', fetchHomes, options.skip ?? false);
 }
 
 /**
@@ -744,6 +800,7 @@ export function useAccessoriesForHomes(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
 
   // Create stable key for home IDs
   const homeIdsKey = homeIds.slice().sort().join(',');
@@ -757,8 +814,15 @@ export function useAccessoriesForHomes(
   // observation event (motion sensors, temperatures, etc.), killing performance.
   useEffect(() => {
     const unsubs = homeIds.map(id =>
-      cache.subscribe(() => {
-        if (mountedRef.current) setCacheVersion(n => n + 1);
+      cache.subscribe(reason => {
+        if (!mountedRef.current) return;
+        if (reason === 'reset') {
+          readGenerationRef.current++;
+          retryCountRef.current = 3;
+          setLoading(false);
+          setError(null);
+        }
+        setCacheVersion(n => n + 1);
       }, `accessories:${id}`)
     );
     return () => unsubs.forEach(u => u());
@@ -767,6 +831,9 @@ export function useAccessoriesForHomes(
   // Fetch accessories for each home and store in cache
   useEffect(() => {
     mountedRef.current = true;
+    retryCountRef.current = 0;
+    const generation = ++readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     if (options.skip || homeIds.length === 0) {
       setLoading(false);
@@ -808,21 +875,14 @@ export function useAccessoriesForHomes(
           })
           .then(result => normalizeAccessories(result.accessories))
         )
-        .then(normalized => {
-          // Store in per-home cache so updates work
-          if (mountedRef.current) {
-            cache.set(`accessories:${homeId}`, normalized);
-          }
-          return normalized;
-        })
         .catch(() => [] as HomeKitAccessory[])
       )
     ).then(() => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setLoading(false);
       }
     }).catch(err => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       }
@@ -853,11 +913,7 @@ export function useAccessoriesForHomes(
           homeId,
           includeValues: true,
         }).then(result => normalizeAccessories(result?.accessories ?? []))
-      ).then(normalized => {
-        if (mountedRef.current) {
-          cache.set(`accessories:${homeId}`, normalized);
-        }
-      }).catch(() => {});
+      ).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheVersion, homeIdsKey, options.skip]);
@@ -890,20 +946,18 @@ export function useAccessoriesForHomes(
     error,
     refetch: async () => {
       // Force refetch all homes
+      const generation = readGenerationRef.current;
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
-          serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
+          cache.getOrFetch(`accessories:${homeId}`, () => serverConnection.request<{ accessories: HomeKitAccessory[] }>('accessories.list', {
             homeId,
             includeValues: true,
-          })
-          .then(result => {
-            cache.set(`accessories:${homeId}`, normalizeAccessories(result.accessories));
-          })
+          }).then(result => normalizeAccessories(result.accessories)))
           .catch(() => {})
         )
       );
-      setLoading(false);
+      if (mountedRef.current && generation === readGenerationRef.current) setLoading(false);
     },
   };
 }
@@ -940,6 +994,7 @@ export function useAllServiceGroups(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const mountedRef = useRef(true);
+  const readGenerationRef = useRef(0);
 
   const homeIdsKey = homeIds.slice().sort().join(',');
   // Re-runs the fan-out below when a revalidation is requested (socket
@@ -950,8 +1005,15 @@ export function useAllServiceGroups(
   // Subscribe to cache changes for OUR service group keys only (not all changes).
   useEffect(() => {
     const unsubs = homeIds.map(id =>
-      cache.subscribe(() => {
-        if (mountedRef.current) setCacheVersion(n => n + 1);
+      cache.subscribe(reason => {
+        if (!mountedRef.current) return;
+        if (reason === 'reset') {
+          readGenerationRef.current++;
+          retryCountRef.current = 3;
+          setLoading(false);
+          setError(null);
+        }
+        setCacheVersion(n => n + 1);
       }, `serviceGroups:${id}`)
     );
     return () => unsubs.forEach(u => u());
@@ -959,36 +1021,35 @@ export function useAllServiceGroups(
 
   useEffect(() => {
     mountedRef.current = true;
+    retryCountRef.current = 0;
+    const generation = ++readGenerationRef.current;
+    const isCurrent = () => mountedRef.current && generation === readGenerationRef.current;
 
     if (options.skip || homeIds.length === 0) {
       setLoading(false);
       return () => { mountedRef.current = false; };
     }
 
-    const allCached = homeIds.every(id => cache.get<HomeKitServiceGroup[]>(`serviceGroups:${id}`) !== null);
-    if (allCached) {
+    const toFetch = homesNeedingFetch('serviceGroups', homeIds);
+    if (toFetch.length === 0) {
       setLoading(false);
       return () => { mountedRef.current = false; };
     }
 
-    setLoading(true);
+    setLoading(homeIds.some(id => cache.get(`serviceGroups:${id}`) === null));
     setError(null);
 
     Promise.all(
-      homeIds.map(homeId =>
+      toFetch.map(homeId =>
         cache.getOrFetch(`serviceGroups:${homeId}`, () =>
           serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
             .then(result => result?.serviceGroups ?? [])
-        ).then(groups => {
-          if (mountedRef.current) {
-            cache.set(`serviceGroups:${homeId}`, groups);
-          }
-        }).catch(() => {})
+        ).catch(() => {})
       )
     ).then(() => {
-      if (mountedRef.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
     }).catch(err => {
-      if (mountedRef.current) {
+      if (isCurrent()) {
         setError(err instanceof Error ? err : new Error(String(err)));
         setLoading(false);
       }
@@ -1009,12 +1070,10 @@ export function useAllServiceGroups(
     if (uncached.length === 0 || retryCountRef.current >= 3) return;
     retryCountRef.current++;
     for (const homeId of uncached) {
-      serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
-        .then(result => {
-          if (mountedRef.current) {
-            cache.set(`serviceGroups:${homeId}`, result?.serviceGroups ?? []);
-          }
-        }).catch(() => {});
+      cache.getOrFetch(`serviceGroups:${homeId}`, () =>
+        serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
+          .then(result => result?.serviceGroups ?? []))
+        .catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheVersion, homeIdsKey, options.skip]);
@@ -1037,15 +1096,17 @@ export function useAllServiceGroups(
     loading,
     error,
     refetch: async () => {
+      const generation = readGenerationRef.current;
       setLoading(true);
       await Promise.all(
         homeIds.map(homeId =>
-          serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
-            .then(result => { cache.set(`serviceGroups:${homeId}`, result.serviceGroups); })
+          cache.getOrFetch(`serviceGroups:${homeId}`, () =>
+            serverConnection.request<{ serviceGroups: HomeKitServiceGroup[] }>('serviceGroups.list', { homeId })
+              .then(result => result?.serviceGroups ?? []))
             .catch(() => {})
         )
       );
-      setLoading(false);
+      if (mountedRef.current && generation === readGenerationRef.current) setLoading(false);
     },
   };
 }
@@ -1075,8 +1136,8 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
 }
 
 /**
- * Re-check every cached HomeKit read against the relay, keeping what is on
- * screen until an answer arrives.
+ * Re-check cached HomeKit reads, keeping what is on screen until an answer
+ * arrives. An optional homeId scopes error recovery to the affected home.
  *
  * Called when the connection becomes usable and when the app comes back from
  * being hidden — the two moments where our picture may have gone stale with
@@ -1084,8 +1145,8 @@ export function invalidateHomeKitCache(key: 'all' | (string & {}), options?: { p
  * loading state and no layout shift, and it costs the same handful of requests
  * that pulling to refresh already does.
  */
-export function revalidateHomeKitCache(): void {
-  cache.revalidateAll();
+export function revalidateHomeKitCache(homeId?: string): void {
+  cache.revalidateAll(homeId);
 }
 
 /**
@@ -1117,8 +1178,7 @@ export function getCachedListLength(key: string): number | null {
  * to sign in on this device.
  */
 export function clearPersistedHomeKitCache(): void {
-  invalidateHomeKitCache('all');
-  cache.clearPersisted();
+  cache.resetSession();
 }
 
 /**
@@ -1144,8 +1204,12 @@ export function invalidateAccessoriesForHome(homeId: string): void {
  * server message and the id the cache was keyed under.
  */
 // A NO_DEVICE for a home the serving store believes is served means the store
-// is stale. It asks for exactly this, once — see home-serving.ts noteRefused.
-setRefetch((homeId) => invalidateHomeCaches(homeId));
+// is stale. Start a real read even if no useHomes hook is currently mounted;
+// mounted hooks join the same request through the existing cache.
+setRefetch((homeId) => {
+  invalidateHomeCaches(homeId);
+  return cache.getOrFetch('homes', fetchHomes);
+});
 
 export function invalidateHomeCaches(homeId: string): void {
   cache.invalidateByPrefix('homes');
@@ -1170,7 +1234,7 @@ export function getCacheTimestamp(key: string): number | null {
  * Used by CollectionDetail which fetches service groups directly.
  */
 export function setServiceGroupsInCache(homeId: string, serviceGroups: HomeKitServiceGroup[]): void {
-  cache.set(`serviceGroups:${homeId}`, serviceGroups);
+  cache.set(`serviceGroups:${homeId}`, serviceGroups, false);
 }
 
 /**
@@ -1207,7 +1271,7 @@ function updateCharacteristicInCacheKey(
   });
 
   if (updated) {
-    cache.set(cacheKey, newAccessories);
+    cache.set(cacheKey, newAccessories, false);
   }
   return updated;
 }
@@ -1273,7 +1337,7 @@ function updateReachabilityInCacheKey(
   });
 
   if (updated) {
-    cache.set(cacheKey, newAccessories);
+    cache.set(cacheKey, newAccessories, false);
   }
   return updated;
 }

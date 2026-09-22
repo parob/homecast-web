@@ -1025,6 +1025,12 @@ export const CLEAR_NOTIFICATION_HISTORY = gql`
   }
 `;
 
+export const SET_HOME_CAMERAS_ENABLED = gql`
+  mutation SetHomeCamerasEnabled($homeId: String!, $enabled: Boolean!) {
+    setHomeCamerasEnabled(homeId: $homeId, enabled: $enabled)
+  }
+`;
+
 export const SET_HOME_MQTT_ENABLED = gql`
   mutation SetHomeMqttEnabled($homeId: String!, $enabled: Boolean!) {
     setHomeMqttEnabled(homeId: $homeId, enabled: $enabled)

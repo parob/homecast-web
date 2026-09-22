@@ -74,7 +74,7 @@ const PRESENTATION: Record<ConnectionQuality, ConnectionPresentation> = {
     dotClass: 'bg-amber-500',
     pulse: true,
     srLabel: 'Connection is not responding',
-    headline: 'Your home is not responding',
+    headline: 'The connection to Homecast is not responding',
   },
   offline: {
     label: 'Offline',

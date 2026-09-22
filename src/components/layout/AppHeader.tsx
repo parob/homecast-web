@@ -1,6 +1,8 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNativeHeader } from '@/hooks/useNativeHeader';
+import { NATIVE_HEADER_EVENT, NATIVE_HEADER_HIDDEN_CLASS, isNativeHeaderEnabled, isNativePageHeading, nativeHeaderRowCenter, nativeHeaderToastTop, type NativeHeaderRefreshKind, type NativeHeaderHome, type NativeHeaderMenuSection, type NativeHeaderNavSection, type NativeHeaderState } from '@/native/native-header';
 import { LogIn } from 'lucide-react';
 
 interface AppHeaderProps {
@@ -17,10 +19,79 @@ interface AppHeaderProps {
   isDarkBackground?: boolean;
   /** Expand to full browser width (browser-only setting) */
   fullWidth?: boolean;
+  /**
+   * What the native top chrome should show as its title, when the iOS preview
+   * is on (parob/homecast-cloud#120). Ignored everywhere else.
+   */
+  nativeTitle?: string;
+  /** The room, room group or collection being viewed; the home when absent. */
+  nativeHeading?: string;
+  /** Put `leftBadge` at the start of the row rather than with the right cluster. */
+  badgeLeads?: boolean;
+  /** Phone layout: the bar draws the large title and offers the menu button. */
+  nativeLargeTitle?: boolean;
+  /** Whether the page has a drawer for the bar's ☰ to open. */
+  nativeShowMenu?: boolean;
+  /** The connection dot's colour for that bar, as CSS hex. `null` hides it. */
+  nativeStatusColor?: string | null;
+  /** The homes the native title menu lists, in the page's order. */
+  nativeHomes?: NativeHeaderHome[];
+  /** Which of them is current. */
+  nativeCurrentHomeId?: string | null;
+  /** The native title menu picked a home. */
+  onNativeSelectHome?: (homeId: string) => void;
+  /** The ⋯ menu as data, for the native bar to present natively. */
+  nativeMenu?: NativeHeaderMenuSection[];
+  /** The native ⋯ menu picked an item. */
+  onNativeMenuAction?: (itemId: string) => void;
+  /** Whether the page is drawing light-on-dark, so the bar can match. */
+  nativeAppearance?: 'dark' | 'light';
+  /** What the native ☰ menu offers: rooms, room groups, collections. */
+  nativeNavigation?: NativeHeaderNavSection[];
+  /** The native ☰ menu picked an item. */
+  onNativeNavigate?: (itemId: string) => void;
+  /** The native pull-to-refresh fired; answer with `publishRefreshDone()`. */
+  onNativeRefresh?: (kind: NativeHeaderRefreshKind) => void;
+  /**
+   * The phone's collapsed page title, shown once the big heading has
+   * scrolled under the bar; centred in the gap between the left cluster and
+   * the controls, so it cannot reach the capsule.
+   */
+  centerTitle?: React.ReactNode;
 }
 
-export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth }: AppHeaderProps) {
+export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, leftBadge, hasBackground, isDarkBackground, fullWidth, badgeLeads, nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, onNativeSelectHome, nativeMenu, onNativeMenuAction, nativeAppearance, nativeNavigation, onNativeNavigate, onNativeRefresh, centerTitle }: AppHeaderProps) {
   const { isAuthenticated, isLoading } = useAuth();
+
+  // The native top chrome, on iOS, behind a preview flag that is off by
+  // default — so on every other platform and every build without it, this is
+  // `false` and nothing below changes.
+  //
+  // Memoised because the hook publishes on identity change, and an object
+  // literal is a new identity every render — which would post to the bridge on
+  // every keystroke anywhere in the app.
+  //
+  // The connection dot is NOT published here. `StatusBadge` owns that state and
+  // publishes it itself; `header.setState` merges, so the two never overwrite
+  // each other. `nativeStatusColor` stays as a prop for a caller that renders
+  // no `StatusBadge` and still wants a dot.
+  // The menu is rebuilt by `Dashboard` on every render (it cannot memoise —
+  // it sits below an early return), so it is keyed on its content here.
+  const nativeMenuKey = nativeMenu === undefined ? undefined : JSON.stringify(nativeMenu);
+  const nativeNavigationKey = nativeNavigation === undefined ? undefined : JSON.stringify(nativeNavigation);
+  const nativeState = useMemo(() => {
+    const state: NativeHeaderState = { title: nativeTitle ?? '', heading: nativeHeading ?? '' };
+    if (nativeLargeTitle !== undefined) state.largeTitle = nativeLargeTitle;
+    if (nativeShowMenu !== undefined) state.showMenu = nativeShowMenu;
+    if (nativeStatusColor !== undefined) state.statusColor = nativeStatusColor;
+    if (nativeHomes !== undefined) state.homes = nativeHomes;
+    if (nativeCurrentHomeId !== undefined) state.currentHomeId = nativeCurrentHomeId;
+    if (nativeMenuKey !== undefined) state.menu = JSON.parse(nativeMenuKey) as NativeHeaderMenuSection[];
+    if (nativeAppearance !== undefined) state.appearance = nativeAppearance;
+    if (nativeNavigationKey !== undefined) state.navigation = JSON.parse(nativeNavigationKey) as NativeHeaderNavSection[];
+    return state;
+  }, [nativeTitle, nativeHeading, nativeLargeTitle, nativeShowMenu, nativeStatusColor, nativeHomes, nativeCurrentHomeId, nativeMenuKey, nativeAppearance, nativeNavigationKey]);
+  const nativeHeaderActive = useNativeHeader(nativeState, { onSelectHome: onNativeSelectHome, onMenuAction: onNativeMenuAction, onNavigate: onNativeNavigate, onRefresh: onNativeRefresh });
 
   // Android: window.HomecastAndroid (JS bridge) is registered on WebView
   // creation and is therefore available at the first React render — whereas
@@ -39,15 +110,72 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
   // anything else that moves the row.
   const rowRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
+  // Whether the bar is showing a page heading above the home's name, which
+  // makes its band 18pt taller. The publish effect below runs on shell events
+  // and resize, not on render, so it reads this through a ref rather than
+  // closing over a prop it would then hold a stale copy of.
+  const nativeOnPage = isNativePageHeading(nativeHeading, nativeTitle);
+  const onNativePageRef = useRef(nativeOnPage);
+  onNativePageRef.current = nativeOnPage;
+  const titleRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
+
+  // Place the collapsed title: centred on the row, unless that would run
+  // into the controls' capsule, in which case it slides left by exactly the
+  // overlap — UIKit's rule for a bar title next to bar items. Measured on
+  // every size change of the row or the title, and whenever the title's
+  // content changes.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const title = titleRef.current;
+    if (!row || !title) return;
+    const place = () => {
+      const rowRect = row.getBoundingClientRect();
+      const width = title.offsetWidth;
+      const gutter = 16;
+      const gap = 8;
+      const capsuleLeft = rightRef.current ? rightRef.current.getBoundingClientRect().left - rowRect.left : rowRect.width - gutter;
+      const centred = rowRect.width / 2 - width / 2;
+      const rightmost = capsuleLeft - gap - width;
+      title.style.left = `${Math.max(gutter, Math.min(centred, rightmost))}px`;
+      title.style.maxWidth = `${Math.max(80, capsuleLeft - gap - gutter)}px`;
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(row);
+    observer.observe(title);
+    if (rightRef.current) observer.observe(rightRef.current);
+    return () => observer.disconnect();
+  }, [centerTitle]);
   useLayoutEffect(() => {
     const row = rowRef.current;
     const header = headerRef.current;
     if (!row || !header) return;
     const publish = () => {
+      // While the native bar has the screen this row is collapsed to nothing
+      // (`NATIVE_HEADER_HIDDEN_CLASS`), so measuring it put the toast on the
+      // header's top padding — under the status bar, or under the bar's own
+      // controls. The bar reports its insets; the line its buttons sit on
+      // follows from those.
+      if (isNativeHeaderEnabled()) {
+        document.documentElement.style.setProperty('--top-row-center', `${nativeHeaderRowCenter()}px`);
+        // ...but the toast does NOT go on that line. The bar is a
+        // UINavigationBar outside the web view, so a pill centred on its
+        // controls is painted over by them and by the bar's scrim, with no
+        // `z-index` that reaches (parob/homecast-cloud#164). It clears the
+        // band instead, starting where the page's own content does.
+        document.documentElement.style.setProperty('--toast-top', `${nativeHeaderToastTop(onNativePageRef.current)}px`);
+        return;
+      }
       const box = row.getBoundingClientRect();
       document.documentElement.style.setProperty('--top-row-center', `${box.top + box.height / 2}px`);
+      // Back to the stylesheet's rule — the pill centred on this row — which
+      // is where a toast belongs whenever the page draws the controls itself.
+      document.documentElement.style.removeProperty('--toast-top');
     };
     publish();
+    // The bar coming or going, or reporting new insets after a rotation.
+    window.addEventListener(NATIVE_HEADER_EVENT, publish);
     // The header is `fixed`, so the row moves only when the header's own box
     // changes — and that is NOT the same as the row resizing, which is all this
     // used to watch. The row is 80px tall whether or not it has been pushed down
@@ -74,17 +202,38 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
     observer.observe(header, { box: 'border-box' });
     return () => {
       observer.disconnect();
-      // Back to the stylesheet's default, which is what a page with no header
+      window.removeEventListener(NATIVE_HEADER_EVENT, publish);
+      // Back to the stylesheet's defaults, which is what a page with no header
       // — login, a share link — is positioned against.
       document.documentElement.style.removeProperty('--top-row-center');
+      document.documentElement.style.removeProperty('--toast-top');
     };
   }, []);
+  // Navigating between the home and a room changes the bar's band by the
+  // eyebrow's 18pt, and a shell that reports `base`/`eyebrow` separately does
+  // NOT re-report for it — that split exists precisely so the page can add the
+  // line itself in the same render that changes the heading. So nothing above
+  // fires, and without this the toast would keep clearing yesterday's band.
+  useLayoutEffect(() => {
+    if (!isNativeHeaderEnabled()) return;
+    document.documentElement.style.setProperty('--toast-top', `${nativeHeaderToastTop(nativeOnPage)}px`);
+  }, [nativeOnPage, nativeHeaderActive]);
 
   return (
     <header
+      data-expanded-overlay-dismiss
       ref={headerRef}
       className={cn(
-        "fixed top-0 left-0 right-0 z-[10001]",
+        "fixed left-0 right-0 z-[10001]",
+        // In a phone browser the box starts 10px down, not at the edge. iOS 26
+        // Safari paints the page into the bands behind its status bar and URL
+        // bar — the way every site scrolls under them — but only while nothing
+        // `fixed` sits in its top ~8px; one that does turns the band into a
+        // flat sampled colour with the content cut off at the viewport edge.
+        // Glass or not: the box alone is enough. 10px clears it (9 did, 6 did
+        // not, measured on the iPhone 17 Pro simulator, 2026-09-17). The app
+        // shells draw no such bands and keep the row where it was.
+        inMobileApp || isInMacApp ? "top-0" : "max-md:top-[10px] md:top-0",
         "overscroll-none pointer-events-none",
         inMobileApp && "safe-area-top safe-area-x",
         isInMacApp && "window-drag"
@@ -94,21 +243,48 @@ export function AppHeader({ children, isInMacApp, isInMobileApp, rightMenu, left
       {/* In the Mac app the 33px above this row already clears the traffic
           lights, so a full 80px row on top of it pushed the whole page down.
           56px is exactly the bubble's height — nothing to spare, nothing wasted. */}
+      {/* Hidden, not unmounted, while the native bar has the screen. The four
+          triggers stay in the DOM and keep their layout box so a native tap can
+          click the real one and Radix can anchor to it — see
+          `NATIVE_HEADER_HIDDEN_CLASS`. It also keeps `--top-row-center` (below)
+          resolving to the line the native bar is drawn on, which is where the
+          toaster wants to sit anyway. */}
       <div ref={rowRef} className={cn("relative mx-auto w-full px-4 flex items-center justify-between",
-        isInMacApp ? "h-[max(3.5rem,56px)]" : "h-[80px]",
-        !isInMacApp && !fullWidth && "max-w-7xl")}>
+        // A phone browser's row hugs the controls: with the box already 10px
+        // down (above) and Safari's status bar outside the viewport, the 80px
+        // row put 22px of air over the buttons and the page title a third of
+        // the way down the screen. A 40px row is the 40px controls' own
+        // height, so they sit flush at the box's top: 10pt under the status
+        // bar, centre at 30pt. UIKit's compact bar centres the native app's at
+        // 22pt; this is as close as Safari allows — it judges the painted
+        // extent, not the box, so a row pulled up into its top ~8px (tried at
+        // 7 and 12px) brings the flat bands back.
+        isInMacApp ? "h-[max(3.5rem,56px)]" : inMobileApp ? "h-[80px]" : "max-md:h-10 md:h-[80px]",
+        !isInMacApp && !fullWidth && "max-w-7xl",
+        nativeHeaderActive && NATIVE_HEADER_HIDDEN_CLASS)}>
         {/* Left content. The slab that used to sit behind it over a light
             background is gone with the buttons' own circles — see
             `lib/header-chrome.ts`; legibility is the glyph's own drop shadow
             now, which costs the header no box at all. */}
-        <div className="relative flex items-center h-[max(3.5rem,56px)] px-[max(0.5rem,8px)] pointer-events-auto">
+        <div className="relative flex items-center gap-2 h-[max(3.5rem,56px)] px-0 md:px-[max(0.5rem,8px)] pointer-events-auto">
+          {badgeLeads && leftBadge}
           {children}
         </div>
+        {/* Centred on the ROW, like a UIKit bar title — and, like one, slid
+            left by just enough when a long name would otherwise touch the
+            controls' capsule (see the layout effect above). Centring it in
+            the gap beside the capsule put it visibly left of the middle;
+            strict centring capped it at ~140px and cut "Clitheroe Road". */}
+        {centerTitle && (
+          <div ref={titleRef} className="absolute top-1/2 -translate-y-1/2 pointer-events-auto" style={{ left: 16 }}>
+            {centerTitle}
+          </div>
+        )}
 
         {/* User login state bubble */}
         {!isInMacApp && (
-          <div className="relative flex items-center gap-2 pl-[max(1.25rem,20px)] pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
-            {leftBadge}
+          <div ref={rightRef} className="relative flex items-center gap-2 pl-0 pr-0 md:pl-[max(1.25rem,20px)] md:pr-[17px] h-[max(3.5rem,56px)] pointer-events-auto">
+            {!badgeLeads && leftBadge}
             {!isAuthenticated && !isLoading && (
               <span className={cn(
                 "flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-colors duration-300 no-drag",

@@ -18,6 +18,7 @@ export type HomeSettingsSectionId =
   | 'notifications'
   | 'reliability'
   | 'analytics'
+  | 'cameras'
   | 'mqtt';
 
 /** Render order, top to bottom. Display preferences first, plumbing last. */
@@ -26,6 +27,7 @@ export const HOME_SETTINGS_SECTION_ORDER: HomeSettingsSectionId[] = [
   'notifications',
   'reliability',
   'analytics',
+  'cameras',
   'mqtt',
 ];
 
@@ -46,6 +48,10 @@ export const HOME_SETTINGS_SECTION_META: Record<HomeSettingsSectionId, { label: 
     label: 'Analytics',
     description: 'Record accessory history for charts and exports',
   },
+  cameras: {
+    label: 'Cameras',
+    description: 'Stills and live view from the Cloud Relay',
+  },
   mqtt: {
     label: 'MQTT',
     description: 'Publish this home to an MQTT broker',
@@ -58,6 +64,12 @@ export interface HomeSettingsSectionFlags {
   developerMode: boolean;
   /** `isMQTTAvailable()` — whether this build has the native MQTT bridge. */
   mqttBridgeAvailable: boolean;
+  /**
+   * `home.isCloudManaged` — this home is served by a relay Homecast operates.
+   * Cameras are captured by that relay's engine window and by nothing else,
+   * so a home on the customer's own Mac has nothing to configure.
+   */
+  cloudManaged: boolean;
 }
 
 /**
@@ -69,7 +81,7 @@ export interface HomeSettingsSectionFlags {
  * merely untidy; as a navigable row it would be a dead end, so it is hidden.
  */
 export function visibleHomeSettingsSections(flags: HomeSettingsSectionFlags): HomeSettingsSectionId[] {
-  const { isCommunity, developerMode, mqttBridgeAvailable } = flags;
+  const { isCommunity, developerMode, mqttBridgeAvailable, cloudManaged } = flags;
 
   return HOME_SETTINGS_SECTION_ORDER.filter(id => {
     switch (id) {
@@ -79,6 +91,10 @@ export function visibleHomeSettingsSections(flags: HomeSettingsSectionFlags): Ho
       case 'reliability':
         // Uptime samples are recorded server-side, and CE has no server.
         return !isCommunity;
+      case 'cameras':
+        // Captured by the Cloud Relay's engine window. A self-hosted relay
+        // never opens one, and CE has no cloud at all.
+        return !isCommunity && cloudManaged;
       case 'mqtt':
         return developerMode && (!isCommunity || mqttBridgeAvailable);
       default:

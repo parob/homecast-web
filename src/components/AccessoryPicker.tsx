@@ -41,6 +41,7 @@ import { getPrimaryServiceType } from '@/components/widgets';
 import { getDisplayName } from '@/lib/graphql/types';
 import type { HomeKitAccessory, HomeKitHome, HomeKitServiceGroup } from '@/lib/graphql/types';
 import { createFuse, fuseSearch } from '@/lib/fuzzySearch';
+import { TEXT_SCALE_BASE_PX } from '@/lib/text-scale';
 
 // Both live in components/widgets/serviceIcons.ts now — the tab bar needs them
 // too, and it should not have to import this list to get them.
@@ -76,7 +77,31 @@ function getAccessoryCategory(accessory: HomeKitAccessory): string {
 
 // --- Memoized row components ---
 
-const ROW_HEIGHT = 44;
+/**
+ * The height of one row, and it has to be the row's *real* height.
+ *
+ * The list is virtualized: every row is absolutely positioned at a multiple of
+ * this number. A row taller than its slot is therefore drawn over the top of
+ * the row below it — invisible until something paints a background (hover, or
+ * a tap highlight), at which point it clips the previous row's subtitle
+ * mid-glyph. That was parob/homecast-cloud#121.
+ *
+ * So it is derived from the row's own box rather than written out as a pixel
+ * count. Each term below is a class on {@link AccessoryRow} / {@link
+ * ServiceGroupRow}; change one and change the term with it.
+ *
+ * It is measured off {@link TEXT_SCALE_BASE_PX}, not a literal 60, because the
+ * root font size is the thing every rem here resolves against and it has moved
+ * before — the stale 44 was a 16px-root number, and wrong even then (the row
+ * was 48px). `--text-scale` deliberately does not enter into it: it multiplies
+ * font sizes only, and these line boxes are fixed rem (see lib/text-scale.ts).
+ */
+const ROW_PADDING_Y_REM = 0.375; // py-1.5, top and bottom
+const ROW_TITLE_LINE_REM = 1.25; // text-sm line box
+const ROW_SUBTITLE_LINE_REM = 1; // text-xs line box
+export const ROW_HEIGHT_REM =
+  ROW_PADDING_Y_REM * 2 + ROW_TITLE_LINE_REM + ROW_SUBTITLE_LINE_REM;
+const ROW_HEIGHT = ROW_HEIGHT_REM * TEXT_SCALE_BASE_PX;
 
 const AccessoryRow = memo(function AccessoryRow({
   accessory,

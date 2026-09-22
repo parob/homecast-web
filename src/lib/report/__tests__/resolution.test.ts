@@ -1,0 +1,336 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+
+import {
+  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus,
+  fixStatusTone, mergeLabel,
+  mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, offersResolution,
+  planStatus, sendFeedback, shortPr, type MergePlanEntry, type Resolution,
+} from '../resolution';
+
+/**
+ * Which rows offer a fix, and how the fetch degrades.
+ *
+ * The degrade case is the one that matters: the web deploys minutes before
+ * the server does, so for a while every tap lands on a server without the
+ * endpoint. That has to read as "nothing recorded", never as a failure.
+ */
+
+vi.mock('@/lib/config', () => ({ config: { apiUrl: 'https://api.test' } }));
+
+const row = (labels: string[], state = 'open') => ({ labels, state });
+
+describe('offersResolution', () => {
+  it('offers one while the routine has a PR open for it', () => {
+    expect(offersResolution(row(['bug', 'claude-pr-open']))).toBe(true);
+  });
+
+  it('offers one on a closed report, whose label has usually come off by then', () => {
+    expect(offersResolution(row(['bug', 'claude-attempted'], 'closed'))).toBe(true);
+  });
+
+  it('offers nothing on an open report nobody has a fix for', () => {
+    expect(offersResolution(row(['bug', 'claude-attempted']))).toBe(false);
+    expect(offersResolution(row([]))).toBe(false);
+  });
+});
+
+describe('fixStatus — the word on a row', () => {
+  it('reads Fix proposed while a PR is open, and Fixed once closed', () => {
+    expect(fixStatus(row(['bug', 'claude-pr-open']))).toBe('Fix proposed');
+    expect(fixStatus(row(['bug', 'claude-pr-open'], 'closed'))).toBe('Fixed');
+    expect(fixStatus(row(['bug', 'claude-attempted'], 'closed'))).toBe('Fixed');
+  });
+
+  it('names the state a row is actually in, rather than going quiet', () => {
+    expect(fixStatus(row(['bug', 'claude-attempted']))).toBe('Investigating');
+    expect(fixStatus(row(['bug', 'blocked-upstream']))).toBe('Blocked upstream');
+    expect(fixStatus(row(['bug', 'needs-human']))).toBe('Needs review');
+  });
+
+  /**
+   * homecast-cloud#181. These two rows are the whole issue: on 21 Sep the
+   * first was worked in depth and the second was never opened by anything,
+   * and the list rendered them identically because both answered null.
+   */
+  it('tells an untouched report apart from one being worked on', () => {
+    const investigating = row(['bug', 'issue-reporter', 'claude-attempted']);
+    const untouched = row(['bug', 'issue-reporter', 'app-homecast', 'fp-cefd17ceb60c0a9e']);
+
+    expect(fixStatus(untouched)).toBe('Not picked up yet');
+    expect(fixStatus(investigating)).not.toBe(fixStatus(untouched));
+  });
+
+  it('says so for a bare report, rather than leaving the row blank', () => {
+    expect(fixStatus(row([]))).toBe('Not picked up yet');
+  });
+
+  /**
+   * Order, not membership: a report carries several of these at once and the
+   * most-resolved one is the one worth reading. #163 held attempted AND
+   * pr-open together for three days.
+   */
+  it('reads the most resolved label a row carries', () => {
+    expect(fixStatus(row(['claude-attempted', 'claude-pr-open']))).toBe('Fix proposed');
+    expect(fixStatus(row(['claude-attempted', 'blocked-upstream']))).toBe('Blocked upstream');
+    expect(fixStatus(row(['claude-attempted', 'needs-human', 'claude-pr-open'], 'closed')))
+      .toBe('Fixed');
+  });
+});
+
+describe('fixStatusTone — how loudly each word reads', () => {
+  it('mutes the absence of news and greens a fix', () => {
+    expect(fixStatusTone('Not picked up yet')).toBe('idle');
+    expect(fixStatusTone('Fixed')).toBe('done');
+  });
+
+  it('groups the two that mean someone is on it, and the two that mean waiting', () => {
+    expect(fixStatusTone('Investigating')).toBe('active');
+    expect(fixStatusTone('Fix proposed')).toBe('active');
+    expect(fixStatusTone('Blocked upstream')).toBe('waiting');
+    expect(fixStatusTone('Needs review')).toBe('waiting');
+  });
+});
+
+describe('conflictsIn — the one block a tap can act on', () => {
+  const entry = (over: Partial<MergePlanEntry>): MergePlanEntry => ({
+    repo: 'parob/homecast-web', number: 214, url: 'https://github.com/parob/homecast-web/pull/214',
+    title: null, state: 'open', merged: false, mergeSha: null, mergeable: true, checks: 'success',
+    action: 'merge', reason: null, ...over,
+  });
+
+  it('picks out only the conflicts, not other blocks', () => {
+    const plan = [
+      entry({ action: 'blocked', reason: 'merge conflict' }),
+      entry({ number: 215, action: 'blocked', reason: 'checks failing' }),
+      entry({ number: 216, action: 'after', reason: 'after homecast-cloud#170' }),
+    ];
+    expect(conflictsIn(plan).map((e) => e.number)).toEqual([214]);
+  });
+});
+
+describe('nudgeConflicts', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('posts to the nudge endpoint and hands back the plan with the ask', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      configured: true, servingSha: 'x', plan: [],
+      nudge: { asked: true, conflicts: ['https://github.com/parob/homecast-web/pull/214'], on: 'https://github.com/parob/homecast-cloud/pull/170', comment: 'https://github.com/parob/homecast-cloud/pull/170#issuecomment-1' },
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const state = await nudgeConflicts(169, 'tok');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/169/resolution/nudge',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(state.nudge?.asked).toBe(true);
+  });
+
+  it('says so when merging is not set up', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 409 })));
+    await expect(nudgeConflicts(169, 'tok')).rejects.toThrow("Merging isn't set up on this server.");
+  });
+});
+
+describe('shortPr', () => {
+  it('reads as repo#number', () => {
+    expect(shortPr({ repo: 'parob/homecast-web', number: 208, url: '' })).toBe('homecast-web#208');
+  });
+});
+
+const planEntry = (repo: string, number: number, over: Partial<MergePlanEntry>): MergePlanEntry => ({
+  repo, number, url: `https://github.com/${repo}/pull/${number}`, title: null, state: 'open',
+  merged: false, mergeSha: null, mergeable: true, checks: 'success', action: 'merge', reason: null, ...over,
+});
+
+describe('the merge plan, read for the button', () => {
+  const cloud = planEntry('parob/homecast-cloud', 170, {});
+  const web = planEntry('parob/homecast-web', 214, { action: 'wait_deploy', reason: 'homecast-cloud#170 is merged but not serving yet' });
+
+  it('names the one PR a tap merges, counts them when there are more, and is null with nothing to merge', () => {
+    expect(mergeLabel([cloud, web])).toBe('Merge homecast-cloud#170');
+    expect(mergeLabel([cloud, { ...web, action: 'merge' }])).toBe('Merge 2 pull requests');
+    expect(mergeLabel([{ ...cloud, action: 'merged', merged: true }, web])).toBeNull();
+    expect(mergeLabel([])).toBeNull();
+    expect(mergesNow([cloud, web]).map((e) => e.number)).toEqual([170]);
+  });
+
+  it('knows whether anything is still to do', () => {
+    expect(mergeOutstanding([{ ...cloud, action: 'merged', merged: true }, web])).toBe(true);
+    expect(mergeOutstanding([{ ...cloud, action: 'merged', merged: true }, { ...web, action: 'merged', merged: true }])).toBe(false);
+  });
+
+  it('puts each place in the plan into a word or two', () => {
+    expect(planStatus(cloud)).toBe('Ready');
+    expect(planStatus(web)).toBe('Waits for deploy');
+    expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: true })).toBe('Merged · serving');
+    expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: false })).toBe('Merged · deploying');
+    expect(planStatus({ ...web, action: 'merged', merged: true })).toBe('Merged');
+    expect(planStatus({ ...web, action: 'after', reason: 'after homecast-web#214' })).toBe('after homecast-web#214');
+    expect(planStatus({ ...web, action: 'blocked', reason: 'merge conflict' })).toBe('merge conflict');
+  });
+});
+
+describe('fetchResolution', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const answer = (status: number, body?: unknown) => {
+    const fetchMock = vi.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('asks the server for that issue, with the token', async () => {
+    const resolution: Resolution = {
+      issueNumber: 167, title: 't', state: 'open', url: null, labels: [], summary: null,
+      reach: null, primary: null, prs: [], evidence: [], reported: [],
+    };
+    const fetchMock = answer(200, resolution);
+
+    await expect(fetchResolution(167, 'tok')).resolves.toEqual(resolution);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/167/resolution',
+      { headers: { authorization: 'Bearer tok' } },
+    );
+  });
+
+  it('is null, not an error, on a server that has no such endpoint or issue', async () => {
+    answer(404);
+    await expect(fetchResolution(167, 'tok')).resolves.toBeNull();
+  });
+
+  it('says why when the account is not allowed', async () => {
+    answer(403);
+    await expect(fetchResolution(167, 'tok')).rejects.toThrow('admin');
+  });
+
+  it('fails plainly on anything else', async () => {
+    answer(502);
+    await expect(fetchResolution(167, 'tok')).rejects.toThrow('Could not load');
+  });
+});
+
+describe('mergeResolution', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const answer = (status: number, body?: unknown) => {
+    const fetchMock = vi.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('posts to the merge endpoint with the token and returns the plan the server answers with', async () => {
+    const state = { configured: true, servingSha: '4ae7930', merged: [], plan: [] };
+    const fetchMock = answer(200, state);
+    await expect(mergeResolution(169, 'tok')).resolves.toEqual(state);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/169/resolution/merge',
+      { method: 'POST', headers: { authorization: 'Bearer tok' } },
+    );
+  });
+
+  it('says merging is not set up on a 409, and relays the server\'s reason otherwise', async () => {
+    answer(409, { error: 'Merging is not set up on this server.' });
+    await expect(mergeResolution(169, 'tok')).rejects.toThrow("isn't set up");
+    answer(502, { error: 'Could not reach GitHub to merge.' });
+    await expect(mergeResolution(169, 'tok')).rejects.toThrow('Could not reach GitHub');
+    answer(403);
+    await expect(mergeResolution(169, 'tok')).rejects.toThrow('admin');
+  });
+});
+
+/**
+ * Where feedback can go, and where one comment would land.
+ *
+ * Two rules, both of which the view reads before it offers anything. The pull
+ * request is only a door while one is open to put a comment on — the server
+ * refuses it otherwise rather than quietly retargeting the words. And exactly
+ * one pull request receives it: the primary while it is open, else the first
+ * open one, which is the same choice the server makes.
+ */
+describe('where feedback can go', () => {
+  const cloud = planEntry('parob/homecast-cloud', 180, {});
+  const web = planEntry('parob/homecast-web', 217, {});
+
+  const withPlan = (plan: MergePlanEntry[], over: Partial<Resolution> = {}): Resolution => ({
+    issueNumber: 179, title: null, state: 'open', url: null, labels: [], summary: null, reach: null,
+    primary: cloud, prs: [cloud, web], evidence: [], reported: [],
+    merge: { configured: true, servingSha: 'abc', plan },
+    feedback: { configured: true },
+    ...over,
+  });
+
+  it('offers nothing at all on a server that predates feedback, or one with it unset', () => {
+    const { feedback: _f, ...older } = withPlan([cloud, web]);
+    expect(feedbackTargets(older as Resolution)).toEqual([]);
+    expect(feedbackTargets(withPlan([cloud, web], { feedback: { configured: false } }))).toEqual([]);
+  });
+
+  it('offers the pull request only while one is open', () => {
+    expect(feedbackTargets(withPlan([cloud, web]))).toEqual(['pr', 'issue']);
+    expect(feedbackTargets(withPlan([
+      { ...cloud, state: 'closed', merged: true }, { ...web, state: 'closed', merged: true },
+    ]))).toEqual(['issue']);
+    expect(feedbackTargets(withPlan([]))).toEqual(['issue']);
+  });
+
+  it('lands the comment on the primary, and falls to the first open one when it is closed', () => {
+    expect(feedbackPr(withPlan([cloud, web]))?.number).toBe(180);
+    expect(feedbackPr(withPlan([{ ...cloud, state: 'closed', merged: true }, web]))?.number).toBe(217);
+    expect(feedbackPr(withPlan([]))).toBeNull();
+  });
+
+  it('names the ones that will not be commented on, so the view can say so', () => {
+    expect(feedbackSiblings(withPlan([cloud, web])).map((e) => e.number)).toEqual([217]);
+    expect(feedbackSiblings(withPlan([cloud]))).toEqual([]);
+    expect(feedbackSiblings(withPlan([]))).toEqual([]);
+  });
+});
+
+describe('sendFeedback', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  const answer = (status: number, body?: unknown) => {
+    const fetchMock = vi.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('posts the words and the target, and returns where they landed', async () => {
+    const result = {
+      posted: true, target: 'pr', on: 'https://github.com/parob/homecast-cloud/pull/180',
+      comment: 'https://github.com/parob/homecast-cloud/pull/180#issuecomment-1',
+      named: ['https://github.com/parob/homecast-web/pull/217'],
+    };
+    const fetchMock = answer(200, result);
+    await expect(sendFeedback(179, 'tok', 'pr', 'Still wrong.')).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/rest/issue-report/179/resolution/feedback',
+      {
+        method: 'POST',
+        headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
+        body: JSON.stringify({ target: 'pr', body: 'Still wrong.' }),
+      },
+    );
+  });
+
+  it("relays the server's own reason, which is how a token missing issues write shows up", async () => {
+    answer(502, { error: 'GitHub refused the comment (403): Resource not accessible by integration' });
+    await expect(sendFeedback(179, 'tok', 'issue', 'hi')).rejects.toThrow('Resource not accessible');
+    answer(409, { error: 'No open pull request to comment on — send it to the issue instead.' });
+    await expect(sendFeedback(179, 'tok', 'pr', 'hi')).rejects.toThrow('send it to the issue');
+    answer(403);
+    await expect(sendFeedback(179, 'tok', 'pr', 'hi')).rejects.toThrow('admin');
+  });
+});

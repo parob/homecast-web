@@ -73,6 +73,58 @@ describe('revalidating when the connection comes up', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
+  it('scopes missing-reference recovery to one home, tolerating UUID case', async () => {
+    request.mockImplementation(async (_action, p) => ({ accessories: [{ id: p.homeId, name: 'Current' }] }));
+    const { useAccessoriesForHomes, useAccessories, revalidateHomeKitCache } = await freshModule();
+    const { result } = renderHook(() => {
+      useAccessories('H2');
+      return useAccessoriesForHomes(['H1', 'H2']);
+    });
+    await waitFor(() => expect(result.current.data).toHaveLength(2));
+    request.mockClear();
+    await act(async () => { revalidateHomeKitCache('h1'); });
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    expect(request.mock.calls[0][1].homeId).toBe('H1');
+  });
+
+  it.each(['resolve', 'reject'])('ignores an old-source request that later %ss', async outcome => {
+    let finishOld: (value: unknown) => void = () => {};
+    request.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      finishOld = outcome === 'resolve' ? resolve : reject;
+    }));
+    const { useAccessoriesForHomes, revalidateHomeKitCache } = await freshModule();
+    const { result } = renderHook(() => useAccessoriesForHomes(['H1']));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+
+    request.mockResolvedValue({ accessories: [{ id: 'RELAY-ID', name: 'Current' }] });
+    await act(async () => { revalidateHomeKitCache(); });
+    await waitFor(() => expect(result.current.data?.[0]?.id).toBe('RELAY-ID'));
+    await act(async () => {
+      finishOld(outcome === 'resolve'
+        ? { accessories: [{ id: 'LOCAL-ID', name: 'Obsolete' }] }
+        : new Error('Old source disconnected'));
+    });
+    expect(result.current.data?.[0]?.id).toBe('RELAY-ID');
+    expect(result.current.error).toBeNull();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('revalidates service groups while keeping the previous grid visible', async () => {
+    request.mockResolvedValue({ serviceGroups: [{ id: 'LOCAL-GROUP', name: 'Lights' }] });
+    const { useAllServiceGroups, revalidateHomeKitCache } = await freshModule();
+    const { result } = renderHook(() => useAllServiceGroups(['H1']));
+    await waitFor(() => expect(result.current.data?.[0]?.id).toBe('LOCAL-GROUP'));
+    let finish: (value: unknown) => void = () => {};
+    request.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const previousCalls = request.mock.calls.length;
+    await act(async () => { revalidateHomeKitCache(); });
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(previousCalls + 1));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data?.[0]?.id).toBe('LOCAL-GROUP');
+    await act(async () => { finish({ serviceGroups: [{ id: 'RELAY-GROUP', name: 'Lights' }] }); });
+    expect(result.current.data?.[0]?.id).toBe('RELAY-GROUP');
+  });
+
   // The dashboard renders accessories through useAccessoriesForHomes, NOT
   // useCachedData — a separate, hand-rolled fan-out. It asked only "is anything
   // missing", which hydration always answers with "no", so after a launch it

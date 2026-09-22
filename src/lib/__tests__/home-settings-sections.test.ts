@@ -17,6 +17,7 @@ const CLOUD: HomeSettingsSectionFlags = {
   isCommunity: false,
   developerMode: false,
   mqttBridgeAvailable: false,
+  cloudManaged: false,
 };
 
 const flags = (overrides: Partial<HomeSettingsSectionFlags> = {}): HomeSettingsSectionFlags => ({
@@ -32,6 +33,13 @@ describe('visibleHomeSettingsSections', () => {
       'reliability',
       'analytics',
     ]);
+  });
+
+  it('shows Cameras only for a cloud-managed home — the engine window exists on no other relay', () => {
+    expect(visibleHomeSettingsSections(flags({ cloudManaged: true }))).toContain('cameras');
+    // The customer's own Mac, whether it is the primary or a standby.
+    expect(visibleHomeSettingsSections(flags({ cloudManaged: false }))).not.toContain('cameras');
+    expect(visibleHomeSettingsSections(flags({ isCommunity: true, cloudManaged: true }))).not.toContain('cameras');
   });
 
   it('hides Notifications and Reliability in Community mode — neither has a backend', () => {

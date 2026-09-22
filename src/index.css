@@ -8,6 +8,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Header navigation remains reachable over an expanded widget, but below
+   dialogs (10050). Activating it dismisses the widget without eating the menu
+   click. Only the marked header/title is raised, never the background tiles. */
+body:has([data-expanded-overlay="open"]) [data-expanded-overlay-dismiss] {
+  z-index: 10040;
+}
+body:has([data-expanded-overlay="open"]) button[data-expanded-overlay-dismiss] {
+  position: relative;
+}
+
 
 @keyframes wiggle {
   0% { transform: rotate(calc(-0.25deg - var(--wiggle-offset, 0deg))); }
@@ -382,6 +392,12 @@ All colors MUST be HSL.
 :root {
   --toast-pill-height: 40px;
   --top-row-center: calc(16px + (var(--toast-pill-height) / 2) + var(--safe-area-top) + var(--mac-app-inset, 0px));
+  /* The toaster's own top edge. Normally it follows from the line above —
+     the pill centred on the row of controls. AppHeader overrides it outright
+     while the iOS native bar is up, because there the toast cannot sit on
+     that line at all: the bar is a UINavigationBar outside the web view and
+     paints over anything the page puts there (parob/homecast-cloud#164). */
+  --toast-top: calc(var(--top-row-center) - (var(--toast-pill-height) / 2));
 }
 
 .safe-area-top {
@@ -468,6 +484,125 @@ All colors MUST be HSL.
   width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
   height: calc(100vh + var(--safe-area-top) + var(--safe-area-bottom));
   height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom));
+}
+
+/* The same box, for a wallpaper that has to reach into iOS 26 Safari's bar
+   bands. Safari paints the document into the bands behind its status bar
+   and URL bar but clips every `position: fixed` layer to the viewport, so a
+   fixed wallpaper stops dead at the viewport edge and the band shows the
+   canvas colour. A `position: sticky` layer is document content — painted
+   into the bands like any tile — yet is placed by the scrolling thread like
+   a fixed one, so it never lags a scroll. Hence: a zero-height sticky
+   wrapper (`.sticky-wallpaper`) at the very start of the scroller, and this
+   box absolutely positioned inside it, extended past the viewport by
+   `--band-reach-top` / `--band-reach-bottom` so the bands are covered
+   through the URL bar's collapse. Measured on the iPhone 17 Pro simulator,
+   iOS 26.4, 2026-09-17: fills both bands, stays put across a fling. */
+.sticky-wallpaper {
+  position: sticky;
+  /* Where it sticks — the same offset its normal position has (see
+     `--band-gap` in Dashboard), so the first 10px of scroll do not move it. */
+  top: var(--band-gap, 0px);
+  height: 0;
+  pointer-events: none;
+  /* Hidden itself, every child visible again below. iOS 26 Safari colours
+     each of its bars from the first fixed or sticky ancestor of whatever
+     lies 8px inside that edge of the viewport (WebKit's
+     LocalFrameView::fixedContainerEdges): a colour read from its style, or
+     failing that one sampled once and then kept for as long as the same
+     element is there. This wrapper was that ancestor at both edges, so both
+     bars were flat fills — the wallpaper's tints when they were right, a
+     placeholder's when the first paint beat the image, the old value after
+     any change — and the page never showed through. A hidden container with
+     pointer-events: none is one WebKit deliberately looks past (its
+     color-sampling-ignores-transparent-pointer-events-none-container test),
+     the hit test is retried honouring pointer-events, nothing fixed or sticky
+     is left under the point, and with no container Safari draws its glass
+     over the page itself, so the tiles run under the clock and under the
+     URL bar. What shows behind them there is the DOCUMENT's own paint — the
+     tiles and the body/canvas colours from useCanvasTint — never this
+     layer: composited fixed and sticky layers are not drawn past the
+     viewport's edges, on any iOS 26 (measured, 26.4 and 26.5). Measured on
+     the iPhone 17 Pro simulator, 2026-09-18. */
+  visibility: hidden;
+}
+.sticky-wallpaper > * {
+  visibility: visible;
+}
+
+.sticky-full-screen {
+  position: absolute;
+  top: calc((var(--safe-area-top) + var(--band-reach-top, 0px)) * -1);
+  left: calc(var(--safe-area-left) * -1);
+  width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
+  height: calc(100vh + var(--safe-area-top) + var(--safe-area-bottom) + var(--band-reach-top, 0px) + var(--band-reach-bottom, 0px));
+  height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom) + var(--band-reach-top, 0px) + var(--band-reach-bottom, 0px));
+  /* The box ends somewhere above the screen; should that edge ever come into
+     view (a Safari whose bar is at the top, a pull) it must not arrive as a
+     hard line against the canvas. The top few px fade out, into the canvas —
+     which is the wallpaper's own sampled edge colour (useCanvasTint), so
+     into a near-match. Only the top: the bottom edge is under the URL bar's
+     glass and never shows. Applied to every layer in the box — the solid
+     backdrop as well as the image — because a line would be the pair of them
+     ending together. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--band-fade-top, 0px));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--band-fade-top, 0px));
+}
+
+/* The wallpaper's two edges, in the page's own background colour. iOS 26
+   Safari shows the document through its glass bars and the canvas past the
+   page's ends, and this layer is in neither, so whatever the wallpaper does
+   at its edges it meets the bars in the canvas colour; these two scrims let
+   it arrive there softly instead of being cut. `--canvas-tint` is the colour
+   useCanvasTint samples from the wallpaper's visible top rows (a plain rgb),
+   the same colour the canvas behind everything is painted. Plain paint, no
+   backdrop. Positioned like the box they sit in (`.sticky-full-screen`), but
+   only as tall as their gradients.
+
+   Top: solid from the very top of the box down through the status bar band,
+   then falling away over `--top-scrim-run` into the top of the screen. */
+.sticky-top-scrim {
+  position: absolute;
+  top: calc((var(--safe-area-top) + var(--band-reach-top, 0px)) * -1);
+  left: calc(var(--safe-area-left) * -1);
+  width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
+  height: calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px));
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--canvas-tint, transparent) 0,
+    var(--canvas-tint, transparent) var(--band-reach-top, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 70%, transparent) calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px) * 0.3),
+    color-mix(in srgb, var(--canvas-tint, transparent) 25%, transparent) calc(var(--band-reach-top, 0px) + var(--top-scrim-run, 90px) * 0.7),
+    transparent 100%
+  );
+}
+/* Bottom: the mirror image, anchored to the viewport's bottom edge — the
+   SHORTEST viewport's (`svh`, the URL bar expanded), so the wallpaper has
+   reached the canvas colour by the time it meets the bar whatever state the
+   bar is in; with the bar collapsed the last 40px above it are simply the
+   canvas colour a little early. Solid from there down through the box's
+   reach under the bar; above it the fade runs `--bottom-scrim-run` up into
+   the screen, and it is all but solid by 85% of that so the rows at the very
+   edge do not read as a shade lighter than the band. A wallpaper's own
+   bottom colour is usually the one furthest from its top, so this run is
+   the longer of the two. The wrapper sticks `--band-gap` down, hence the
+   subtraction. */
+.sticky-bottom-scrim {
+  position: absolute;
+  top: calc(100svh - var(--band-gap, 0px) - var(--bottom-scrim-run, 120px));
+  left: calc(var(--safe-area-left) * -1);
+  width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
+  height: calc(var(--bottom-scrim-run, 120px) + var(--band-gap, 0px) + (100lvh - 100svh) + var(--safe-area-bottom) + var(--band-reach-bottom, 0px));
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0,
+    color-mix(in srgb, var(--canvas-tint, transparent) 35%, transparent) calc(var(--bottom-scrim-run, 120px) * 0.3),
+    color-mix(in srgb, var(--canvas-tint, transparent) 85%, transparent) calc(var(--bottom-scrim-run, 120px) * 0.6),
+    var(--canvas-tint, transparent) calc(var(--bottom-scrim-run, 120px) * 0.85),
+    var(--canvas-tint, transparent) 100%
+  );
 }
 
 /* Corners are plain circular border-radius on purpose.
@@ -681,16 +816,90 @@ html.ios-app .selectable {
   -webkit-backdrop-filter: blur(12px);
 }
 
-/* Full strength for the first fifth, then out. Ramping from the very edge reads
-   as a smudge on the glass; holding it briefly reads as depth. */
+/* An eased fade, not a straight ramp: seen from the content it starts
+   almost imperceptibly and gathers towards the edge, where it is full — the
+   stops trace an ease-in so there is no visible line where the fade begins.
+   A straight ramp read as a step; a longer strip read as too much fade. */
 .scroll-scrim-top {
   top: 0;
-  -webkit-mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 20%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
 }
 
 .scroll-scrim-bottom {
   bottom: 0;
-  -webkit-mask-image: linear-gradient(to top, #000 20%, transparent 100%);
-  mask-image: linear-gradient(to top, #000 20%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.97) 22%, rgba(0, 0, 0, 0.82) 42%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.04) 94%, transparent 100%);
+}
+
+/* Besides the blur, a wash of the canvas tint (`--canvas-tint`, set by
+   useCanvasTint from the painted root colour) — so under a browser's own bars
+   the content fades into the bars' colour instead of stopping at their edge.
+   Absent the variable (a native shell) the wash is transparent and only the
+   blur remains.
+
+   A separate element, deliberately, and a plain one: no backdrop-filter, no
+   mask. iOS 26 Safari colours its status-bar band and its tab bar by
+   sampling the top and bottom few pixels of the page, and its sampler skips
+   anything composited — a backdrop-filter strip, a filtered wallpaper — and
+   reads whatever plain paint lies beneath, which here would be the bare root.
+   Painted as a plain gradient the wash is what it samples, so the bars take
+   the tint. (Measured: an 8px plain strip is picked up, a 2px one is not; a
+   gradient is read at its edge value.)
+
+   `--scroll-scrim-solid` is the band the browser's own bars overlay where
+   the page does run beneath them (the safe-area inset, set inline by the
+   page). It is painted solid: a wash still half-transparent where the clock
+   sits would show the heading through the status bar. */
+.scroll-scrim-wash {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: var(--scroll-scrim-size, 0px);
+  pointer-events: none;
+}
+
+/* The wash traces the same S as the blur's mask. Stops are colour-mixed
+   from the tint rather than masked, so the layer stays plain paint. Where
+   color-mix is missing the first rule's straight ramp stands. */
+.scroll-scrim-wash-top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    transparent 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 94%, transparent) 22%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 76%, transparent) 42%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 44%, transparent) 62%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 15%, transparent) 82%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 3%, transparent) 94%,
+    transparent 100%
+  );
+}
+
+.scroll-scrim-wash-bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    transparent 100%
+  );
+  background: linear-gradient(
+    to top,
+    var(--canvas-tint, transparent) 0px,
+    var(--canvas-tint, transparent) var(--scroll-scrim-solid, 0px),
+    color-mix(in srgb, var(--canvas-tint, transparent) 94%, transparent) 22%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 76%, transparent) 42%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 44%, transparent) 62%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 15%, transparent) 82%,
+    color-mix(in srgb, var(--canvas-tint, transparent) 3%, transparent) 94%,
+    transparent 100%
+  );
 }

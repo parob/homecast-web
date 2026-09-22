@@ -5,7 +5,7 @@ import type React from 'react';
 import { useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, EyeOff, Eye } from 'lucide-react';
+import { Trash2, EyeOff, Eye, ChevronRight } from 'lucide-react';
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel,
   ContextMenuSeparator, ContextMenuTrigger,
@@ -97,7 +97,8 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
     onDelete?.();
   };
 
-  // Match WidgetWrapper: same bg regardless of dark/light background
+  // Keep the enabled/disabled colours, painted on the card itself. Automations
+  // sit on a solid dialog surface, so there is no backdrop to blur here.
   const colorClass = isEnabled
     ? 'bg-blue-200/75'
     : (isDarkBackground ? 'bg-black/20' : 'bg-slate-100/80');
@@ -122,19 +123,19 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
   // fades it out when the reveal ends — `[data-hidden-exiting]` in index.css.
   const card = (
     <div
-      className={`relative rounded-2xl h-fit ${editMode ? '' : 'cursor-pointer'} transition-all duration-300 [&_h3]:transition-colors [&_h3]:duration-300 [&_p]:transition-colors [&_p]:duration-300 ${borderClass} ${darkTextClass} ${dimClass}`}
+      className={`relative rounded-2xl h-fit shadow-sm ${editMode ? '' : 'cursor-pointer'} transition-[background-color,box-shadow,opacity] duration-300 ${colorClass} ${borderClass} ${darkTextClass} ${dimClass}`}
       {...(isHidden ? { 'data-hidden-item': 'true' } : {})}
-      style={{ contain: 'layout style paint' }}
       onClick={editMode ? undefined : onClick}
       data-testid={isHomeKit ? `automation-${automation.id}` : `hc-automation-${hcAutomation?.id}`}
     >
-      {/* Blur layer — matches WidgetWrapper */}
-      <div className={`absolute inset-0 rounded-2xl backdrop-blur-xl shadow-sm transition-colors duration-300 ${colorClass} transform-gpu`} />
+      {/* One painted surface keeps names and switches visible in iOS WebKit:
+          many separately composited blur layers in this scrolling dialog can
+          cover their foreground content after the opening animation. */}
       {/* Content */}
       {/* Fixed floors: this padding is what separates the icon and the toggle
           from the card edge, and rem units shrank it exactly at the text sizes
           where the card was already tightest. */}
-      <div className={`relative z-[1] ${compact ? 'p-[max(0.625rem,12px)]' : 'p-[max(1rem,18px)]'}`}>
+      <div className={compact ? 'p-[max(0.625rem,12px)]' : 'p-[max(1rem,18px)]'}>
         {/* items-start, not items-center: the name wraps to as many lines as it
             needs, and centring the icon/controls against a 3-line name looks off. */}
         <div className={`flex items-start justify-between ${compact ? 'gap-1.5' : 'gap-2'}`}>
@@ -157,7 +158,7 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               >
                 {name}
               </div>
-              <div className={`${compact ? 'text-[10px]' : 'text-xs'} truncate ${subtextClass}`}>
+              <div className={`${compact ? 'text-[10px]' : 'text-xs'} break-words ${subtextClass}`}>
                 {isHomeKit && automation.trigger ? (
                   <AutomationTriggerSummary trigger={automation.trigger} compact automationName={automation.name} />
                 ) : (
@@ -177,7 +178,12 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               icon centres it against the card in that case and keeps it beside
               the icon when a long name wraps, which is what `items-start` is
               there to protect. */}
-          <div className={`flex items-center gap-1 shrink-0 ${compact ? 'h-8' : 'h-9'}`} onClick={(e) => e.stopPropagation()}>
+          {/* One trailing group, so `justify-between` pins it to the right edge
+              whatever the name's length — a third flex child would float in the
+              leftover space instead. The switch and the delete button stop
+              propagation themselves; the group does not, so a tap on the
+              chevron still reaches the card's onClick. */}
+          <div className={`flex items-center gap-1 shrink-0 ${compact ? 'h-8' : 'h-9'}`}>
             {!editMode && (
               // `flex`, not a bare div: `Switch` is `inline-flex`, so a block
               // wrapper gives it a text line box and drops it onto the baseline
@@ -194,6 +200,17 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
+            )}
+            {/* On touch nothing else says the card opens: the pointer cursor is
+                a hover cue, and a switch on the right makes it read as a
+                settings row. A disclosure chevron is what iOS uses for "this
+                opens". A desktop has the cursor and the right-click menu; there
+                it would only be clutter. */}
+            {touchMode && !editMode && (
+              <ChevronRight
+                aria-hidden
+                className={`h-4 w-4 shrink-0 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}
+              />
             )}
           </div>
         </div>
@@ -223,11 +240,13 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
    * whole thing in DragHandleArea, so "outside the card" is what keeps the
    * badge a sibling of the handle rather than a descendant.
    *
-   * The wiggle sits on its own element too: `.wiggle` animates `transform`, and
-   * this card's root is an ancestor of a `backdrop-blur-xl` layer — an animated
-   * transform on one of those makes it a new backdrop root and the glass
-   * switches off while it runs. index.css documents the same trap.
+   * The wiggle stays on its own element so it doesn't move the edit badge or
+   * compete with the transform used by the surrounding drag handle.
    */
+  // The same condition TileEditActions renders an "Unhide" badge under, named
+  // once so the pill below and the badge cannot both appear.
+  const unhideOffered = !!(editMode && onToggleHidden);
+
   const editable = (
     <div className="relative">
       <div
@@ -238,11 +257,12 @@ export function AutomationCard({ automation, hcAutomation, onClick, onUpdated, o
       >
         {card}
       </div>
-      {/* No `editMode &&` guard: a hidden card is only ever rendered once
-          something has revealed it, and on a desktop that is Show Hidden Items
-          rather than a mode. Labelling it only while editing left the desktop
-          reveal showing a dimmed card with nothing saying why. */}
-      {isHidden && <HiddenLabel />}
+      {/* The fallback only — not an `editMode` guard, which would leave the
+          desktop reveal (Show Hidden Items, never a mode) showing a dimmed card
+          with nothing saying why. It stands down exactly when the Unhide badge
+          takes over, because the pill is centred and sat across the
+          automation's own name. See homecast-cloud#160. */}
+      {isHidden && !unhideOffered && <HiddenLabel />}
       {/* Gated by `visible` so it can animate away — see SceneCard. */}
       <TileEditActions
         visible={!!(editMode && onToggleHidden)}

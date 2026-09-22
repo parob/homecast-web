@@ -18,7 +18,7 @@ import { getIconColor, type IconStyle, DEFAULT_ICON_COLOR } from '@/components/w
 import { WidgetColorContext, WidgetInteractionContext } from '@/components/widgets/WidgetCard';
 import { PendingRing } from '@/components/widgets/shared/PendingRing';
 import { groupKey } from '@/lib/pending-writes';
-import { usePinnedTabs, usePinAction } from '@/contexts/PinnedTabsContext';
+import { usePinnedTabs } from '@/contexts/PinnedTabsContext';
 import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 import { PinTabMenuItem } from '@/components/shared/PinTabMenuItem';
 import { TileEditActions, HiddenLabel, type PrimaryEditAction } from '@/components/shared/EditActions';
@@ -607,11 +607,9 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
   // Always rendered, gated by `visible` — see WidgetCard.
   const editActions = <TileEditActions action={editPrimaryAction} tab={editTab} visible={showEditActions} />;
 
-  // Named outside edit mode, where there is no legend explaining what a bare eye
-  // icon means — desktop reveals hidden tiles from the context menu and never
-  // enters edit mode. Inside edit mode the bar spells the icons out, and a pill
-  // across the middle would cover the name again.
-  const hiddenLabel = isHidden && !editMode ? <HiddenLabel /> : null;
+  // The fallback for a group with no badge to say it for them — see WidgetCard,
+  // and homecast-cloud#160 for why it is `!onHide` rather than `!editMode`.
+  const hiddenLabel = isHidden && !onHide ? <HiddenLabel /> : null;
 
   // The press shrink, same as an accessory tile — see WidgetCard for why this
   // is state rather than CSS `:active`. Compact only: the inline card has its
@@ -988,29 +986,19 @@ export const ServiceGroupWidget: React.FC<ServiceGroupWidgetProps> = ({
 
   // Expanded card content for the overlay (non-compact, shares state with parent)
   // Group panels carry the same corner cluster as accessory panels.
-  const groupPinAction = usePinAction({
-    type: 'serviceGroup', id: group.id, name: group.name, homeId: accessories[0]?.homeId,
-  });
   const groupActions: ExpandedAction[] = [];
   if (canShowHistory) {
     groupActions.push({ key: 'analytics', icon: 'analytics', label: 'Analytics', onClick: () => openGroupHistory(group, accessories) });
   }
   if (priceMember) {
-    groupActions.push({ key: 'prices', icon: 'prices', label: 'Price & Deals', onClick: () => openPriceHistory(priceMember) });
+    groupActions.push({ key: 'prices', icon: 'prices', label: 'Prices', ariaLabel: 'Price & Deals', onClick: () => openPriceHistory(priceMember) });
   }
   if (onShare) {
     groupActions.push({ key: 'share', icon: 'share', label: 'Share', onClick: onShare });
   }
-  // Same reasoning as the accessory panel: pinning lived in the menu touch no
-  // longer has. `usePinAction` answers null when there is no tab bar to pin to.
-  if (groupPinAction && !groupPinAction.full) {
-    groupActions.push({
-      key: 'pin',
-      icon: groupPinAction.pinned ? 'unpin' : 'pin',
-      label: groupPinAction.label,
-      onClick: groupPinAction.toggle,
-    });
-  }
+  // No Pin here, for the reason WidgetCard states at length: Edit Layout's
+  // badge is where a phone pins from, and the panel was a second route to it.
+  // homecast-cloud#173.
 
   const expandedCardContent = (
     <Card className={`relative ${expandedCardBgClass} ${noResponseClass} cursor-pointer`} onClick={handleExpandedCardClick}>

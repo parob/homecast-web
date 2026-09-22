@@ -4,6 +4,23 @@ import { Toaster as Sonner, toast } from "sonner";
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 /**
+ * Where the toaster's edges sit.
+ *
+ * Sonner takes ONE offset and applies it to all four sides, so the horizontal
+ * inset has always been the vertical arithmetic read sideways. That is
+ * accidental, but it is what every surface is tuned to and it is not what
+ * parob/homecast-cloud#164 is about — so the three sides keep that expression
+ * verbatim while `top` alone moves to `--toast-top`. Passing a partial object
+ * instead would hand those three back to sonner's own 16/24px defaults and
+ * shift the toast on every screen.
+ *
+ * Module scope, not a render-time literal: a fresh object each render is a
+ * fresh identity for sonner to react to, for values that never change.
+ */
+const SIDE_INSET = "calc(var(--top-row-center) - (var(--toast-pill-height) / 2))";
+const TOASTER_OFFSET = { top: "var(--toast-top)", right: SIDE_INSET, bottom: SIDE_INSET, left: SIDE_INSET };
+
+/**
  * The app's only toast surface.
  *
  * There used to be two — this one and a shadcn/Radix `<Toaster/>` mounted
@@ -40,8 +57,15 @@ const Toaster = ({ ...props }: ToasterProps) => {
       // A toast that carries a description is taller than a pill and grows
       // downward from this line rather than staying centred on it — the same
       // way the Dynamic Island expands rather than re-centring.
-      offset="calc(var(--top-row-center) - (var(--toast-pill-height) / 2))"
-      mobileOffset="calc(var(--top-row-center) - (var(--toast-pill-height) / 2))"
+      //
+      // `--toast-top` is that arithmetic, and it is a variable of its own
+      // rather than the calc spelled here because the iOS native bar needs a
+      // different answer entirely: it is a UINavigationBar outside the web
+      // view, so a pill on ITS controls' line is painted over by them and no
+      // `z-index` reaches it (parob/homecast-cloud#164). AppHeader overrides
+      // the variable there, and the toast clears the bar's whole band.
+      offset={TOASTER_OFFSET}
+      mobileOffset={TOASTER_OFFSET}
       toastOptions={{
         classNames: {
           // A capsule is a one-line shape: the moment an icon, a title and a

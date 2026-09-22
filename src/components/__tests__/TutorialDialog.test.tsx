@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useState } from 'react';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { TutorialDialog } from '../TutorialDialog';
+import { LayoutEditProvider } from '@/contexts/LayoutEditContext';
 
 // The card measures itself so it can be clamped to the viewport by its real
 // height rather than an assumed one. jsdom has no ResizeObserver, and the
@@ -78,6 +79,38 @@ describe('TutorialDialog', () => {
   afterEach(() => {
     cleanup();
     document.body.innerHTML = '';
+  });
+
+  it('uses the Share menu on a wide touch device without firing a context menu', async () => {
+    const widgets = document.createElement('div');
+    widgets.dataset.tour = 'widget-area';
+    withRect(widgets, { top: 100, left: 200, width: 500, height: 300 });
+    document.body.appendChild(widgets);
+
+    const header = document.createElement('button');
+    header.dataset.tour = 'header-menu';
+    withRect(header, { top: 10, left: 800, width: 40, height: 40 });
+    header.addEventListener('click', () => {
+      const share = document.createElement('div');
+      share.dataset.tour = 'share-menu-item';
+      withRect(share, { top: 70, left: 700, width: 140, height: 40 });
+      document.body.appendChild(share);
+    });
+    document.body.appendChild(header);
+    const contextMenu = vi.fn();
+    document.addEventListener('contextmenu', contextMenu);
+    try {
+      render(<LayoutEditProvider value={{ touchMode: true, editMode: false }}>
+        <Wrapper onClose={vi.fn()} />
+      </LayoutEditProvider>);
+      await advance(3);
+      expect(screen.getByText(/Use this menu to share/)).toBeDefined();
+      await advance(1);
+      expect(document.querySelector('[data-tour="share-menu-item"]')).not.toBeNull();
+      expect(contextMenu).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('contextmenu', contextMenu);
+    }
   });
 
   it('opens the home context menu via the contextmenu trigger and spotlights Share', async () => {

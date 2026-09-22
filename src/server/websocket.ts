@@ -22,14 +22,15 @@ import { resolveHomeLocation } from '../automation/location';
 import { createHomeKitBridgeAdapter, createSyncTransport, dispatchAutomationMessage, clearAutomationHandlers } from '../automation/relay-adapter';
 import { setRelayWritePublisher } from '../relay/relay-write';
 import { errorCode } from '../lib/describe-error';
+import { cameraLogMetadata } from '../lib/camera-log';
 import { canServeLocally, resolveLocalHomeId } from './relay-routing';
 import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from './local-activity';
 
 /** Bounded like the socket lane's payloads — a sync_all carries every automation. */
-function summariseCloudMessage(message: { payload?: unknown }): unknown {
-  const payload = message.payload;
+function summariseCloudMessage(message: { action?: string; payload?: unknown }): unknown {
+  const payload = cameraLogMetadata(message.action, message.payload);
   if (payload === null || payload === undefined) return undefined;
   try {
     const json = JSON.stringify(payload);
@@ -187,6 +188,7 @@ export interface RelayActivityEntry {
 }
 
 export type BroadcastMessage =
+  | import('@/lib/camera-live').CameraLiveEvent
   | CharacteristicUpdate
   | ReachabilityUpdate
   | ServiceGroupUpdate
@@ -240,6 +242,7 @@ interface PendingRequest {
    * See `isHousework` in ./connection-quality.ts.
    */
   action: string;
+  homeId?: string;
 }
 
 // Reconnection settings
@@ -250,7 +253,7 @@ import {
 import {
   type ConnectionQuality, type HysteresisState,
   classifyQuality, applyHysteresis, initialHysteresis, pushRtt,
-  oldestCountedInFlight,
+  oldestCountedInFlight, medianRtt,
 } from './connection-quality';
 import { REQUEST_TIMEOUT_MS } from './request-timeout';
 const HEARTBEAT_INTERVAL = 30000;
@@ -303,8 +306,13 @@ function getRelayTelemetry(): Record<string, string | undefined> {
     homecastHostName?: string;
     homecastPlatform?: string;
     isHomecastMacApp?: boolean;
+    homecastCameraEngine?: boolean;
   };
   return {
+    // "1" when this build has the camera engine window; whether it may
+    // actually capture its engine window is a live question, asked with
+    // camera.capabilities.
+    cameras: win.homecastCameraEngine ? '1' : undefined,
     app_version: win.homecastAppVersion,
     app_build: win.homecastAppBuild,
     os_version: win.homecastOSVersion,
@@ -831,13 +839,13 @@ export class ServerWebSocket {
       liveHomeIds: this.liveHomeIds,
       unservableHomeIds: this.unservableHomeIds,
     })) {
-      if (import.meta.env.DEV) console.log(`[ServerWS] Local request: ${action}`, payload);
+      if (import.meta.env.DEV) console.log(`[ServerWS] Local request: ${action}`, cameraLogMetadata(action, payload));
       try {
         const localPayload = localHomeId && localHomeId !== homeKey
           ? { ...payload, homeId: localHomeId }
           : payload;
         const result = await executeHomeKitAction(action, localPayload);
-        if (import.meta.env.DEV) console.log(`[ServerWS] Local response: ${action}`, result);
+        if (import.meta.env.DEV) console.log(`[ServerWS] Local response: ${action}`, cameraLogMetadata(action, result));
 
         // Nothing to publish here: every write path announces itself from
         // relay-write.ts, which is the whole point of that module. This used to
@@ -865,6 +873,22 @@ export class ServerWebSocket {
           // Deliberately neither returns nor rethrows: falling out of the block
           // hands the request to the outbound path below, which is the one that
           // owns timeouts, correlation and the homes.list cache.
+        } else if (errorCode(error) === 'ACCESSORY_NOT_FOUND') {
+          // Same fault one level down: the accessory id is a stable hc_id the
+          // dashboard got from a cloud-served list (a handover, a cached
+          // page), not this relay's live UUID. Only the home id is mapped
+          // here; accessory ids are not. The cloud translates the payload
+          // into the target relay's own UUIDs before routing, and the target
+          // is this relay — so the hop is a round trip to the resolver, not a
+          // change of relay. Every other local action dodged this because
+          // its accessory ids came from this relay's own lists.
+          //
+          // Not remembered per id: the next list refresh hands the page live
+          // ids and the local path serves again.
+          console.warn(
+            `[ServerWS] HomeKit does not know accessory ${String((payload as { accessoryId?: unknown }).accessoryId ?? '?')} — ` +
+            `routing ${action} via the server (stable id vs live HomeKit UUID)`,
+          );
         } else {
           console.error(`[ServerWS] Local request failed: ${action}`, error);
           throw error;
@@ -873,7 +897,7 @@ export class ServerWebSocket {
     }
 
     // Browser mode / server-routed request - send over WebSocket
-    if (import.meta.env.DEV) console.log(`[ServerWS] Remote request: ${action}`, payload);
+    if (import.meta.env.DEV) console.log(`[ServerWS] Remote request: ${action}`, cameraLogMetadata(action, payload));
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       // Fails fast rather than waiting out REQUEST_TIMEOUT, which is right —
@@ -910,7 +934,8 @@ export class ServerWebSocket {
           this.gracefulReconnect();
         }
 
-        this.consecutiveFailures++;
+        // A home/device timeout with continuing server traffic is not a link failure.
+        if (this.lastInboundAt <= sentAt) this.consecutiveFailures++;
         this.evaluateQuality();
         reject(new HomecastError('TIMEOUT', `Request timed out: ${action}`));
       }, REQUEST_TIMEOUT);
@@ -922,6 +947,7 @@ export class ServerWebSocket {
         timeout,
         sentAt,
         action,
+        homeId,
       });
       // A request going out is itself news: it starts the clock the quality
       // classifier reads, and arms the ticker that watches it age.
@@ -1045,11 +1071,14 @@ export class ServerWebSocket {
     // the house is big, not because the connection is bad, and counting it here
     // is what made "All lights" report "Your home is not responding" every time.
     // See `oldestCountedInFlight`.
-    const oldestInFlightSentAt = oldestCountedInFlight(this.pendingRequests.values());
+    const oldestRequest = oldestCountedInFlight(this.pendingRequests.values());
+    // A heartbeat measures this link, independently of work at any home.
+    const oldestInFlightSentAt = oldestRequest === null ? this.lastPingSentAt
+      : this.lastPingSentAt === null ? oldestRequest : Math.min(oldestRequest, this.lastPingSentAt);
     // The ticker still watches every request, housework included: one has to
     // stop the classifier idling while a batch runs, and the ordinary requests
     // alongside it are exactly what the in-flight signal is reading.
-    const hasInFlight = this.pendingRequests.size > 0;
+    const hasInFlight = this.pendingRequests.size > 0 || this.lastPingSentAt !== null;
 
     const raw = classifyQuality({
       socketState: this.state,
@@ -1066,7 +1095,18 @@ export class ServerWebSocket {
     const before = this.qualityState.shown;
     this.qualityState = applyHysteresis(this.qualityState, raw, now);
     if (this.qualityState.shown !== before) {
-      logEvent('quality', `${before} → ${this.qualityState.shown}`);
+      const oldest = oldestRequest === null ? undefined
+        : [...this.pendingRequests.values()].find(p => oldestCountedInFlight([p]) === oldestRequest);
+      logEvent('quality', `${before} → ${this.qualityState.shown}; ` +
+        `pending=${oldest?.action ?? 'none'}; age=${oldestRequest === null ? 0 : now - oldestRequest}ms; ` +
+        `ping=${this.lastPingSentAt === null ? 'none' : `${now - this.lastPingSentAt}ms`}; failures=${this.consecutiveFailures}`);
+      browserLogger.logInfo('connection_quality', { statusVersion: 1, previous: before, quality: this.qualityState.shown,
+        socketState: this.state, rawQuality: raw,
+        rttMedianMs: medianRtt(this.rttSamples), rttSampleAgeMs: this.lastRttAt ? now - this.lastRttAt : null,
+        pendingAction: oldest?.action ?? null,
+        pendingAgeMs: oldestRequest === null ? null : now - oldestRequest,
+        pingAgeMs: this.lastPingSentAt === null ? null : now - this.lastPingSentAt,
+        consecutiveFailures: this.consecutiveFailures, ...environmentFacts() });
       this.callbacks.onQualityChange?.(this.qualityState.shown);
     }
 
@@ -1181,10 +1221,6 @@ export class ServerWebSocket {
    * Record one unit of WebSocket activity in the current minute bucket.
    */
   private recordActivity(): void {
-    // Liveness, separate from the per-minute counters below: any inbound frame
-    // is proof the peer is still there, which readyState cannot give us.
-    this.lastInboundAt = Date.now();
-
     const now = Math.floor(Date.now() / 60000); // current Unix minute
     if (this.activityBucketMinute === -1) {
       // First activity ever — initialise
@@ -1500,6 +1536,7 @@ export class ServerWebSocket {
   }
 
   private handleMessage(event: MessageEvent): void {
+    this.lastInboundAt = Date.now();
     this.recordActivity();
     try {
       const message = JSON.parse(event.data);
@@ -1514,7 +1551,7 @@ export class ServerWebSocket {
       // it is visible anywhere today, and "is the cloud still talking to me?"
       // is the first question about a relay that has gone quiet — its own
       // requests stopping and the cloud never speaking are different faults.
-      if (hasLocalActivityListeners() && message.type !== 'ping' && message.type !== 'pong') {
+      if (hasLocalActivityListeners() && message.type !== 'ping' && message.type !== 'pong' && message.type !== 'camera_frame') {
         emitLocalRelayActivity({
           lane: 'cloud', at: activityNow(),
           action: message.action ? `${message.type}:${message.action}` : message.type,
@@ -1537,6 +1574,8 @@ export class ServerWebSocket {
         // Response to our outgoing request
         this.handleResponse(message as ProtocolMessage);
       } else if (message.type === 'characteristic_update' ||
+                 message.type === 'camera_frame' ||
+                 message.type === 'camera_live_state' ||
                  message.type === 'reachability_update' ||
                  message.type === 'service_group_update' ||
                  message.type === 'relay_status_update' ||
@@ -1816,14 +1855,13 @@ export class ServerWebSocket {
       } else {
         console.error(`[ServerWS] Request failed: ${message.action}`, message.error);
       }
-      // NO_DEVICE is a statement about the relay, not about this connection —
-      // the server answered us perfectly well to say so. Counting it as a
-      // connection failure would paint every tile refresh on an offline home
-      // as a bad network.
-      if (message.error.code !== 'NO_DEVICE') this.consecutiveFailures++;
+      // An error response still proves the server answered. Permissions,
+      // unsupported actions and relay failures belong to the request/home,
+      // never to this client's link to every home.
+      this.consecutiveFailures = 0;
       pending.reject(new HomecastError(message.error.code, message.error.message, message._trace));
     } else {
-      if (import.meta.env.DEV) console.log(`[ServerWS] Response received: ${message.action}`, message.payload);
+      if (import.meta.env.DEV) console.log(`[ServerWS] Response received: ${message.action}`, cameraLogMetadata(pending.action, message.payload));
       this.consecutiveFailures = 0;
       pending.resolve(message.payload);
     }
@@ -2155,6 +2193,23 @@ export class ServerWebSocket {
         return;
       }
 
+      // Live camera frames and session state. Not characteristic updates:
+      // they go to the cloud as their own events, and the cloud fans frames
+      // out to the viewers that asked for them (nobody else wants 4 JPEGs a
+      // second). A frame is ~100 KB base64, well inside the socket's limits.
+      if (event.type === 'camera_frame' || event.type === 'camera_live_state') {
+        // Never queue video behind a congested socket. A future frame replaces
+        // this one, while control/state messages keep their ordinary route.
+        if (event.type === 'camera_frame' && (this.ws?.bufferedAmount ?? 0) > 512_000) return;
+        this.sendEvent({
+          id: `evt_${Date.now()}_cam`,
+          type: 'event',
+          action: event.type === 'camera_frame' ? 'camera.frame' : 'camera.live_state',
+          payload: event as unknown as Record<string, unknown>,
+        });
+        return;
+      }
+
       // Send event to server with type: 'event' per protocol.md
       const message: ProtocolMessage = {
         id: `event_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
@@ -2274,6 +2329,7 @@ export class ServerWebSocket {
     if (!isRelayCapable()) {
       this.heartbeatVisibilityHandler = () => {
         if (document.visibilityState === 'hidden') {
+          this.lastPingSentAt = null;
           if (this.heartbeatInterval) {
             clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = null;
@@ -2292,6 +2348,10 @@ export class ServerWebSocket {
         }
       };
       document.addEventListener('visibilitychange', this.heartbeatVisibilityHandler);
+      // Reconnect can start while already hidden, without a visibility event.
+      // Apply the same pause now, so background scheduling is not sampled as
+      // network latency and the next foreground always starts a fresh check.
+      this.heartbeatVisibilityHandler();
     }
   }
 

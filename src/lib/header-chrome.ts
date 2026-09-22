@@ -89,12 +89,35 @@ export function headerHaloNeedsReinforcing(
  * Reinforced adds a third layer and raises the opacities. It is deliberately
  * still a halo and not a plate — the point of the change was to stop drawing
  * shapes behind the icons.
+ *
+ * ── Why these are four spelled-out constants and not one template ───────────
+ *
+ * **Tailwind only emits CSS for class names it can read verbatim in the
+ * source.** It scans text; it does not evaluate. Writing this as
+ * `` `…rgba(${c},0.9)…` `` compiles, type-checks, passes every unit test and
+ * ships *nothing*: the build emits a rule for the literal candidate
+ * `.[filter:drop-shadow(0_1px_1px_rgba($\{c\}…` and the class the component
+ * actually puts on the element matches no rule at all. The icons then have no
+ * halo, silently, in dev and in production alike — which is exactly what
+ * happened between parob/homecast-web#106's last push and its merge.
+ *
+ * So: no interpolation, no concatenation, no building a class from parts.
+ * `__tests__/header-chrome.test.ts` asserts that every string these functions
+ * can return appears verbatim in this file, which is the same rule Tailwind's
+ * scanner applies.
  */
+const HALO_LIGHT_INK =
+  '[filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.65))_drop-shadow(0_0_7px_rgba(0,0,0,0.4))]';
+const HALO_LIGHT_INK_STRONG =
+  '[filter:drop-shadow(0_1px_1px_rgba(0,0,0,0.9))_drop-shadow(0_0_4px_rgba(0,0,0,0.75))_drop-shadow(0_0_10px_rgba(0,0,0,0.55))]';
+const HALO_DARK_INK =
+  '[filter:drop-shadow(0_1px_2px_rgba(255,255,255,0.8))_drop-shadow(0_0_7px_rgba(255,255,255,0.55))]';
+const HALO_DARK_INK_STRONG =
+  '[filter:drop-shadow(0_1px_1px_rgba(255,255,255,0.95))_drop-shadow(0_0_4px_rgba(255,255,255,0.85))_drop-shadow(0_0_10px_rgba(255,255,255,0.7))]';
+
 function halo(inkIsLight: boolean, reinforce: boolean): string {
-  const c = inkIsLight ? '0,0,0' : '255,255,255';
-  return reinforce
-    ? `[filter:drop-shadow(0_1px_1px_rgba(${c},0.9))_drop-shadow(0_0_4px_rgba(${c},0.75))_drop-shadow(0_0_10px_rgba(${c},0.55))]`
-    : `[filter:drop-shadow(0_1px_2px_rgba(${c},0.65))_drop-shadow(0_0_7px_rgba(${c},0.4))]`;
+  if (inkIsLight) return reinforce ? HALO_LIGHT_INK_STRONG : HALO_LIGHT_INK;
+  return reinforce ? HALO_DARK_INK_STRONG : HALO_DARK_INK;
 }
 
 /**
@@ -119,4 +142,30 @@ export function headerDotClass(inkIsLight: boolean, reinforce = false): string {
     ? 'text-white bg-transparent hover:bg-white/15'
     : 'text-foreground bg-transparent hover:bg-black/10';
   return `${ink} ${halo(inkIsLight, reinforce)}`;
+}
+
+/**
+ * A glass plate for a header control — the look the iOS native bar's buttons
+ * have (parob/homecast-cloud#120), so every other platform's header reads as
+ * the same family: a circle for a lone control, a capsule for a group.
+ *
+ * Keyed on the same ink verdict as everything else in the row. Light ink
+ * gets dark glass, dark ink gets light glass; either way the plate adds the
+ * contrast a bare glyph over a photo could only get from its halo.
+ */
+export function headerGlassClass(inkIsLight: boolean): string {
+  const tint = inkIsLight
+    ? 'bg-black/25 text-white ring-1 ring-inset ring-white/15 shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
+    : 'bg-white/60 text-neutral-900 ring-1 ring-inset ring-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.12)]';
+  return `rounded-full backdrop-blur-xl backdrop-saturate-150 ${tint}`;
+}
+
+/**
+ * An icon control that sits on a glass plate: ink and press feedback only,
+ * no halo — the plate is what separates it from the page.
+ */
+export function headerGlassControlClass(inkIsLight: boolean): string {
+  return inkIsLight
+    ? 'text-white !bg-transparent hover:!bg-white/15 active:!bg-white/20'
+    : 'text-neutral-900 !bg-transparent hover:!bg-black/10 active:!bg-black/15';
 }

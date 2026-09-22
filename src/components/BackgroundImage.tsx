@@ -1,6 +1,16 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { PRESET_SOLID_COLORS, PRESET_GRADIENTS, PRESET_IMAGES, getAutoPresetId, analyzeLoadedImage, analyzeLoadedImageBand, getImageTopColor } from '@/lib/colorUtils';
+import { PRESET_SOLID_COLORS, PRESET_GRADIENTS, PRESET_IMAGES, getAutoPresetId, analyzeLoadedImage, analyzeLoadedImageBand, getImageTopColor, getImageEdgeColor } from '@/lib/colorUtils';
+
+/**
+ * The box the wallpaper fills, for sampling what is on screen rather than
+ * the whole image. The layer is the large viewport plus the safe areas (see
+ * `.fixed-full-screen`), which the window's inner size approximates well
+ * enough for a colour; a blurred layer is also drawn at 1.1×.
+ */
+function visibleBox(blur: number): { width: number; height: number; scale: number } {
+  return { width: window.innerWidth, height: window.innerHeight, scale: blur > 0 ? 1.1 : 1 };
+}
 import type { BackgroundSettings } from '@/lib/graphql/types';
 
 import { config } from '@/lib/config';
@@ -9,31 +19,10 @@ import { config } from '@/lib/config';
 // address can change while the app is running.
 const API_URL = () => config.apiUrl;
 
-// Simple in-memory image cache to prevent repeated network requests
+// Keep the image that actually loaded, including its working CORS mode.
+// Loading a second image without crossOrigin loses both that mode and the
+// sampleable pixels, and can make the browser fetch the same URL again.
 const imageCache = new Map<string, HTMLImageElement>();
-
-function preloadImage(url: string): Promise<HTMLImageElement> {
-  // Check if already cached
-  const cached = imageCache.get(url);
-  if (cached) {
-    return Promise.resolve(cached);
-  }
-
-  // Load and cache
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      imageCache.set(url, img);
-      resolve(img);
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-function isImageCached(url: string): boolean {
-  return imageCache.has(url);
-}
 
 // Ensure URL is absolute (handles relative paths from API)
 function toAbsoluteUrl(url: string | undefined): string | undefined {
@@ -45,6 +34,9 @@ function toAbsoluteUrl(url: string | undefined): string | undefined {
 interface BackgroundImageProps {
   settings?: BackgroundSettings | null;
   className?: string;
+  /** `fixed` (default) pins the box to the viewport; `sticky` is for the
+   *  phone browser, inside a `.sticky-wallpaper` wrapper — see index.css. */
+  placement?: 'fixed' | 'sticky';
   entityId?: string;
   autoBackgroundsEnabled?: boolean;
   onReady?: () => void;
@@ -58,6 +50,8 @@ interface BackgroundImageProps {
   onHeaderLuminanceChange?: (luminance: number | null) => void;
   /** Reports average color of the top row of the loaded image (hex string). null for non-image backgrounds. */
   onTopColorChange?: (color: string | null) => void;
+  /** The same for the wallpaper's visible bottom edge — what meets Safari's URL bar band. */
+  onBottomColorChange?: (color: string | null) => void;
 }
 
 // Get a unique key for background image/gradient (excludes brightness/blur since those don't need crossfade)
@@ -74,7 +68,7 @@ function getBackgroundKey(settings?: BackgroundSettings | null): string {
  * Brightness: 50 = no change, <50 = darker, >50 = brighter
  * Uses crossfade technique to smoothly transition between backgrounds.
  */
-export function BackgroundImage({ settings, className, entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange }: BackgroundImageProps) {
+export function BackgroundImage({ settings, className, placement = 'fixed', entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange, onBottomColorChange }: BackgroundImageProps) {
   // Compute effective settings: explicit > auto > none
   // solid-white is special: it means "no background" and overrides auto-backgrounds
   const effectiveSettings = useMemo((): BackgroundSettings | null => {
@@ -113,6 +107,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
   const pendingLuminanceRef = useRef<number | null>(null);
   const pendingHeaderLuminanceRef = useRef<number | null>(null);
   const pendingTopColorRef = useRef<string | null>(null);
+  const pendingBottomColorRef = useRef<string | null>(null);
 
   // Helper to call onReady only once per background change
   const callOnReady = () => {
@@ -131,6 +126,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       onLuminanceChange?.(null);
       onHeaderLuminanceChange?.(null);
       onTopColorChange?.(null);
+onBottomColorChange?.(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -150,6 +146,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       pendingLuminanceRef.current = null;
       pendingHeaderLuminanceRef.current = null;
       pendingTopColorRef.current = null;
+      pendingBottomColorRef.current = null;
 
       // Settings changed - start crossfade
       const isSolid = effectiveSettings?.presetId?.startsWith('solid-');
@@ -168,6 +165,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
         onLuminanceChange?.(null);
         onHeaderLuminanceChange?.(null);
         onTopColorChange?.(null);
+onBottomColorChange?.(null);
 
         // Clear previous after transition
         transitionTimeoutRef.current = setTimeout(() => {
@@ -189,6 +187,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
           onLuminanceChange?.(pendingLuminanceRef.current);
           onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
           onTopColorChange?.(pendingTopColorRef.current);
+    onBottomColorChange?.(pendingBottomColorRef.current);
           transitionTimeoutRef.current = setTimeout(() => {
             setPrevBg(null);
             setIsTransitioning(false);
@@ -197,11 +196,16 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       }
     }
 
+  }, [currentKey, activeKey, effectiveSettings, currentBg]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A transition updates currentBg itself. Cleaning up on that update
+  // cancelled the loading deadline immediately after starting it.
+  useEffect(() => {
     return () => {
       if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
       if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
     };
-  }, [currentKey, activeKey, effectiveSettings, currentBg]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Called by ImageBackground when it has analyzed the loaded image
   const handleImageLuminance = (luminance: number) => {
@@ -212,6 +216,9 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     pendingHeaderLuminanceRef.current = luminance;
   };
 
+  const handleImageBottomColor = (color: string) => {
+    pendingBottomColorRef.current = color;
+  };
   const handleImageTopColor = (color: string) => {
     pendingTopColorRef.current = color;
   };
@@ -226,6 +233,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
     onLuminanceChange?.(pendingLuminanceRef.current);
     onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
     onTopColorChange?.(pendingTopColorRef.current);
+    onBottomColorChange?.(pendingBottomColorRef.current);
     transitionTimeoutRef.current = setTimeout(() => {
       setPrevBg(null);
       setIsTransitioning(false);
@@ -251,7 +259,10 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
         // fixed-full-screen (not inset-0): fixed elements stop at the safe
         // area boundaries on iOS, which left unpainted strips beside the
         // wallpaper in landscape. Negative insets extend it to the true edges.
-        'fixed-full-screen overflow-hidden pointer-events-none',
+        // `sticky`: the same box as an absolute child of a `.sticky-wallpaper`
+        // wrapper, reaching into Safari's bar bands — see index.css.
+        placement === 'sticky' ? 'sticky-full-screen' : 'fixed-full-screen',
+        'overflow-hidden pointer-events-none',
         className
       )}
       aria-hidden="true"
@@ -259,6 +270,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       {/* Previous background (fades out) */}
       {prevBg && prevBg.type !== 'none' && (
         <BackgroundLayer
+          key={getBackgroundKey(prevBg)}
           settings={prevBg}
           brightness={effectiveSettings?.brightness ?? 50}
           blur={effectiveSettings?.blur ?? 20}
@@ -269,6 +281,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
       {/* Current background (fades in) */}
       {currentBg && currentBg.type !== 'none' && (
         <BackgroundLayer
+          key={getBackgroundKey(currentBg)}
           settings={currentBg}
           brightness={effectiveSettings?.brightness ?? 50}
           blur={effectiveSettings?.blur ?? 20}
@@ -278,6 +291,7 @@ export function BackgroundImage({ settings, className, entityId, autoBackgrounds
           onImageLuminance={handleImageLuminance}
           onImageHeaderLuminance={handleImageHeaderLuminance}
           onImageTopColor={handleImageTopColor}
+          onImageBottomColor={handleImageBottomColor}
         />
       )}
     </div>
@@ -295,9 +309,10 @@ interface BackgroundLayerProps {
   onImageLuminance?: (luminance: number) => void;
   onImageHeaderLuminance?: (luminance: number) => void;
   onImageTopColor?: (color: string) => void;
+  onImageBottomColor?: (color: string) => void;
 }
 
-function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageHeaderLuminance, onImageTopColor }: BackgroundLayerProps) {
+function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageHeaderLuminance, onImageTopColor, onImageBottomColor }: BackgroundLayerProps) {
   const isSolid = settings.type === 'preset' && settings.presetId?.startsWith('solid-');
   const isGradient = settings.type === 'preset' && settings.presetId?.startsWith('gradient-');
 
@@ -328,6 +343,7 @@ function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImage
           onLuminanceReady={onImageLuminance}
           onHeaderLuminanceReady={onImageHeaderLuminance}
           onTopColorReady={onImageTopColor}
+          onBottomColorReady={onImageBottomColor}
         />
       )}
     </div>
@@ -401,6 +417,7 @@ interface ImageBackgroundProps {
   onLuminanceReady?: (luminance: number) => void;
   onHeaderLuminanceReady?: (luminance: number) => void;
   onTopColorReady?: (color: string) => void;
+  onBottomColorReady?: (color: string) => void;
 }
 
 function ImageBackground({
@@ -413,55 +430,47 @@ function ImageBackground({
   onLuminanceReady,
   onHeaderLuminanceReady,
   onTopColorReady,
+  onBottomColorReady,
 }: ImageBackgroundProps) {
   // Determine the image URL (ensure custom URLs are absolute)
   const imageUrl = toAbsoluteUrl(url) || (presetId ? PRESET_IMAGES[presetId] : null);
 
-  // Check if image is already cached - if so, mark as loaded immediately
-  const isCached = imageUrl ? isImageCached(imageUrl) : false;
-  const [isLoaded, setIsLoaded] = useState(isCached);
+  const cachedImage = imageUrl ? imageCache.get(imageUrl) : undefined;
+  // A cached URL is not proof that this DOM image is ready to paint. Keep the
+  // outgoing layer until this element loads (or is already complete below).
+  const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [samplePixels, setSamplePixels] = useState(() => !cachedImage || cachedImage.crossOrigin === 'anonymous');
   const imgRef = useRef<HTMLImageElement>(null);
   const onLoadCalledRef = useRef(false);
 
-  // Reset loaded state when URL changes (but check cache first)
+  // Reset for a new source, retaining a previously successful loading mode.
   const urlKey = imageUrl || '';
   useEffect(() => {
     onLoadCalledRef.current = false;
-    if (imageUrl) {
-      const cached = isImageCached(imageUrl);
-      setIsLoaded(cached);
-      setHasError(false);
-
-      // If cached, notify parent immediately
-      if (cached && !onLoadCalledRef.current) {
-        onLoadCalledRef.current = true;
-        // Analyze luminance from cached image
-        const cachedImg = imageCache.get(imageUrl);
-        if (cachedImg) {
-          onLuminanceReady?.(analyzeLoadedImage(cachedImg));
-          onHeaderLuminanceReady?.(analyzeLoadedImageBand(cachedImg));
-          onTopColorReady?.(getImageTopColor(cachedImg));
-        }
-        onLoad?.();
-      }
-    } else {
-      setIsLoaded(false);
-      setHasError(false);
-    }
+    const cached = imageUrl ? imageCache.get(imageUrl) : undefined;
+    setSamplePixels(!cached || cached.crossOrigin === 'anonymous');
+    setIsLoaded(false);
+    setHasError(false);
   }, [urlKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A quick return can promote the still-mounted outgoing layer back to the
+  // current one. It already decoded, but must report readiness for this visit.
+  const reportsReady = Boolean(onLoad);
+  useEffect(() => {
+    if (reportsReady) onLoadCalledRef.current = false;
+  }, [reportsReady]);
 
   // Check if image is already complete (loaded before onLoad attached)
   useEffect(() => {
     if (imgRef.current?.complete && imgRef.current?.naturalHeight > 0 && !onLoadCalledRef.current) {
       onLoadCalledRef.current = true;
-      if (imageUrl) {
-        preloadImage(imageUrl).catch(() => {});
-      }
+      if (imageUrl) imageCache.set(imageUrl, imgRef.current);
       setIsLoaded(true);
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
       onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
-      onTopColorReady?.(getImageTopColor(imgRef.current));
+      onTopColorReady?.(getImageTopColor(imgRef.current, 50, visibleBox(blur)));
+      onBottomColorReady?.(getImageEdgeColor(imgRef.current, 'bottom', 50, visibleBox(blur)));
       onLoad?.();
     }
   });
@@ -479,6 +488,7 @@ function ImageBackground({
     if (!hasError) return;
     const retry = () => {
       onLoadCalledRef.current = false;
+      setSamplePixels(true);
       setHasError(false);
     };
     window.addEventListener('online', retry);
@@ -488,16 +498,14 @@ function ImageBackground({
   const handleLoad = () => {
     if (onLoadCalledRef.current) return; // Prevent double-calling
     onLoadCalledRef.current = true;
-    // Cache the image URL on successful load
-    if (imageUrl) {
-      preloadImage(imageUrl).catch(() => {});
-    }
+    if (imageUrl && imgRef.current) imageCache.set(imageUrl, imgRef.current);
     setIsLoaded(true);
     // Analyze luminance and top color from the loaded image element
     if (imgRef.current) {
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
       onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
-      onTopColorReady?.(getImageTopColor(imgRef.current));
+      onTopColorReady?.(getImageTopColor(imgRef.current, 50, visibleBox(blur)));
+      onBottomColorReady?.(getImageEdgeColor(imgRef.current, 'bottom', 50, visibleBox(blur)));
     }
     onLoad?.();
   };
@@ -522,13 +530,22 @@ function ImageBackground({
         }}
       >
         <img
+          key={`${imageUrl}:${samplePixels}`}
           ref={imgRef}
           src={imageUrl}
           alt=""
-          crossOrigin="anonymous"
+          crossOrigin={samplePixels ? 'anonymous' : undefined}
           className="w-full h-full object-cover"
           onLoad={handleLoad}
-          onError={() => setHasError(true)}
+          onError={() => {
+            // Cross-origin pixel sampling needs the host's CORS permission;
+            // displaying a public image does not. A custom host (or the dev
+            // origin) may refuse sampling while the wallpaper itself works.
+            // The colour helpers already use neutral defaults for tainted
+            // canvases. Retry once without sampling before giving up.
+            if (samplePixels) setSamplePixels(false);
+            else setHasError(true);
+          }}
         />
       </div>
       {/* Brightness overlay - darken when <50, brighten when >50 */}

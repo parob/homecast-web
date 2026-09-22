@@ -1,9 +1,17 @@
 import React, { useRef, useState, useLayoutEffect, useCallback, useContext, useEffect, createContext } from 'react';
 import { createPortal } from 'react-dom';
+import { RemoveScroll } from 'react-remove-scroll';
+
+/** A backdrop touch that travels this far is a scroll, not a tap. */
+const BACKDROP_DRAG_DISMISS_PX = 10;
+/** Wheel travel over the page (not the panel) before the panel dismisses. */
+const BACKGROUND_SCROLL_DISMISS_PX = 40;
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { overlayScrim } from '@/lib/overlay-scrim';
+import { EdgeSampleSlivers } from '@/components/shared/EdgeSampleSlivers';
 import { registerPanelElevation } from '@/lib/overlay-elevation';
+import { useOverlayViewport } from '@/hooks/useOverlayViewport';
 
 export interface ExpandedOverlayProps {
   isExpanded: boolean;
@@ -49,6 +57,22 @@ const DEFAULT_Z = 10017;
 // context, so a per-accessory overlay opened from inside an already-open group
 // overlay stacks above it instead of dropping back to the dashboard default.
 const OverlayZContext = createContext<number | null>(null);
+const OverlayWidthContext = createContext<React.Dispatch<React.SetStateAction<number | undefined>> | null>(null);
+const OverlayCloseContext = createContext<(() => void) | undefined>(undefined);
+
+/** Media viewers expose a visible close button as well as backdrop dismissal. */
+export function useExpandedOverlayClose() {
+  return useContext(OverlayCloseContext);
+}
+
+/** A wide media surface can request room without every caller knowing its type. */
+export function useExpandedOverlayWidth(width: number | undefined) {
+  const setWidth = useContext(OverlayWidthContext);
+  useLayoutEffect(() => {
+    setWidth?.(width);
+    return () => setWidth?.(undefined);
+  }, [setWidth, width]);
+}
 
 // Portrait panels are narrower so the hero control reads as a tall bar; on
 // desktop the hero stands beside its secondary controls and needs the width.
@@ -164,6 +188,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const [isClosing, setIsClosing] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
+  const [contentWidth, setContentWidth] = useState<number>();
   // When the panel last changed size. A leave triggered within this window was
   // caused by the boundary moving, not by the user going anywhere.
   const lastResizeRef = useRef(0);
@@ -178,13 +203,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   const isPointerOutsideRef = useRef<(x: number, y: number) => boolean>(() => true);
   const { isDarkBackground } = useBackgroundContext();
   const isMobile = useIsMobile();
+  const viewport = useOverlayViewport(isExpanded);
 
   // Clamp before the position math so narrow viewports get correct alignment,
   // not just a squeezed panel.
-  const requestedWidth = width ?? (isMobile !== false ? PORTRAIT_WIDTH : LANDSCAPE_WIDTH);
-  const effectiveWidth = typeof window !== 'undefined'
-    ? Math.min(requestedWidth, window.innerWidth - 32)
-    : requestedWidth;
+  const requestedWidth = width ?? contentWidth ?? (isMobile !== false ? PORTRAIT_WIDTH : LANDSCAPE_WIDTH);
+  const effectiveWidth = Math.min(requestedWidth, viewport.width - 32);
 
   // Handle open/close state transitions
   useEffect(() => {
@@ -369,10 +393,17 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
     if (!swallowTimerRef.current) disarmClickSwallowRef.current();
   }, []);
 
-  // Dismiss when tapping outside the overlay, or when scrolling past a
-  // threshold. Needed for touch/compact mode where there's no mouse-leave to
-  // trigger a collapse. The overlay is position:fixed, so any scroll would
-  // otherwise leave it detached from the widget it expanded from.
+  // Dismiss background taps, but keep the gesture available to navigation.
+  //
+  // Scrolling: a wheel or a finger INSIDE the panel scrolls the panel and
+  // stops at its edge — RemoveScroll below keeps it from chaining into the
+  // page (the page used to jump 800px when the panel hit its end). A wheel
+  // or a drag that starts OUTSIDE the panel is the page's: it scrolls the
+  // page as it always did, and once it has clearly become a scroll the panel
+  // dismisses, because a fixed panel left behind by the tile it grew from is
+  // a panel floating over the wrong place. An earlier cut locked the page
+  // entirely while a panel was open (parob/homecast-web#176), which read as
+  // the page having stopped scrolling.
   useEffect(() => {
     if (!isExpanded) return;
 
@@ -418,55 +449,109 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
       return false;
     };
 
+    const isNavigation = (target: EventTarget | null) =>
+      target instanceof Element && !!target.closest('[data-expanded-overlay-dismiss]');
+    let backdropTouch: { id: number; x: number; y: number; moved: boolean } | null = null;
     const handlePointerDown = (e: PointerEvent) => {
+      if (isNavigation(e.target)) {
+        onClose();
+        return; // Do not swallow the click that opens the title/menu.
+      }
       if (isInsideOverlay(e.target)) return;
       if (isAboveOverlay(e.target)) return;
+      if (e.pointerType === 'touch') {
+        // A swipe starts with the same press as a tap. Keep the scroll lock
+        // until release rather than exposing the page to the rest of the drag.
+        backdropTouch = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+        return;
+      }
       onClose();
       armClickSwallow();
     };
-
-    const SCROLL_THRESHOLD = 40;
-    const getScrollY = (t: EventTarget | null): number => {
-      if (!t || t === document || t === window) return window.scrollY;
-      const el = t as HTMLElement;
-      return typeof el.scrollTop === 'number' ? el.scrollTop : window.scrollY;
+    const trackBackdropTouch = (e: PointerEvent) => {
+      if (!backdropTouch || e.pointerId !== backdropTouch.id) return;
+      if (backdropTouch.moved) return;
+      if (Math.hypot(e.clientX - backdropTouch.x, e.clientY - backdropTouch.y) > BACKDROP_DRAG_DISMISS_PX) {
+        // A drag on the backdrop is the page scrolling under the panel.
+        backdropTouch.moved = true;
+        backdropTouch = null;
+        onClose();
+      }
     };
-    let startTarget: EventTarget | null = null;
-    let startY = 0;
+    const releaseBackdropTouch = (e: PointerEvent) => {
+      trackBackdropTouch(e);
+      if (!backdropTouch || e.pointerId !== backdropTouch.id) return;
+      const tapped = !backdropTouch.moved && e.type === 'pointerup';
+      backdropTouch = null;
+      if (tapped) {
+        onClose();
+        armClickSwallow();
+        onSwallowRelease();
+      }
+    };
+
+    // Keyboard activation and the native header bridge dispatch click without
+    // pointerdown. DOM ancestry matters here: a dialog portalled FROM the
+    // header is not a header interaction just because React bubbles through it.
+    const handleNavigationClick = (e: MouseEvent) => {
+      if (isNavigation(e.target)) onClose();
+    };
+    const canScroll = (target: EventTarget | null) =>
+      (target instanceof Node && !!contentRef.current?.contains(target)) || isAboveOverlay(target);
+    // A wheel outside the panel scrolls the page; past a little travel that
+    // is a scroll, not a nudge, and the panel goes.
+    let backgroundWheel = 0;
+    const handleBackgroundWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // Trackpad pinch-to-zoom.
+      if (canScroll(e.target)) return;
+      backgroundWheel += Math.abs(e.deltaY) + Math.abs(e.deltaX);
+      if (backgroundWheel >= BACKGROUND_SCROLL_DISMISS_PX) {
+        backgroundWheel = 0;
+        onClose();
+      }
+    };
+    const blockBackgroundKeys = (e: KeyboardEvent) => {
+      // Radix can open on keydown and suppress the corresponding click.
+      if (isNavigation(e.target)) {
+        if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) onClose();
+        return;
+      }
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) return;
+      if (canScroll(e.target)) return;
+      e.preventDefault();
+    };
     const handleScroll = (e: Event) => {
-      // Scrolling within the overlay's own content (e.g. a long device list)
-      // must not dismiss it — only scrolling the page behind it should. A
-      // scrollable dialog above it is not the page behind it either.
       if (isInsideOverlay(e.target)) return;
       if (isAboveOverlay(e.target)) return;
-
-      // A scroller that CONTAINS the trigger is not the page sliding out from
-      // under this panel — it is the trigger being carried somewhere, and the
-      // panel's job is to go with it. The pinned tab bar centres the chip you
-      // pressed, and the widget rides across as it travels; dismissing on that
-      // would close the panel the same press had just opened.
+      // Programmatic horizontal centring of a pinned tab remains allowed.
+      // User scroll input is locked above; do not turn a tab's scrollIntoView
+      // into dismissal of the panel that the same press just opened.
       const node = e.target as Node | null;
       if (triggerEl && node && node !== triggerEl && 'contains' in node &&
           (node as Element).contains(triggerEl)) {
         placeAgainstTrigger(true);
-        return;
       }
-      if (startTarget === null) {
-        startTarget = e.target;
-        startY = getScrollY(e.target);
-        return;
-      }
-      if (e.target !== startTarget) return;
-      if (Math.abs(getScrollY(e.target) - startY) > SCROLL_THRESHOLD) onClose();
     };
 
     document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('pointermove', trackBackdropTouch, true);
+    document.addEventListener('pointerup', releaseBackdropTouch, true);
+    document.addEventListener('pointercancel', releaseBackdropTouch, true);
+    document.addEventListener('click', handleNavigationClick, true);
+    document.addEventListener('wheel', handleBackgroundWheel, { passive: true });
+    document.addEventListener('keydown', blockBackgroundKeys, true);
     window.addEventListener('scroll', handleScroll, true);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('pointermove', trackBackdropTouch, true);
+      document.removeEventListener('pointerup', releaseBackdropTouch, true);
+      document.removeEventListener('pointercancel', releaseBackdropTouch, true);
+      document.removeEventListener('click', handleNavigationClick, true);
+      document.removeEventListener('wheel', handleBackgroundWheel);
+      document.removeEventListener('keydown', blockBackgroundKeys, true);
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [isExpanded, onClose, armClickSwallow, baseZ, placeAgainstTrigger]);
+  }, [isExpanded, onClose, armClickSwallow, onSwallowRelease, baseZ, placeAgainstTrigger]);
 
   // Handle mouse leave - call immediately
   // Is the pointer genuinely away from both the panel and the tile it came from?
@@ -539,11 +624,12 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
   // Anchor below the trigger's top edge, then pull back up if that would push
   // the panel past the bottom of the viewport.
   const anchoredTop = coords.y - PADDING + TOP_OFFSET;
-  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 0;
+  const viewportH = viewport.height;
+  const minTop = viewport.top + viewport.safeTop + MIN_TOP;
   const lowestTop = viewportH && panelHeight
-    ? viewportH - panelHeight - PADDING * 2 - MIN_TOP - bottomInset
+    ? viewport.top + viewportH - panelHeight - PADDING * 2 - MIN_TOP - bottomInset - viewport.safeBottom
     : anchoredTop;
-  const top = Math.max(MIN_TOP, Math.min(anchoredTop, Math.max(MIN_TOP, lowestTop)));
+  const top = Math.max(minTop, Math.min(anchoredTop, Math.max(minTop, lowestTop)));
 
   /**
    * How tall the panel may be before it has to scroll.
@@ -572,7 +658,7 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
    * the viewport, the panel grows into it, and `top` glides up to meet it.
    */
   const maxPanelHeight = viewportH
-    ? Math.max(160, viewportH - MIN_TOP - PADDING * 2 - MIN_TOP - bottomInset)
+    ? Math.max(0, viewportH - MIN_TOP - PADDING * 2 - MIN_TOP - bottomInset - viewport.safeTop - viewport.safeBottom)
     : undefined;
 
   const transformOrigin = position === 'left'
@@ -608,10 +694,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
           <div
             ref={scrimRef}
             aria-hidden
-            // Blocking the pointer also blocks scrolling the page behind, and
-            // the scroll-past-40px dismissal with it. A wheel over the
-            // backdrop means the same thing a tap does.
-            onWheel={() => onClose()}
+            // No `touch-action: none` here: a finger that starts on the scrim
+            // is scrolling the page (it dismisses the panel as it goes), and
+            // that declaration stopped the browser from starting the scroll
+            // at all.
             style={{ zIndex: baseZ }}
             // Opacity is NOT tied to `ready`. That flag waits for the panel to
             // be measured, which waits for the widget inside it to render —
@@ -623,8 +709,18 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
               isClosing ? 'opacity-0' : 'opacity-100'
             } ${ready && !isClosing ? 'pointer-events-auto' : 'pointer-events-none'}`}
           />
+          {/* iOS Safari's bar bands, matched to the scrim — see the component. */}
+          {!isClosing && <EdgeSampleSlivers dim={isDarkBackground ? 0.4 : 0.2} zIndex={baseZ} />}
+          {/* RemoveScroll for one thing only: a wheel or a finger inside the
+              panel that reaches the panel's edge stops there instead of
+              chaining into the page. `noIsolation` leaves the page and any
+              portalled menu or dialog scrollable, and `removeScrollBar` off
+              keeps it from setting `overflow: hidden` on the body — which is
+              the page's own scroller in a browser and in the iOS shell, and
+              locked it solid. */}
+          <RemoveScroll forwardProps ref={panelRef} noIsolation allowPinchZoom removeScrollBar={false}>
           <div
-            ref={panelRef}
+            data-expanded-overlay={isExpanded ? 'open' : 'closing'}
             // Marks this as expanded-widget content even though the portal puts
             // it outside the widget's own subtree. Dashboard's collapse-on-
             // mouse-leave asks whether focus is still inside a widget before
@@ -693,9 +789,10 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                 }`} />
                 {/* Content layer - no opacity animation to preserve backdrop-blur */}
                 <div
+                  data-expanded-overlay-scroll
                   // Scrolls rather than overflowing: whatever it holds, the
                   // panel stops where `bottomInset` says it must.
-                  className={`relative overflow-y-auto scrollbar-hidden transition-opacity duration-fast ease-standard ${
+                  className={`relative overflow-y-auto overscroll-contain scrollbar-hidden transition-opacity duration-fast ease-standard ${
                     ready && !isClosing ? 'opacity-100' : 'opacity-0'
                   }`}
                   style={{ maxHeight: maxPanelHeight }}
@@ -707,12 +804,17 @@ export const ExpandedOverlay: React.FC<ExpandedOverlayProps> = ({ isExpanded, on
                       +2 leaves the nested scrim a rung of its own at baseZ + 2,
                       directly over this panel at baseZ + 1. */}
                   <OverlayZContext.Provider value={baseZ + 2}>
-                    {children}
+                    <OverlayWidthContext.Provider value={setContentWidth}>
+                      <OverlayCloseContext.Provider value={onClose}>
+                        {children}
+                      </OverlayCloseContext.Provider>
+                    </OverlayWidthContext.Provider>
                   </OverlayZContext.Provider>
                 </div>
               </div>
             </div>
           </div>
+          </RemoveScroll>
         </>,
         document.body
       )}

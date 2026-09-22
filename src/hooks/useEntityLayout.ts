@@ -8,6 +8,7 @@ import type {
   BackgroundSettings,
 } from '@/lib/graphql/types';
 import type { SummarySectionId, HomeActionId } from '@/lib/summary-sections';
+import type { WidgetSizeMap } from '@/lib/widget-sizes';
 
 /**
  * Hook to get and update entity layout configuration.
@@ -136,6 +137,10 @@ export interface HomeLayoutData {
    * than pruned, because a shortcut comes and goes with the home's contents.
    */
   sceneCardOrder?: string[];
+  /** Display placement only; absent infers from scene targets, null means whole home. */
+  sceneRooms?: Record<string, string | null>;
+  /** Mixed device/scene order for the Whole home shelf and ungrouped view. */
+  dashboardItemOrder?: Record<string, string[]>;
   /**
    * Arrangement of the Automations section's cards, as prefixed keys
    * (`hk:<uuid>`, `hc:<id>`). See lib/automation-cards.ts — HomeKit's engine
@@ -144,6 +149,14 @@ export interface HomeLayoutData {
    * the section is open.
    */
   automationCardOrder?: string[];
+  /**
+   * How big each widget is drawn, keyed by the same ids `itemOrder` uses
+   * (accessory id, `group-<id>`). Absent means Regular, so this needed no
+   * migration and a home that has never used it carries no map at all.
+   * See lib/widget-sizes.ts — per home rather than per room context, because
+   * how big a camera is worth showing is a fact about the camera.
+   */
+  widgetSizes?: WidgetSizeMap;
   visibility?: {
     /**
      * The single pre-split hidden-rooms list. Still written, as the

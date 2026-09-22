@@ -28,9 +28,18 @@ export interface SortableItemProps {
   disabled?: boolean;
   /** When true, don't apply transforms (useful for cross-group dragging) */
   disableTransform?: boolean;
+  /**
+   * Grid placement for a tile that is not 1×1 (see lib/widget-sizes.ts).
+   *
+   * It has to land here rather than on the card inside, because this is the
+   * element the grid actually lays out — a span set on a descendant is a span
+   * set on nothing. Merged under the drag transform, never over it: a lift
+   * must still be able to move the tile it is carrying.
+   */
+  style?: React.CSSProperties;
 }
 
-export const SortableItem: React.FC<SortableItemProps> = memo(({ id, children, disabled, disableTransform }) => {
+export const SortableItem: React.FC<SortableItemProps> = memo(({ id, children, disabled, disableTransform, style: styleOverride }) => {
   const {
     attributes,
     listeners,
@@ -41,6 +50,8 @@ export const SortableItem: React.FC<SortableItemProps> = memo(({ id, children, d
   } = useSortable({ id, disabled });
 
   const style = useMemo(() => ({
+    // The grid span first, so the drag properties below always win a collision.
+    ...styleOverride,
     // Only use translate, not scale - prevents stretching when items of different sizes swap
     // When disableTransform is true, don't apply transforms (used for cross-group dragging)
     transform: transform && !disableTransform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
@@ -50,7 +61,7 @@ export const SortableItem: React.FC<SortableItemProps> = memo(({ id, children, d
     position: 'relative' as const,
     // GPU acceleration for smoother transforms
     willChange: transform ? 'transform' : undefined,
-  }), [transform, disableTransform, transition, isDragging]);
+  }), [styleOverride, transform, disableTransform, transition, isDragging]);
 
   const contextValue = useMemo(() => ({
     attributes,

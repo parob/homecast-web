@@ -8,7 +8,7 @@
  * list.
  *
  * The whole add-to-an-existing-report path now starts on the compose tab, so
- * that is where these drive it from; Previous is captured as the reference list
+ * that is where these drive it from; Existing is captured as the reference list
  * it is, with nothing to press on a row but the row itself.
  */
 import { test, type Page } from '@playwright/test';
@@ -115,12 +115,12 @@ test('report sheet — compose tab', async ({ page }) => {
   await sheet(page).screenshot({ path: 'screenshots/output/report-sheet-new.png' });
 });
 
-test('report sheet — previous reports tab', async ({ page }) => {
+test('report sheet — existing issues tab', async ({ page }) => {
   await asAdminReporter(page);
   await openReportSheet(page);
-  await page.getByRole('tab', { name: 'Previous' }).click();
+  await page.getByRole('tab', { name: 'Existing' }).click();
   await page.waitForTimeout(800);
-  await sheet(page).screenshot({ path: 'screenshots/output/report-sheet-previous.png' });
+  await sheet(page).screenshot({ path: 'screenshots/output/report-sheet-existing.png' });
 });
 
 test('report sheet — choosing an existing report', async ({ page }) => {

@@ -32,12 +32,13 @@ vi.hoisted(() => {
     dispatchEvent: () => false,
   });
 });
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { InspectorPanel } from '../InspectorPanel';
+import { ingestHomeServingPush, resetHomeServing } from '@/server/home-serving';
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); resetHomeServing(); });
 
-function open(topic: string, payload: string) {
+function open(topic: string, payload: string, home?: { id: string; name: string }) {
   const onPublishProp = vi.fn();
   render(
     <InspectorPanel
@@ -45,7 +46,7 @@ function open(topic: string, payload: string) {
       message={{ payload, timestamp: Date.now(), updates: 1 }}
       effectivePayload={payload}
       rowType="accessory"
-      homeOffline={false}
+      home={home}
       rawMode={false}
       onRawModeChange={() => {}}
       publishValue=""
@@ -60,6 +61,16 @@ function open(topic: string, payload: string) {
 }
 
 describe('MQTT inspector controls', () => {
+  it('updates its explanation when the selected home waits for takeover', () => {
+    const home = { id: 'HOME', name: 'George Street' };
+    const serving = { state: 'served', by: 'mini', kind: 'cloud', since: null, graceEndsAt: null };
+    ingestHomeServingPush({ homeId: home.id, serving });
+    open('homecast/home-1111/timer-2c12', '{"timer":"idle"}', home);
+    act(() => ingestHomeServingPush({ homeId: home.id, serving: { ...serving, state: 'waiting', by: null, kind: null } }));
+    expect(screen.getByText(/Waiting for backup — publishes cannot currently reach this home/)).toBeTruthy();
+    expect(screen.queryByText(/Relay offline/)).toBeNull();
+  });
+
   it('starts a timer', () => {
     const publish = open('homecast/home-1111/porch-timer-2c12', '{"timer": "idle"}');
 

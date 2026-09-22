@@ -185,11 +185,9 @@ export function takeoverIn(graceEndsAt: string | null, now: number): string {
  * The index is the hop that fails: 0 = this device → Homecast, 1 = Homecast →
  * relay, 2 = relay → home. `null` means nothing is broken.
  *
- * `slow` and `stalled` differ in *where* they are, which is the whole point of
- * the chain. `offline` is the near hop — this device cannot get out. `stalled`
- * is the far one: we reach Homecast fine, and Homecast gets no answer from the
- * relay. That distinction is the difference between "check your wifi" and
- * "nothing you can do".
+ * Both latency and a missing heartbeat describe this device → Homecast.
+ * Neither identifies a failed relay. Only the per-home serving fact can
+ * place a break at the relay hop.
  */
 function brokenHop(quality: ConnectionQuality): number | null {
   switch (quality) {
@@ -198,7 +196,7 @@ function brokenHop(quality: ConnectionQuality): number | null {
     case 'connecting':
       return 0;
     case 'stalled':
-      return 1;
+      return 0;
     case 'slow':
       return 0;
     default:
@@ -260,7 +258,7 @@ export function buildChain(input: ChainInput): ChainModel {
     const relayTone: ChainTone = linkDown ? 'idle'
       : relayState === null ? 'idle'
       : relayState === 'served' ? 'ok'
-      : relayState === 'reconnecting' ? 'warn'
+      : relayState === 'reconnecting' || relayState === 'waiting' ? 'warn'
       : 'bad';
     return {
       nodes: [
@@ -277,7 +275,7 @@ export function buildChain(input: ChainInput): ChainModel {
           ? { tone: 'idle', label: null }
           : relayTone === 'ok'
             ? { tone: 'ok', label: null }
-            : { tone: relayTone, label: relayState === 'reconnecting' ? 'reconnecting' : 'no relay' },
+            : { tone: relayTone, label: relayState === 'waiting' ? 'waiting for backup' : relayState === 'reconnecting' ? 'reconnecting' : 'no relay' },
         { tone: 'ok', label: 'direct' },
       ],
       bypass: true,
@@ -306,14 +304,12 @@ export function buildChain(input: ChainInput): ChainModel {
   // amber "Relay offline" while the panel two lines beneath it drew four green
   // nodes, with `Cloud relay` — the dead one — among them (homecast-cloud#99).
   //
-  // The break lands on hop 1 (Homecast → relay), the same hop `stalled` uses,
-  // because it is the same fault told two ways. `stalled` infers it from a
-  // request that never came back; this is the server stating it as the fact
-  // for the home, which is the stronger evidence and arrives without a timeout.
+  // Only the server’s per-home fact puts a break on the relay hop. A stalled
+  // client connection cannot establish what happened beyond Homecast.
   if (serving && serving.state !== 'served' && linkFine(quality)) {
-    const tone: ChainTone = serving.state === 'reconnecting' ? 'warn' : 'bad';
+    const tone: ChainTone = serving.state === 'offline' ? 'bad' : 'warn';
     hops[1].tone = tone;
-    hops[1].label = serving.state === 'reconnecting' ? 'reconnecting' : 'no relay';
+    hops[1].label = serving.state === 'waiting' ? 'waiting for backup' : serving.state === 'reconnecting' ? 'reconnecting' : 'no relay';
     nodes[2].tone = tone;
     hops[2].tone = 'idle';
     nodes[3].tone = 'idle';

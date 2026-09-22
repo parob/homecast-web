@@ -1,4 +1,5 @@
 import type { SummarySectionId, HomeActionId } from '@/lib/summary-sections';
+import type { WidgetSizeMap } from '@/lib/widget-sizes';
 
 export interface User {
   id: string;
@@ -264,6 +265,12 @@ export interface HomeKitAccessory {
   category?: string;
   isReachable: boolean;
   services: HomeKitService[];
+  /**
+   * Present when the accessory has a HomeKit camera profile — the relay's own
+   * reading, not the category, which some cameras leave empty. Absent from
+   * relays that predate camera support, so absent means "no stills".
+   */
+  camera?: { snapshot: boolean; stream: boolean };
 }
 
 export interface HomeKitScene {
@@ -968,6 +975,14 @@ export interface HomeLayoutData {
    * the section is open.
    */
   automationCardOrder?: string[];
+  /**
+   * How big each widget is drawn, keyed by the same ids `itemOrder` uses
+   * (accessory id, `group-<id>`). Absent means Regular, so this needed no
+   * migration and a home that has never used it carries no map at all.
+   * See lib/widget-sizes.ts — per home rather than per room context, because
+   * how big a camera is worth showing is a fact about the camera.
+   */
+  widgetSizes?: WidgetSizeMap;
   visibility?: {
     /**
      * The single pre-split hidden-rooms list. Still written, as the

@@ -53,10 +53,15 @@ class LocalIdentity {
   private cached: Cached | null = null;
   private userId = '';
   private inFlight: Promise<SyncResult | null> | null = null;
+  private accountGeneration = 0;
+  /** Changes only when the address map changes, not on a periodic no-op sync. */
+  revision = 0;
 
   /** Point at a user's cached map. Keyed per user so accounts can't bleed. */
   load(userId: string): void {
     if (!userId || userId === this.userId) return;
+    this.accountGeneration++;
+    this.inFlight = null;
     this.userId = userId;
     this.liveToHc.clear();
     this.hcToLive.clear();
@@ -99,6 +104,8 @@ class LocalIdentity {
   /** Drop this device's map, so the next account to sign in starts clean. */
   forget(): void {
     const previous = this.userId;
+    this.accountGeneration++;
+    this.inFlight = null;
     this.userId = '';
     this.cached = null;
     this.liveToHc.clear();
@@ -113,7 +120,10 @@ class LocalIdentity {
 
   private adopt(c: Cached): void {
     this.cached = c;
-    this.liveToHc = new Map(Object.entries(c.live));
+    // Match cloud responses and cache keys; UUID case is not identity.
+    const next = new Map(Object.entries(c.live).map(([live, hc]) => [live.toUpperCase(), hc.toUpperCase()]));
+    if (next.size !== this.liveToHc.size || [...next].some(([live, hc]) => this.liveToHc.get(live) !== hc)) this.revision++;
+    this.liveToHc = next;
     this.hcToLive = new Map();
     for (const [live, hc] of this.liveToHc) this.hcToLive.set(hc.toUpperCase(), live);
   }
@@ -188,17 +198,24 @@ class LocalIdentity {
    */
   async sync(force = false): Promise<SyncResult | null> {
     if (this.inFlight) return this.inFlight;
-    this.inFlight = this.doSync(force).finally(() => { this.inFlight = null; });
-    return this.inFlight;
+    const pending = this.doSync(force);
+    this.inFlight = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.inFlight === pending) this.inFlight = null;
+    }
   }
 
   private async doSync(force: boolean): Promise<SyncResult | null> {
     // No user yet means no cache to key and no auth to report under. The
     // controller starts on module load, long before `getMe()` answers, so
-    // without this the first attempt would build a topology, spend a mutation
-    // that 401s — or worse, succeed and then drop the map on the floor at the
-    // `if (this.userId)` write below — and set the retry clock for ten minutes.
+    // without this the first attempt could build a topology, make an
+    // unauthenticated reconciliation request, and set the retry clock for ten
+    // minutes before a user session exists.
     if (!this.userId) return null;
+    const userId = this.userId;
+    const generation = this.accountGeneration;
 
     let topology: TopologyReport;
     try {
@@ -207,7 +224,7 @@ class LocalIdentity {
       console.warn('[LocalIdentity] Could not read topology from HomeKit:', err);
       return null;
     }
-    if (topology.homes.length === 0) return null;
+    if (generation !== this.accountGeneration || topology.homes.length === 0) return null;
 
     const hash = hashTopology(topology);
     const fresh = this.cached
@@ -219,8 +236,10 @@ class LocalIdentity {
 
     try {
       const { reconcileLocalTopology } = await import('../lib/graphql/local-identity-api');
+      // Both the report and its response belong to the account that began it.
+      if (generation !== this.accountGeneration) return null;
       const res = await reconcileLocalTopology(topology);
-      if (!res) return null;
+      if (generation !== this.accountGeneration || !res) return null;
 
       const live: Record<string, string> = {};
       for (const kind of Object.values(res.map)) {
@@ -234,7 +253,7 @@ class LocalIdentity {
         reported: res.reported,
       };
       this.adopt(next);
-      if (this.userId) localStorage.setItem(storageKey(this.userId), JSON.stringify(next));
+      localStorage.setItem(storageKey(userId), JSON.stringify(next));
 
       if (res.matched < res.reported) {
         // A low ratio is the signal that this device is in a genuinely
@@ -244,6 +263,7 @@ class LocalIdentity {
       }
       return { matched: res.matched, reported: res.reported };
     } catch (err) {
+      if (generation !== this.accountGeneration) return null;
       console.warn('[LocalIdentity] Reconcile failed — continuing with the cached map:', err);
       return this.cached ? { matched: this.cached.matched, reported: this.cached.reported } : null;
     }

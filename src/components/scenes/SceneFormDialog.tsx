@@ -41,6 +41,7 @@ interface SceneFormDialogProps {
   /** When set, edit this scene; otherwise create a new one. */
   scene?: HomeKitScene | null;
   onSaved?: () => void;
+  placement?: React.ReactNode;
   /** Shown as a Delete button when editing a deletable scene. */
   onDelete?: () => void;
 }
@@ -185,7 +186,7 @@ function DeviceActionCard({ accessory, accessoryId, actions, chars, readOnly, on
   );
 }
 
-export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, onDelete }: SceneFormDialogProps) {
+export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, onDelete, placement }: SceneFormDialogProps) {
   const isEditing = !!scene;
   // Automation-owned and built-in scenes can't be modified — show actions read-only
   const builtIn = isBuiltInScene(scene);
@@ -354,6 +355,7 @@ export function SceneFormDialog({ open, onOpenChange, homeId, scene, onSaved, on
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-2">
+            {placement}
             {readOnly && (
               <p className="text-xs text-muted-foreground">
                 {scene?.automationName

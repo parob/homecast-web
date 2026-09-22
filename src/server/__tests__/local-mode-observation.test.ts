@@ -17,11 +17,15 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+const revalidate = vi.hoisted(() => vi.fn());
+vi.mock('../../hooks/useHomeKitData', () => ({ revalidateHomeKitCache: revalidate }));
+
 const homekit = vi.hoisted(() => ({
   getStatus: vi.fn(async () => ({
     ready: true, authorized: true, restricted: false, determined: true, homeCount: 1,
   })),
   isAvailable: () => true,
+  listHomes: vi.fn(async () => []),
   startObserving: vi.fn(async () => ({ success: true, observing: true })),
   stopObserving: vi.fn(async () => ({ success: true, observing: false })),
   resetObservationTimeout: vi.fn(async () => ({ success: true })),
@@ -44,6 +48,7 @@ vi.mock('../home-serving', () => ({
   getThisDevice: () => null,
   servedByThisDevice: () => false,
   setDeviceServing: () => {},
+  notifyDeviceServingChanged: () => {},
 }));
 
 vi.mock('../connection', () => ({
@@ -58,6 +63,7 @@ vi.mock('../connection', () => ({
 
 vi.mock('../local-identity', () => ({
   localIdentity: {
+    revision: 0,
     loadLast: () => {},
     hasUser: () => false,
     counts: () => null,
@@ -80,6 +86,41 @@ describe('Local Mode observation', () => {
     localStorage.setItem('homecast-local-mode', 'on');
     homekit.startObserving.mockClear();
     homekit.resetObservationTimeout.mockClear();
+    revalidate.mockReset();
+  });
+
+  it('refreshes cached reads after the new route is active, in both directions', async () => {
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    const routes: boolean[] = [];
+    revalidate.mockImplementation(() => { routes.push(controller.isActive()); });
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(routes).toEqual([true]);
+    setLocalModeOverride('off');
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(routes).toEqual([true, false]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(routes).toEqual([true, false]);
+  });
+
+  it('refreshes when reconciliation changes addresses while Local Mode stays active', async () => {
+    const { controller } = await import('../local-mode-controller');
+    const { localIdentity } = await import('../local-identity');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    revalidate.mockClear();
+    vi.mocked(localIdentity.sync).mockImplementationOnce(async () => {
+      localIdentity.revision++;
+      return null;
+    });
+    await controller.resyncIdentity();
+    expect(controller.isActive()).toBe(true);
+    expect(revalidate).toHaveBeenCalledTimes(1);
+    await controller.resyncIdentity();
+    expect(revalidate).toHaveBeenCalledTimes(1);
   });
 
   afterEach(() => {
@@ -130,5 +171,81 @@ describe('Local Mode observation', () => {
 
     expect(homekit.startObserving).toHaveBeenCalledTimes(1);
     expect(homekit.resetObservationTimeout.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it.each([true, false])('does not resume observation after Local Mode ended during a pending start (success=%s)', async (success) => {
+    let finishStart!: () => void;
+    homekit.startObserving.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      finishStart = () => success
+        ? resolve({ success: true, observing: true })
+        : reject(new Error('start completed after Local Mode ended'));
+    }));
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(1);
+
+    setLocalModeOverride('off');
+    await settle();
+    expect(controller.isActive()).toBe(false);
+    finishStart();
+    await settle();
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    expect(homekit.startObserving).toHaveBeenCalledTimes(1);
+    expect(homekit.resetObservationTimeout).not.toHaveBeenCalled();
+  });
+
+  it('ignores an old retry result after a new Local Mode session has started', async () => {
+    let rejectRetry!: (error: Error) => void;
+    homekit.startObserving
+      .mockRejectedValueOnce(new Error('initial start failed'))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectRetry = reject;
+      }));
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_100);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(2);
+
+    setLocalModeOverride('off');
+    await settle();
+    expect(controller.isActive()).toBe(false);
+    setLocalModeOverride('on');
+    await settle();
+    expect(controller.isActive()).toBe(true);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(3);
+
+    rejectRetry(new Error('previous session retry failed'));
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(homekit.startObserving).toHaveBeenCalledTimes(3);
+    expect(homekit.resetObservationTimeout).toHaveBeenCalled();
+  });
+
+  it('ignores a failed keepalive from the previous Local Mode session', async () => {
+    let rejectReset!: (error: Error) => void;
+    homekit.resetObservationTimeout.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectReset = reject;
+    }));
+    const { controller, setLocalModeOverride } = await import('../local-mode-controller');
+    controller.start();
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_100);
+    expect(homekit.resetObservationTimeout).toHaveBeenCalledTimes(1);
+
+    setLocalModeOverride('off');
+    await settle();
+    setLocalModeOverride('on');
+    await settle();
+    expect(homekit.startObserving).toHaveBeenCalledTimes(2);
+    rejectReset(new Error('previous session keepalive failed'));
+    await settle();
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    expect(homekit.startObserving).toHaveBeenCalledTimes(2);
+    expect(homekit.resetObservationTimeout).toHaveBeenCalledTimes(2);
   });
 });

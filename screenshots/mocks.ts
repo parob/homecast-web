@@ -87,6 +87,20 @@ function resolveGraphQL(
   variables?: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   switch (opName) {
+    // The dashboard uses WebSocket reads; the editor's pickers use GraphQL.
+    // Both must see the same fixtures or a picker can pass while always empty.
+    case 'GetHomes':
+      return { homes: HOMES };
+
+    case 'GetAccessories':
+      return handleWsRequest('accessories.list', variables ?? {});
+
+    case 'GetScenes':
+      return handleWsRequest('scenes.list', variables ?? {});
+
+    case 'GetServiceGroups':
+      return handleWsRequest('serviceGroups.list', variables ?? {});
+
     case 'GetMe':
       return { me: MOCK_USER };
 
@@ -296,8 +310,8 @@ function handleWsRequest(
       };
 
     case 'rooms.list':
-      if (homeId === SHARED_HOME_ID) return { rooms: SHARED_HOME_ROOMS };
-      return { rooms: MY_HOME_ROOMS };
+      if (homeId === SHARED_HOME_ID) return { rooms: withOverriddenNames(SHARED_HOME_ROOMS) };
+      return { rooms: withOverriddenNames(MY_HOME_ROOMS) };
 
     case 'accessories.list':
       if (homeId === SHARED_HOME_ID) return { accessories: SHARED_HOME_ACCESSORIES };
@@ -360,6 +374,26 @@ let settingsOverride: Record<string, unknown> | null = null;
 /** Override the settings returned by GetSettings for the next setupMocks call. */
 export function overrideSettings(settings: Record<string, unknown>) {
   settingsOverride = settings;
+}
+
+// ── Room name overrides ────────────────────────────────────────────────
+
+/**
+ * Rename fixture rooms, keyed by room id.
+ *
+ * The fixture names are all short, which is the wrong shape for anything about
+ * how a name is laid out — truncation, wrapping, a panel's width. Rather than
+ * lengthening the shared fixtures and moving every other capture, a spec that
+ * cares says so.
+ */
+let roomNameOverrides: Record<string, string> = {};
+
+export function overrideRoomNames(names: Record<string, string>) {
+  roomNameOverrides = names;
+}
+
+function withOverriddenNames<T extends { id: string; name: string }>(rooms: T[]): T[] {
+  return rooms.map(r => (roomNameOverrides[r.id] ? { ...r, name: roomNameOverrides[r.id] } : r));
 }
 
 export function getEffectiveSettings() {
@@ -429,6 +463,11 @@ export function getEntityLayout(entityType?: string, entityId?: string) {
 // ── Setup all mocks ──────────────────────────────────────────────────────────
 
 export async function setupMocks(page: Page) {
+  // These third-party bootstraps inject iframes and background requests that
+  // can delay page load independently of the UI being tested. Keep captures
+  // and geometry checks independent of live advertising/analytics services.
+  await page.route(/^https:\/\/(pagead2\.googlesyndication\.com|www\.googletagmanager\.com)\//, route =>
+    route.fulfill({ contentType: 'application/javascript', body: '' }));
   await injectAuth(page);
   // Force cloud mode so the app connects WS to localhost:8080 (not 8081).
   // Community mode uses httpPort+1 for WS, but Playwright can't intercept cross-port WS.
@@ -440,4 +479,28 @@ export async function setupMocks(page: Page) {
   await mockWebSocket(page);
   // NOTE: call injectScreenshotStyles(page) AFTER page.goto() for transparent
   // dialog corners — addStyleTag must run after navigation.
+}
+
+/**
+ * Wait until the mocked dashboard has data and has painted.
+ *
+ * Gate on the ⋮ rather than on the ☰. Six specs used to open on
+ * `[data-tour="sidebar-menu"]`, and at `bc633c8` that element stopped rendering
+ * in **any** browser: on mobile web the home name in the heading carries the
+ * menu now (`showWebHomeMenu` in `Dashboard.tsx`), and on desktop the button is
+ * `isMobile`-gated and never existed. The burger survives only behind the iOS
+ * native-header preview, which no Playwright project turns on — so every one of
+ * those specs timed out at its first line, and because the `test` workflow does
+ * not run this directory, nothing went red. See parob/homecast-web#133.
+ *
+ * ⋮ is the right replacement rather than merely a working one: it sits in the
+ * same header cluster, it is rendered in all three projects, and it is behind
+ * the same `hasContentAccess` gate the ☰ was — so "visible" still means the
+ * home's data arrived, which is what these specs are really waiting for.
+ *
+ * It lives here, in one place, because the last header refactor had to be found
+ * by hand in six files. The next one changes this line.
+ */
+export async function waitForDashboard(page: Page, timeout = 20000) {
+  await page.locator('[data-tour="header-menu"]').first().waitFor({ state: 'visible', timeout });
 }

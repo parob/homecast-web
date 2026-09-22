@@ -1,5 +1,6 @@
 import type { HomeKitAccessory, HomeKitCharacteristic } from '@/lib/graphql/types';
 import type { IconStyle } from './iconColors';
+import type { WidgetSize, WidgetSizeCapability } from '@/lib/widget-sizes';
 
 export interface WidgetProps {
   accessory: HomeKitAccessory;
@@ -59,6 +60,28 @@ export interface WidgetProps {
   onShare?: () => void;
   /** Location subtitle (e.g., "Home · Room") shown after main subtitle in collections */
   locationSubtitle?: string;
+  /**
+   * How many grid cells this tile currently occupies, and how to change it.
+   * See lib/widget-sizes.ts.
+   *
+   * A widget that ignores these stays 1×1 and is offered no control, which is
+   * every widget but the camera today. A widget opts in by reporting what it
+   * can do with the room through `onSizeCapability` — the grid does not guess,
+   * because a lock at 2×2 is a lock with a lot of empty glass.
+   */
+  size?: WidgetSize;
+  /** The sizes on offer right now, in menu order. Fewer than two means no control. */
+  sizeOptions?: WidgetSize[];
+  onSizeChange?: (size: WidgetSize) => void;
+  /**
+   * Tell the grid what sizes this widget can usefully take.
+   *
+   * A callback rather than a static table because the answer can depend on
+   * live data the widget alone holds — a camera's is derived from the shape of
+   * the snapshot that actually came back, so it needs no configuration and
+   * works for a camera added tomorrow.
+   */
+  onSizeCapability?: (capability: WidgetSizeCapability) => void;
   /** When true, widget uses translucent blurred background (for when page has a background image) */
 }
 

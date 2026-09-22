@@ -1,3 +1,5 @@
+import { useHomeServing } from '@/hooks/useHomeServing';
+import { homeRelayStatus } from './home-relay-status';
 import { Send, X } from 'lucide-react';
 import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
 import { PropertyEditor, TopicPath, TypeBadge } from './helpers';
@@ -9,7 +11,8 @@ interface InspectorPanelProps {
   message: TopicMessage | undefined;
   effectivePayload: string;
   rowType: MqttRowType;
-  homeOffline: boolean;
+  home?: { id: string; name: string };
+  managed?: boolean;
   // Controls/JSON tabs — only used by the 'sheet' variant.
   rawMode: boolean;
   onRawModeChange: (v: boolean) => void;
@@ -27,12 +30,15 @@ interface InspectorPanelProps {
 // property editor for unknown types) plus the JSON payload editor that
 // publishes to <topic>/set.
 export function InspectorPanel({
-  topic, message, effectivePayload, rowType, homeOffline,
+  topic, message, effectivePayload, rowType, home, managed,
   rawMode, onRawModeChange, publishValue, onPublishValueChange,
   onPublishToSet, onPublishProp, onClose, variant,
 }: InspectorPanelProps) {
+  const serving = useHomeServing(home?.id, 'cloud');
+  const relay = homeRelayStatus(home?.name ?? 'This home', serving, managed);
+  const unavailable = !!serving && serving.state !== 'served';
   const renderControls = () => {
-    const adapted = mqttToAccessory(topic, effectivePayload, !homeOffline);
+    const adapted = mqttToAccessory(topic, effectivePayload, !unavailable);
     if (!adapted) {
       return <PropertyEditor payload={effectivePayload} onPublish={(k, v) => onPublishProp(topic, k, v)} />;
     }
@@ -91,10 +97,11 @@ export function InspectorPanel({
           <button onClick={() => onRawModeChange(true)} className={rawMode ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}>JSON</button>
         </div>
       )}
-      {/* Relay-offline hint */}
-      {homeOffline && (
-        <div className="px-3 py-1 text-[10px] text-amber-700 dark:text-amber-400">
-          Relay offline — publishes won't reach the device.
+      {/* The cloud route can be unknown, waiting, reconnecting or offline. */}
+      {home && serving?.state !== 'served' && (
+        <div className={`px-3 py-1 text-[10px] ${relay.tone === 'bad' ? 'text-red-700 dark:text-red-400' : relay.tone === 'warn' ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
+          {relay.label}{unavailable ? ' — publishes cannot currently reach this home.' : ''}
+          {relay.explanation && <p>{relay.explanation}</p>}
         </div>
       )}
       <div className="space-y-3 p-3">

@@ -138,6 +138,18 @@ beforeEach(() => {
 });
 
 describe('useRunHomeAction', () => {
+  it('matches bulk confirmations across UUID case differences', async () => {
+    request.mockImplementation(async (_name, payload: { writes: Asked[] }) => ({
+      success: true,
+      changes: payload.writes.map(w => ({ ...w, accessoryId: w.accessoryId.toUpperCase(), success: true })),
+    }));
+    const { run } = setup();
+    await run(action());
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastWarning).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it('sends the whole step as one request, with canonical names and the homeId', async () => {
     const { run } = setup();
     await run(action());

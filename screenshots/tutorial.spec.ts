@@ -1,261 +1,97 @@
-/**
- * Playwright test to validate the spotlight tutorial.
- * Captures screenshots of each tutorial step.
- */
+import { test, expect, type Page } from '@playwright/test';
+import { setupMocks, waitForDashboard, overrideEntityLayouts, overrideSettings } from './mocks';
 
-import { test, expect, Page } from '@playwright/test';
-import { setupMocks } from './mocks';
+const card = (page: Page) => page.getByTestId('tutorial-card');
+
+async function openTutorial(page: Page) {
+  await page.locator('[data-tour="header-menu"]').click();
+  await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Replay', exact: true }).click();
+  await expect(card(page).locator('h3')).toHaveText('Welcome to Homecast');
+}
+
+// The spotlight is an SVG mask, not a separate border div. Measure its actual
+// cutout against the visible target after both have settled into place.
+async function expectSpotlight(page: Page, target: string) {
+  await expect.poll(() => page.evaluate(tour => {
+    const el = Array.from(document.querySelectorAll(`[data-tour="${tour}"]`))
+      .find(node => { const r = node.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+    const cutout = document.querySelector('#tour-spotlight-mask g rect');
+    if (!el || !cutout) return false;
+    const rect = el.getBoundingClientRect();
+    const actual = ['x', 'y', 'width', 'height'].map(key => Number(cutout.getAttribute(key)));
+    const expected = [rect.left - 8, rect.top - 8, rect.width + 16, rect.height + 16];
+    return rect.width > 10 && rect.height > 10
+      && actual.every((value, i) => Math.abs(value - expected[i]) < 3);
+  }, target), { message: `spotlight must follow the visible ${target}` }).toBe(true);
+}
 
 test.describe('Tutorial Spotlight Tour', () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
+  test.beforeEach(async ({ page }) => {
+    overrideEntityLayouts({});
+    overrideSettings({});
     await setupMocks(page);
     await page.goto('/portal');
-    await page.waitForTimeout(3000);
+    await waitForDashboard(page);
+    await openTutorial(page);
   });
 
-  async function openTutorialViaSettings(page: Page) {
-    // Open the three-dots menu
-    await page.locator('[data-tour="header-menu"]').click();
-    await page.waitForTimeout(300);
-
-    // Click "Settings" in the dropdown
-    await page.locator('[role="menuitem"]:has-text("Settings")').click();
-    await page.waitForTimeout(500);
-
-    // Click "Account" tab in settings sidebar
-    await page.locator('button:has-text("Account")').click();
-    await page.waitForTimeout(300);
-
-    // Click "Replay" button
-    await page.locator('button:has-text("Replay")').click();
-    await page.waitForTimeout(600);
-  }
-
-  test('full tutorial walkthrough with screenshots', async ({ page }) => {
-    // Verify dashboard loaded by checking for the header menu
-    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 10000 });
-    await page.screenshot({ path: 'screenshots/output/tutorial-0-dashboard.png' });
-
-    // Open tutorial
-    await openTutorialViaSettings(page);
-
-    // Step 0: Welcome
-    await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible({ timeout: 5000 });
-    await page.screenshot({ path: 'screenshots/output/tutorial-1-welcome.png' });
-
-    // Step 1: Your Homes
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
-    await expect(page.locator('h3:has-text("Your Homes")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-2-homes.png' });
-
-    // Step 2: Device Widgets
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
-    await expect(page.locator('h3:has-text("Device Widgets")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-3-widgets.png' });
-
-    // Step 3: Share home/room stage 1
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
-    await expect(page.locator('h3:has-text("Share a home or room")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-4-share-stage1.png' });
-
-    // Step 4: Then choose Share — opens context menu
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1200);
-    await expect(page.locator('h3:has-text("Then choose Share")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-5-share-stage2.png' });
-
-    // Step 5: Share a single device
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1500);
-    await expect(page.locator('h3:has-text("Share a single device")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-6-share-device.png' });
-
-    // Step 6: Collections — use more specific locator since sidebar also has "Collections" heading
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(800);
-    await expect(page.locator('.rounded-xl h3:has-text("Collections")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-7-collections.png' });
-
-    // Step 7: Automations
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(800);
-    await expect(page.locator('h3:has-text("Automations")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-8-automations.png' });
-
-    // Step 8: Settings & More
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(600);
-    await expect(page.locator('h3:has-text("Settings & More")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-9-settings.png' });
-
-    // Done
-    await page.click('button:has-text("Done")');
-    await page.waitForTimeout(500);
-    await expect(page.locator('h3:has-text("Settings & More")')).not.toBeVisible();
+  test('walks through the current navigation and sharing controls', async ({ page }, testInfo) => {
+    const phone = testInfo.project.name === 'iphone-screenshots';
+    const steps = [
+      ['Your Homes', phone ? 'home-selector' : 'sidebar-homes'],
+      ['Accessory Widgets', 'widget-area'],
+      ['Share homes, rooms, or accessories', phone ? 'header-menu' : 'widget-area'],
+      ['Then choose Share', phone ? 'share-menu-item' : 'sidebar-home-share-item'],
+      ['Collections', phone ? 'home-navigation-menu' : 'sidebar-collections'],
+      ['Automations', 'header-menu'],
+      ['Settings & More', 'header-menu'],
+    ];
+    for (const [title, target] of steps) {
+      await card(page).getByText('Next', { exact: true }).click();
+      await expect(card(page).locator('h3')).toHaveText(title);
+      await expectSpotlight(page, target);
+      if (phone) await expect(card(page)).not.toContainText(/long.press|right.click/i);
+      if (process.env.CAPTURE_TOUR && ['Your Homes', 'Then choose Share', 'Collections'].includes(title)) {
+        await page.screenshot({ path: testInfo.outputPath(`${title.replaceAll(' ', '-')}.png`) });
+      }
+    }
+    await card(page).getByText('Done', { exact: true }).click();
+    await expect(card(page)).toHaveCount(0);
+    await expect(page.locator('[data-tour="home-navigation-menu"]')).toHaveCount(0);
+    await expect(page.locator('[data-tour="sidebar-home-share-item"]')).toHaveCount(0);
   });
 
-  test('close button dismisses tutorial', async ({ page }) => {
-    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 10000 });
-    await openTutorialViaSettings(page);
-    await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible({ timeout: 5000 });
-    // Click the X close button in the tutorial card
-    await page.locator('.rounded-xl button svg.lucide-x').first().click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('h3:has-text("Welcome to Homecast")')).not.toBeVisible();
+  test('Previous step returns to the welcome card', async ({ page }) => {
+    await card(page).getByText('Next', { exact: true }).click();
+    await expect(card(page).locator('h3')).toHaveText('Your Homes');
+    await card(page).locator('[aria-label="Previous step"]').click();
+    await expect(card(page).locator('h3')).toHaveText('Welcome to Homecast');
   });
 
-  test('back button works', async ({ page }) => {
-    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 10000 });
-    await openTutorialViaSettings(page);
-    await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible({ timeout: 5000 });
-
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(400);
-    await expect(page.locator('h3:has-text("Your Homes")')).toBeVisible();
-
-    await page.locator('button svg.lucide-chevron-left').first().click();
-    await page.waitForTimeout(400);
-    await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible();
-  });
-});
-
-// ── Mobile Tutorial Tests ─────────────────────────────────────────────────────
-
-test.describe('Tutorial Spotlight Tour (Mobile)', () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'iphone-screenshots', 'iPhone only');
-    await setupMocks(page);
-    await page.goto('/portal');
-    await page.waitForTimeout(3000);
+  test('a narrow mouse layout uses the title menu and header sharing', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'screenshots', 'Mouse layout coverage');
+    await page.setViewportSize({ width: 375, height: 812 });
+    await card(page).getByText('Next', { exact: true }).click();
+    await expectSpotlight(page, 'home-selector');
+    for (let step = 0; step < 3; step++) {
+      await card(page).getByText('Next', { exact: true }).click();
+    }
+    await expect(card(page).locator('h3')).toHaveText('Then choose Share');
+    await expectSpotlight(page, 'share-menu-item');
+    await card(page).locator('[aria-label="Close tutorial"]').click();
+    await expect(card(page)).toHaveCount(0);
   });
 
-  async function openTutorialMobile(page: Page) {
-    // On mobile, open the three-dots menu
-    await page.locator('[data-tour="header-menu"]').click();
-    await page.waitForTimeout(300);
-
-    // Click "Settings"
-    await page.locator('[role="menuitem"]:has-text("Settings")').click();
-    await page.waitForTimeout(500);
-
-    // Mobile settings uses drill-down nav — tap "Account" row
-    await page.locator('button:has-text("Account")').click();
-    await page.waitForTimeout(300);
-
-    // Click "Replay" button
-    await page.locator('button:has-text("Replay")').click();
-    await page.waitForTimeout(600);
-  }
-
-  test('mobile tutorial walkthrough with screenshots', async ({ page }) => {
-    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 10000 });
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-0-dashboard.png' });
-
-    await openTutorialMobile(page);
-
-    // Step 0: Welcome
-    await expect(page.locator('h3:has-text("Welcome to Homecast")')).toBeVisible({ timeout: 5000 });
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-1-welcome.png' });
-
-    // Step 1: Your Homes — opens the sidebar sheet, spotlights sidebar-homes inside it.
-    // Regression: prior bug returned the hidden desktop sidebar (rect 0×0) so
-    // the ring never rendered. Assert the spotlight ring lands on the visible
-    // homes section in the open sheet.
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1500);
-    await expect(page.locator('h3:has-text("Your Homes")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-2-homes.png' });
-    const homesRingRect = await page.evaluate(() => {
-      // The ring is the absolute-positioned div with z-index 10045 inside the
-      // tutorial overlay (which itself is at z-index 10040).
-      const candidates = Array.from(document.querySelectorAll('div'));
-      const ring = candidates.find(d => {
-        const cs = getComputedStyle(d);
-        return cs.position === 'absolute' && cs.zIndex === '10045';
-      });
-      const r = ring?.getBoundingClientRect();
-      return r ? { top: r.top, left: r.left, w: r.width, h: r.height } : null;
-    });
-    expect(homesRingRect, 'Your Homes spotlight ring should be present and sized').not.toBeNull();
-    expect(homesRingRect!.w, 'ring width should be a real homes section').toBeGreaterThan(50);
-    expect(homesRingRect!.h, 'ring height should be a real homes section').toBeGreaterThan(50);
-
-    // Step 2: Device Widgets
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1200);
-    await expect(page.locator('h3:has-text("Device Widgets")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-3-widgets.png' });
-
-    // Step 3: Share a home or room — stage 1 (spotlight home only)
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1500);
-    await expect(page.locator('h3:has-text("Share a home or room")')).toBeVisible();
-    // Sheet must remain open after the Next click — earlier regression: the
-    // trusted Next click bubbled to document and Radix DismissableLayer
-    // dismissed the Sheet as a "pointer down outside" event.
-    const stage4State = await page.evaluate(() => {
-      const sheet = document.querySelector('[role="dialog"]');
-      return sheet?.getAttribute('data-state');
-    });
-    expect(stage4State, 'sheet should stay open between sheet-using stages').toBe('open');
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-4-share-stage1.png' });
-
-    // Step 4: Then choose Share — stage 2 (open context menu)
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1800);
-    await expect(page.locator('h3:has-text("Then choose Share")')).toBeVisible();
-    // Stage 2 should have BOTH sheet and context menu open.
-    const stage5State = await page.evaluate(() => {
-      const sheet = document.querySelector('[role="dialog"][data-state="open"]');
-      const menu = document.querySelector('[role="menu"][data-state="open"]');
-      return { sheetOpen: !!sheet, menuOpen: !!menu };
-    });
-    expect(stage5State.sheetOpen, 'sheet stays open under context menu').toBe(true);
-    expect(stage5State.menuOpen, 'context menu open').toBe(true);
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-5-share-stage2.png' });
-
-    // Step 5: Share a single device — closes both ctx-menu and sheet
-    // sequentially (Radix only dismisses one layer per Escape, with ~400ms
-    // between to let exit animations finish), so wait long enough.
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(2500);
-    await expect(page.locator('h3:has-text("Share a single device")')).toBeVisible();
-    // Both sheet and context menu must close before Share-a-single-device's
-    // widget-area spotlight is reached.
-    const stage6State = await page.evaluate(() => {
-      const sheet = document.querySelector('[role="dialog"][data-state="open"]');
-      const menu = document.querySelector('[role="menu"][data-state="open"]');
-      return { sheetOpen: !!sheet, menuOpen: !!menu };
-    });
-    expect(stage6State.sheetOpen, 'sheet must close when next step has no triggers').toBe(false);
-    expect(stage6State.menuOpen, 'context menu must close when next step has no triggers').toBe(false);
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-6-share-device.png' });
-
-    // Step 6: Collections
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1500);
-    await expect(page.locator('.rounded-xl h3:has-text("Collections")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-7-collections.png' });
-
-    // Step 7: Automations
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1500);
-    await expect(page.locator('h3:has-text("Automations")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-8-automations.png' });
-
-    // Step 8: Settings & More
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(1200);
-    await expect(page.locator('h3:has-text("Settings & More")')).toBeVisible();
-    await page.screenshot({ path: 'screenshots/output/tutorial-mobile-9-settings.png' });
-
-    // Done
-    await page.click('button:has-text("Done")');
-    await page.waitForTimeout(500);
-    await expect(page.locator('h3:has-text("Settings & More")')).not.toBeVisible();
+  test('closing during the sharing demonstration dismisses its menu too', async ({ page }) => {
+    for (let step = 0; step < 4; step++) {
+      await card(page).getByText('Next', { exact: true }).click();
+    }
+    await expect(card(page).locator('h3')).toHaveText('Then choose Share');
+    await expect(page.locator('[data-tour="share-menu-item"], [data-tour="sidebar-home-share-item"]')).toBeVisible();
+    await card(page).locator('[aria-label="Close tutorial"]').click();
+    await expect(card(page)).toHaveCount(0);
+    await expect(page.locator('[data-tour="share-menu-item"], [data-tour="sidebar-home-share-item"]')).toHaveCount(0);
   });
 });

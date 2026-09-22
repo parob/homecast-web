@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, ChevronLeft, ChevronRight, Sparkles, X, Loader2 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useLayoutEdit } from '@/contexts/LayoutEditContext';
 
 const DOCS_BASE = 'https://docs.homecast.cloud';
 
@@ -77,7 +78,6 @@ const STEPS: TourStep[] = [
     ],
     title: 'Share homes, rooms, or accessories',
     description: 'Right-click any home or room in the sidebar — or any accessory widget — to open its share menu.',
-    mobileDescription: 'Long-press any home or room in the sidebar — or any accessory widget — to open its share menu.',
     position: 'bottom',
   },
   {
@@ -101,9 +101,9 @@ const STEPS: TourStep[] = [
     position: 'right',
   },
   {
-    target: 'automations',
+    target: 'header-menu',
     title: 'Automations',
-    description: 'Automations run your accessories on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open a home\'s view to create one from scratch or use a template.',
+    description: 'Automations run your accessories on a trigger — time of day, a sensor changing state, a webhook, or sunrise/sunset. Open the top-right menu and choose Automations to create one from scratch or use a template.',
     position: 'bottom',
   },
   {
@@ -144,12 +144,42 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   // demo data not yet swapped — this prevents the welcome card from rendering
   // over a half-loaded dashboard, and we show a small spinner instead.
   const [warming, setWarming] = useState(false);
-  const isViewportMobile = useIsMobile();
-  // Mac app users always have right-click available, even at narrow widths.
-  // Treat them as desktop for instructional copy that distinguishes long-press
-  // from right-click.
-  const isInMacApp = typeof window !== 'undefined' && !!(window as Window & { isHomecastMacApp?: boolean }).isHomecastMacApp;
-  const isMobile = isViewportMobile && !isInMacApp;
+  // Navigation follows the layout width; gesture instructions follow the
+  // dashboard's input policy, including wide touch and narrow mouse layouts.
+  const isMobile = useIsMobile();
+  const { touchMode } = useLayoutEdit();
+  const steps = useMemo(() => STEPS.map((item, index): TourStep => {
+    // Phone navigation lives on the page title now; the old hamburger is
+    // absent. Sharing follows the same touch policy as the widgets themselves.
+    if (isMobile && index === 1) return {
+      ...item,
+      target: 'home-selector',
+      openTrigger: undefined,
+      description: 'Tap the home or room name to switch homes, choose a room, or open a collection.',
+      position: 'bottom',
+    };
+    if ((touchMode || isMobile) && index === 3) return {
+      ...item,
+      target: 'header-menu',
+      additionalTargets: [],
+      openTriggers: [],
+      description: 'Use this menu to share the current home or room. To share one accessory, open its panel and tap Share.',
+      mobileDescription: undefined,
+    };
+    if ((touchMode || isMobile) && index === 4) return {
+      ...item,
+      target: 'share-menu-item',
+      openTriggers: [{ target: 'header-menu' }],
+    };
+    if (isMobile && index === 5) return {
+      ...item,
+      target: 'home-navigation-menu',
+      openTrigger: 'home-selector',
+      description: 'Collections combine accessories from different rooms. Find them in the home name’s menu, below the rooms.',
+      mobileDescription: undefined,
+    };
+    return item;
+  }), [isMobile, touchMode]);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Toggle demo data on the host while the tutorial is open. Reset step to 0
@@ -238,7 +268,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   // out if they're now stale.
   const triggerEpochRef = useRef(0);
 
-  const currentStep = STEPS[step];
+  const currentStep = steps[step];
   // On mobile, use mobileTarget if available (e.g., hamburger button instead of sidebar)
   const effectiveTarget = (isMobile && currentStep.mobileTarget) || currentStep.target;
   const isCenter = !effectiveTarget || !targetRect;
@@ -527,12 +557,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   }, [open, step, effectiveTarget, currentStep]);
 
   const handleNext = useCallback(() => {
-    if (step < STEPS.length - 1) {
+    if (step < steps.length - 1) {
       setStep(s => s + 1);
     } else {
       onComplete();
     }
-  }, [step, onComplete]);
+  }, [step, steps.length, onComplete]);
 
   const handleBack = useCallback(() => {
     setStep(s => Math.max(0, s - 1));
@@ -602,9 +632,10 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
   const spotlightPad = 8;
   const spotlightRadius = 12;
 
-  // Render via portal so the overlay sits at body level, above Sheet portals
+  // Above the dropdowns it demonstrates (10060), as well as Sheet portals.
+  // Otherwise an open menu covers Next and Close and strands the tour.
   return createPortal(
-    <div className="fixed inset-0" style={{ zIndex: 10040 }}>
+    <div className="fixed inset-0" style={{ zIndex: 10070 }}>
       {/* Overlay with spotlight cutout */}
       <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
         <defs>
@@ -701,6 +732,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
           the tutorial isn't stuck if the page is empty or still loading. */}
       {!warming && <div
         ref={cardRef}
+        data-testid="tutorial-card"
         className="absolute w-[320px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain rounded-xl border bg-background shadow-xl p-4 space-y-3"
         style={{
           ...cardStyle,
@@ -717,6 +749,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         {/* Close button */}
         <button
           onClick={handleSkip}
+          aria-label="Close tutorial"
           className="absolute top-3 right-3 p-1 rounded-md hover:bg-muted transition-colors text-muted-foreground"
         >
           <X className="h-3.5 w-3.5" />
@@ -752,7 +785,7 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
         <div className="flex flex-wrap items-center justify-between gap-y-2 pt-1 border-t">
           {/* Step dots */}
           <div className="flex gap-1.5 shrink-0">
-            {STEPS.map((_, i) => (
+            {steps.map((_, i) => (
               <div
                 key={i}
                 className={`h-1.5 rounded-full transition-all duration-200 ${
@@ -769,12 +802,12 @@ export function TutorialDialog({ open, onOpenChange, onComplete, onDemoActiveCha
               </Button>
             )}
             {step > 0 && (
-              <Button variant="ghost" size="sm" onClick={handleBack} className="h-8 px-2">
+              <Button variant="ghost" size="sm" onClick={handleBack} aria-label="Previous step" className="h-8 px-2">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             )}
             <Button size="sm" onClick={handleNext} className="h-8">
-              {step === STEPS.length - 1 ? 'Done' : (
+              {step === steps.length - 1 ? 'Done' : (
                 <>
                   Next
                   <ChevronRight className="h-4 w-4 ml-1" />

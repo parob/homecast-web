@@ -25,6 +25,13 @@ function state(over: Partial<RelayRoutingState> = {}): RelayRoutingState {
 }
 
 describe('canServeLocally', () => {
+  it('sends camera requests through the cloud access and opt-in checks', () => {
+    for (const action of ['camera.snapshot', 'camera.capabilities', 'camera.requestScreenRecording', 'camera.live.start', 'camera.live.keepalive', 'camera.live.stop']) {
+      expect(canServeLocally(action, LIVE, state())).toBe(false);
+      expect(canServeLocally(action, undefined, state())).toBe(false);
+    }
+  });
+
   it('serves a home HomeKit knows', () => {
     expect(canServeLocally('accessories.list', LIVE, state())).toBe(true);
   });

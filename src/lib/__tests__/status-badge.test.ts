@@ -101,7 +101,7 @@ describe('statusPresentation', () => {
   it('stays a quiet dot when it has heard nothing about the home yet', () => {
     // No fact is not a fault. The quiet dot is the honest default; the popover
     // says "checking".
-    expect(statusPresentation(inputs({ serving: null, relayServing: null }))).toEqual(statusPresentation(inputs()));
+    expect(statusPresentation(inputs({ serving: null, relayServing: null }))).toEqual(connectionPresentation('unknown'));
   });
 
   it('says the home is unreachable, in red, while the link to the cloud is perfect', () => {
@@ -119,10 +119,10 @@ describe('statusPresentation', () => {
     // and five minutes of a green dot over a home refusing every write was
     // the whole of #99. Amber and moving: it is about to resolve itself.
     const p = statusPresentation(inputs({ serving: notServed('waiting'), relayServing: notServed('waiting') }));
-    expect(p.label).toBe('Relay offline');
+    expect(p.label).toBe('Waiting for backup');
     expect(p.dotClass).toContain('amber');
     expect(p.pulse).toBe(true);
-    expect(p.headline).toMatch(/standby takes over/);
+    expect(p.headline).toMatch(/backup relay is connected and waiting/);
   });
 
   it('pulses for a relay the server expects back', () => {
@@ -260,7 +260,7 @@ describe('the label, by server state × this device (invariant 4)', () => {
   const rows: Array<[string, HomeServing | null, boolean, string | null]> = [
     ['served by another',      servedBy(MINI),           false, null],
     ['served by me',           servedBy(ME),             false, null],
-    ['waiting',                notServed('waiting'),     false, 'Relay offline'],
+    ['waiting',                notServed('waiting'),     false, 'Waiting for backup'],
     ['reconnecting',           notServed('reconnecting'), false, 'Relay reconnecting'],
     ['offline',                notServed('offline'),     false, 'Relay offline'],
     ['unknown',                null,                     false, null],

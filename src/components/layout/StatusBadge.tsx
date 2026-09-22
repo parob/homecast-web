@@ -40,9 +40,12 @@
  * state is the only one that becomes a pill.)
  */
 
+import { useStatusLog } from '@/hooks/useStatusLog';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { publishHeaderState, statusDotHex } from '@/native/native-header';
+import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { serverConnection } from '@/server/connection';
 import type { ConnectionQuality } from '@/server/connection-quality';
 import { SLOW_IN_FLIGHT_MS, SLOW_RTT_MS } from '@/server/connection-quality';
@@ -53,7 +56,7 @@ import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useLocalMode } from '@/hooks/useLocalMode';
 import { statusPresentation } from '@/lib/status-badge';
 import { buildAnswerCard } from '@/lib/answer-card';
-import { headerDotClass } from '@/lib/header-chrome';
+import { headerDotClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { linkFine } from '@/lib/connection-chain';
 import {
   composeServing,
@@ -79,6 +82,8 @@ interface StatusBadgeProps {
    * band measurement.
    */
   haloStrong?: boolean;
+  /** Beside the heading text rather than in the header's control cluster. */
+  variant?: 'control' | 'inline';
   accountType?: string;
   /**
    * The home the card's verdict and the chain's last node are named for.
@@ -123,6 +128,7 @@ function linkEvidence(): string | null {
 export function StatusBadge({
   inkIsLight,
   haloStrong,
+  variant = 'control',
   accountType,
   homeName,
   homeId,
@@ -130,7 +136,7 @@ export function StatusBadge({
   onOpenRelaySettings,
 }: StatusBadgeProps) {
   const { quality } = useWebSocket();
-  const localMode = useLocalMode();
+  const localMode = useLocalMode(homeId);
   const [open, setOpen] = useState(false);
   const openTimeRef = useRef(0);
 
@@ -198,6 +204,7 @@ export function StatusBadge({
 
   const managed = accountType === 'cloud';
   const p = statusPresentation({
+    homeSelected: !!homeId,
     quality: effectiveQuality,
     reconnected,
     serving,
@@ -210,7 +217,31 @@ export function StatusBadge({
     community: communityRelayMac,
   });
 
-  if (communityRelayMac && !showRelay) return null;
+  // The iOS native header draws its own dot and cannot read a Tailwind class,
+  // so publish the colour down. A partial merge, so this never disturbs the
+  // title `AppHeader` publishes; a no-op on every other platform and on any
+  // build without the preview.
+  //
+  // Above the early return below, because hooks must not sit under one — and
+  // the return is exactly the case that has to reach the bar as `null`, since
+  // a hidden web badge should not leave a stale dot drawn natively.
+  const nativeDotHidden = communityRelayMac && !showRelay;
+  // Under the iOS native bar this button is hidden with the rest of the web
+  // header row, but it is still what the native dot "clicks" and what the
+  // popover anchors to. Park it, invisibly, on the native bar's large-title
+  // line, so the popover opens under the title where the native dot is.
+  const nativeHeaderActive = useNativeHeaderActive();
+  // The line under the native large title says something only when there is
+  // something to say — the Home app shows "Updating…" or "No Response" there
+  // and nothing at all when the home is simply reachable.
+  const nativeSubtitle = nativeDotHidden || statusDotHex(p.dotClass) === '#10b981' ? '' : p.label;
+  useEffect(() => {
+    publishHeaderState({
+      statusColor: nativeDotHidden ? null : statusDotHex(p.dotClass),
+      subtitle: nativeSubtitle,
+    });
+  }, [nativeDotHidden, p.dotClass, nativeSubtitle]);
+
 
   // Keyed on `accountType`, never on a home's `isCloudManaged` — that flag
   // rides the WebSocket `homes.list` payload and the locally-answered one does
@@ -240,6 +271,12 @@ export function StatusBadge({
     deviceNoun: thisDeviceNoun(),
   });
 
+  useStatusLog('home_badge', { homeId: homeId ?? null, quality: effectiveQuality,
+    serving, relayServing, localReason: localMode.reason, label: p.label, colour: statusDotHex(p.dotClass),
+    verdict: card.verdict, because: card.because, nativeSubtitle, hidden: nativeDotHidden });
+
+  if (communityRelayMac && !showRelay) return null;
+
   // The rows need the server: neither is worth a stale figure under a card
   // that has just said this device cannot reach Homecast.
   const linkUp = linkFine(effectiveQuality);
@@ -253,21 +290,43 @@ export function StatusBadge({
     }}>
       <PopoverTrigger asChild>
         <button
+          // What a tap on the iOS native bar's dot clicks, so the same popover
+          // opens from the same trigger — see `native/native-header.ts`.
+          data-native-header="status"
           aria-label={p.srLabel}
+          style={nativeHeaderActive ? {
+            position: 'fixed',
+            top: 'calc(var(--native-header-inset, 0px) - 12px)',
+            left: '16px',
+            width: 32,
+            height: 12,
+            opacity: 0,
+            pointerEvents: 'none',
+            visibility: 'visible',
+          } : undefined}
           className={cn(
-            'flex items-center justify-center rounded-full text-[13px] font-medium',
+            'flex items-center justify-center text-[13px] font-medium',
             // Width changes when a label appears. Eased rather than snapped:
             // the badge sits in a right-anchored cluster, so it grows leftward
             // and never disturbs the title — but a sudden jump still reads as a
             // glitch rather than as information.
             'transition-all duration-300 window-no-drag',
-            p.label ? 'gap-1.5 px-2 py-1' : 'h-6 w-6 p-0',
-            headerDotClass(!!inkIsLight, !!haloStrong),
+            // Beside the home name: a bare dot with a modest tap target, and
+            // a small pill only once it has words. The same spot the iOS
+            // native bar draws its dot (parob/homecast-cloud#120).
+            'rounded-full',
+            p.label ? 'h-7 gap-1.5 px-2 text-[12px]' : 'h-7 w-7 p-0',
+            inkIsLight
+              ? 'text-white bg-transparent hover:bg-white/15'
+              : 'text-foreground bg-transparent hover:bg-black/10',
+            p.label && (inkIsLight ? 'bg-white/15' : 'bg-black/10'),
           )}
         >
           <span
             className={cn(
-              'h-2 w-2 rounded-full shrink-0',
+              'rounded-full shrink-0',
+              // Bigger on its own; the pill's dot stays small beside its text.
+              p.label ? 'h-2 w-2' : 'h-3 w-3 shadow-[0_1px_2px_rgba(0,0,0,0.35)]',
               p.dotClass,
               // `motion-safe:` so a viewer who has asked for less movement gets
               // the colour and the label without the animation.
@@ -279,7 +338,11 @@ export function StatusBadge({
       </PopoverTrigger>
 
       <PopoverContent
-        align="end"
+        // Under the native bar the anchor is parked on the title line; the
+        // card must open below it and never flip above, where the bar is.
+        align={nativeHeaderActive ? 'start' : 'end'}
+        side="bottom"
+        avoidCollisions={!nativeHeaderActive}
         sideOffset={8}
         // The last row's `py-1.5` stacks on the card's own padding, so with the
         // rows present there was 5px more air under the bottom row than above
@@ -288,7 +351,18 @@ export function StatusBadge({
         // Done here rather than as a `-mb-1` on the rows container, which
         // `space-y-3` overrides: it sets `margin-bottom` on every child after
         // the first, at a higher specificity.
-        className={cn('w-[280px] p-3 window-no-drag', (showReliabilityRow || showRelayRow) && 'pb-2')}
+        // Radix measures the room it has and publishes it as
+        // `--radix-popover-content-available-height`; without a cap the card
+        // simply runs off the bottom of a short viewport with nothing to
+        // scroll, so the last thing it says is unreachable. A landscape phone
+        // is the case that bites — iOS declares both landscape orientations,
+        // and at 375pt tall six of the eleven states this card can be in are
+        // taller than the room below the header.
+        className={cn(
+          'w-[280px] p-3 window-no-drag',
+          'max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain',
+          (showReliabilityRow || showRelayRow) && 'pb-2',
+        )}
         onPointerDownOutside={(e) => {
           // Radix closes on pointerdown, which on touch fires before the tap
           // that opened it has finished — without this the popover flickers

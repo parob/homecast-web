@@ -239,6 +239,17 @@ export const GET_CACHED_HOMES = gql`
   }
 `;
 
+// The MQTT browser needs the canonical serving identity as well as the fact.
+export const GET_MQTT_HOMES = gql`
+  query GetMqttHomes {
+    me { id email name accountType }
+    cachedHomes {
+      id hcId name role ownerEmail mqttEnabled
+      serving { state by kind since graceEndsAt }
+    }
+  }
+`;
+
 export const GET_ROOMS = gql`
   query GetRooms($homeId: String!) {
     rooms(homeId: $homeId) {
@@ -983,6 +994,12 @@ export const GET_NOTIFICATION_MUTES = gql`
       scope
       scopeId
     }
+  }
+`;
+
+export const GET_HOME_CAMERAS_ENABLED = gql`
+  query GetHomeCamerasEnabled($homeId: String!) {
+    homeCamerasEnabled(homeId: $homeId)
   }
 `;
 

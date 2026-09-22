@@ -3,10 +3,12 @@
  *
  * Three jobs, all about not wasting anyone's time. Someone about to report a
  * problem can see it is already known — and, if it is closed, that it has been
- * fixed, which is often the actual answer they wanted. Anyone can follow a
- * report through to GitHub rather than wondering where it went. And, given
- * `onAddTo`, they can send what they were writing to one of these rather than
- * opening a second issue for a fault we already have.
+ * fixed, which is often the actual answer they wanted. Given `onOpen`, a row
+ * opens the issue here in the app — what was reported and what fixes it, on
+ * one screen, with the GitHub link spelled out inside it rather than a tap
+ * that silently leaves the app. And, given `onAddTo`, they can send what they
+ * were writing to one of these rather than opening a second issue for a fault
+ * we already have.
  *
  * A closed issue can be added to on purpose. "This came back" is the most
  * useful thing a reporter can tell us, and hiding fixed issues from selection
@@ -19,14 +21,26 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Loader2, Plus,
+  CheckCircle2, ChevronLeft, ChevronRight, CircleDot, Loader2, Plus,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { openExternalUrl } from '@/lib/open-url';
 import {
-  fetchReportedIssues, type IssueFilter, type ReportedIssue,
+  fetchReportedIssues, relativeAge, type IssueFilter, type ReportedIssue,
 } from '@/lib/report/issues';
+import { fixStatus, fixStatusTone } from '@/lib/report/resolution';
+
+/**
+ * How each status reads. Muted for `idle` on purpose: "not picked up yet" is
+ * the absence of news, and it should be legible without competing with the
+ * rows that actually have some.
+ */
+const STATUS_TONE: Record<ReturnType<typeof fixStatusTone>, string> = {
+  done: 'bg-green-600/15 text-green-700 dark:text-green-400',
+  active: 'bg-primary/15 text-primary',
+  waiting: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  idle: 'bg-muted text-muted-foreground',
+};
 
 const FILTERS: { value: IssueFilter; label: string }[] = [
   { value: 'open', label: 'Open' },
@@ -34,28 +48,22 @@ const FILTERS: { value: IssueFilter; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-function when(iso: string | null): string {
-  if (!iso) return '';
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '';
-  const days = Math.floor((Date.now() - then) / 86_400_000);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 30) return `${days}d ago`;
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
-}
-
 interface ReportedIssuesProps {
   /**
-   * Offer each row as somewhere to add the report being written. Absent — as
-   * it is anywhere this list is only a reference — and the rows keep their
-   * single action of opening the issue on GitHub.
+   * Offer each row as somewhere to add the report being written. Tapping the
+   * row chooses it, the same as the Add button beside it: in a picker there
+   * is exactly one thing a row can mean.
    */
   onAddTo?: (issue: ReportedIssue) => void;
+  /**
+   * Open the issue in the app — what was reported and what fixes it. Where
+   * this is given, that is what a tap on the row does; nothing here leaves
+   * the app without saying so.
+   */
+  onOpen?: (issue: ReportedIssue) => void;
 }
 
-export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
+export function ReportedIssues({ onAddTo, onOpen }: ReportedIssuesProps = {}) {
   const [filter, setFilter] = useState<IssueFilter>('open');
   const [page, setPage] = useState(1);
   const [issues, setIssues] = useState<ReportedIssue[]>([]);
@@ -141,24 +149,25 @@ export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
           </p>
         )}
 
-        {!loading && !error && issues.map((issue) => (
-          // Two actions per row once adding is offered, so the card is a
-          // container and each action is its own button — a button inside a
-          // button is invalid, and making the whole row do both would mean
-          // guessing which one a tap meant.
+        {!loading && !error && issues.map((issue) => {
+          const status = fixStatus(issue);
+          const age = relativeAge(issue.createdAt);
+          // In the app, or chosen: the row's one tap. A row with neither
+          // is a plain reference (nothing here does that today).
+          const onRow = onOpen ?? onAddTo;
+          return (
+          // The card is a container and each action is its own button — a
+          // button inside a button is invalid, and making the whole row do
+          // both would mean guessing which one a tap meant.
           <div
             key={issue.issueNumber}
             className="flex w-full min-w-0 items-stretch rounded-md border"
           >
-            {/* A button, not an anchor. Inside the app's WKWebView a
-                target=_blank navigation is silently dropped — github.com is not
-                an app-bound domain — so the tap did nothing at all.
-                `openExternalUrl` hands the URL to the native shell, which opens
-                it in the system browser, and falls back to window.open in a
-                real browser. */}
             <button
               type="button"
-              onClick={() => openExternalUrl(issue.url)}
+              onClick={onRow ? () => onRow(issue) : undefined}
+              disabled={!onRow}
+              aria-label={onOpen ? `Open #${issue.issueNumber}` : undefined}
               className="flex min-w-0 flex-1 items-start gap-2 rounded-l-md p-2 text-left transition-colors hover:bg-muted/50"
             >
               {issue.state === 'closed' ? (
@@ -171,14 +180,30 @@ export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
                     almost every real issue title; a bug report's title is where
                     the information is, so give it the room to be read. */}
                 <div className="line-clamp-2 break-words text-sm">{issue.title}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  #{issue.issueNumber}
-                  {when(issue.createdAt) && ` · ${when(issue.createdAt)}`}
-                  {issue.commentCount > 0 &&
-                    ` · ${issue.commentCount} ${issue.commentCount === 1 ? 'comment' : 'comments'}`}
+                {/* Wraps: the status word is additive, and on a narrow row it must
+                    take its own line rather than eat the comment count beside it. */}
+                <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                  <span className="truncate">
+                    #{issue.issueNumber}
+                    {age && ` · ${age}`}
+                    {issue.commentCount > 0 &&
+                      ` · ${issue.commentCount} ${issue.commentCount === 1 ? 'comment' : 'comments'}`}
+                  </span>
+                  {/* A word, not a button: where the report stands is a fact
+                      about the row, and the row itself is what opens it. Every
+                      open row carries one — a row with no news used to render
+                      blank, which read as "being worked on" and was the whole
+                      of homecast-cloud#181. */}
+                  <span
+                    className={`shrink-0 rounded-full px-1.5 py-px text-[11px] ${STATUS_TONE[fixStatusTone(status)]}`}
+                  >
+                    {status}
+                  </span>
                 </div>
               </div>
-              <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {onOpen && (
+                <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
             </button>
 
             {onAddTo && (
@@ -198,7 +223,8 @@ export function ReportedIssues({ onAddTo }: ReportedIssuesProps = {}) {
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {(page > 1 || hasMore) && (
