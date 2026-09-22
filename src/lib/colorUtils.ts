@@ -274,20 +274,39 @@ export const PRESET_GRADIENTS: Record<string, string> = {
   'gradient-rose': 'radial-gradient(at 70% 80%, #d48a6e 0%, transparent 50%), radial-gradient(at 20% 30%, #c27090 0%, transparent 55%), radial-gradient(at 80% 20%, #e0a0a0 0%, transparent 50%), linear-gradient(135deg, #c87888 0%, #d49888 100%)',
 };
 
-// Image URL map for preset lookup (local images in public/backgrounds/)
+// Image URL map for preset lookup (local images in public/backgrounds/).
+//
+// WebP, not PNG, and that is the whole point of this map rather than a detail
+// of it. These are wallpapers: drawn behind everything, blurred by up to 30px,
+// and swapped every time you change home or room. As PNGs they were 1.3-2.9 MB
+// each (25.7 MB for the twelve), so every switch to a home you had not visited
+// this session spent seconds fetching one — long enough for BackgroundImage's
+// 2s deadline to fire and reveal a wallpaper that had not painted yet. Same
+// pixel dimensions, quality 85, which is exactly what the server already does
+// to a user's own uploaded background (storage.py `_convert_to_webp`).
+//
+// The .png files are deliberately still in public/backgrounds/. Firebase
+// rewrites any unmatched path outside /assets/** to index.html, so a client
+// still running an older bundle - a cloud-mode relay Mac keeps its bundle
+// until the app restarts - would not get a 404 for the old path, it would get
+// an HTML document where an image should be, and lose its wallpaper entirely.
+// They can go once those clients have rotated.
+//
+// Regenerate with:
+//   npx sharp-cli -i public/backgrounds/<name>.png -o public/backgrounds -f webp -q 85
 export const PRESET_IMAGES: Record<string, string> = {
-  'nature-forest': '/backgrounds/forest.png',
-  'nature-mountains': '/backgrounds/mountain.png',
-  'nature-beach': '/backgrounds/beach.png',
-  'nature-cliffs': '/backgrounds/cliffs.png',
-  'nature-desert': '/backgrounds/desert.png',
-  'nature-canyon': '/backgrounds/canyon.png',
-  'nature-countryside': '/backgrounds/countryside.png',
-  'abstract-blue': '/backgrounds/abstract_blue.png',
-  'abstract-orange': '/backgrounds/abstract_orange.png',
-  'abstract-forest': '/backgrounds/abstract_forest.png',
-  'abstract-mountains': '/backgrounds/abstract_mountains.png',
-  'abstract-clouds': '/backgrounds/colourful_clouds.png',
+  'nature-forest': '/backgrounds/forest.webp',
+  'nature-mountains': '/backgrounds/mountain.webp',
+  'nature-beach': '/backgrounds/beach.webp',
+  'nature-cliffs': '/backgrounds/cliffs.webp',
+  'nature-desert': '/backgrounds/desert.webp',
+  'nature-canyon': '/backgrounds/canyon.webp',
+  'nature-countryside': '/backgrounds/countryside.webp',
+  'abstract-blue': '/backgrounds/abstract_blue.webp',
+  'abstract-orange': '/backgrounds/abstract_orange.webp',
+  'abstract-forest': '/backgrounds/abstract_forest.webp',
+  'abstract-mountains': '/backgrounds/abstract_mountains.webp',
+  'abstract-clouds': '/backgrounds/colourful_clouds.webp',
 };
 
 /**

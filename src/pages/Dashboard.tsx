@@ -8958,6 +8958,10 @@ const Dashboard = () => {
               scroll-edge effect from the web view's own scroll view, and an
               inner scroller is invisible to it. */}
           <div
+            // When this container is the scroller, the document is not, and
+            // `window.scrollTo` cannot reach it. `ScrollToTop` resets every
+            // element carrying this attribute on a view change.
+            data-app-scroller={shellScrolls ? '' : undefined}
             className={`${shellScrolls ? `absolute inset-0 ${(isTouchDevice && (activeDragId || sidebarActiveId)) || collectionDragActive ? 'overflow-hidden' : 'overflow-y-auto'} overscroll-contain scrollbar-hidden` : ''} overflow-x-hidden ${isInMacApp ? 'pt-[108px] pb-16' : isInMobileApp ? 'pb-4' : 'pb-16'}`}
             style={isInMobileApp ? {
               // Under the iOS native header the content runs beneath the bar
