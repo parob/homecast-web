@@ -73,6 +73,19 @@ test('a slow wallpaper swap holds the outgoing wallpaper', async ({ page }) => {
   for (const at of FRAMES_MS) {
     const wait = at - (Date.now() - switchedAt);
     if (wait > 0) await page.waitForTimeout(wait);
+    if (at === 3_500) {
+      const outgoing = await page.evaluate(src => {
+        const img = Array.from(document.querySelectorAll('img')).find(i => i.getAttribute('src') === src);
+        if (!img) return null;
+        return {
+          loaded: img.complete && img.naturalHeight > 0,
+          imageOpacity: getComputedStyle(img.parentElement!).opacity,
+          layerOpacity: getComputedStyle(img.parentElement!.parentElement!).opacity,
+        };
+      }, firstSrc);
+      expect(outgoing, 'the loaded outgoing image must still be painted after the 2s deadline')
+        .toEqual({ loaded: true, imageOpacity: '1', layerOpacity: '1' });
+    }
     const file = path.join(OUT, `${LABEL}-${String(at).padStart(4, '0')}ms.png`);
     await page.screenshot({ path: file });
     shots.push(file);
