@@ -58,6 +58,7 @@ export default defineConfig({
     // and each slider is one line. homecast-cloud#178.
     'background-dialog-space.spec.ts',
     'heading-native-metrics.spec.ts',
+    'background-slow-swap.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
   workers: 2,
