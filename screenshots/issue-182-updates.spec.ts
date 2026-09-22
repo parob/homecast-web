@@ -46,9 +46,32 @@ const ANSWER = [
   'and every preset. That is why it feels like it changes at the wrong time: it almost',
   'never changes at all.',
   '',
+  'It is also **deliberate, and load-bearing**. `widget-tint.ts` says so in as many',
+  'words: the app calls a wallpaper "dark" whenever its luminance is below 0.8, a',
+  'deliberate choice that puts white ink on glass over almost any photograph, and the',
+  'tile ink logic is built on top of that number and reproduces it on purpose. Moving',
+  'it would restyle every tile over every wallpaper for every user, and would',
+  'invalidate the interpolation that module is designed around. That is a decision',
+  'about what the product looks like, not a defect I should quietly change on a sweep.',
+  '',
   '**What I would do, if you want it:** move the *ink* decision to the WCAG crossover',
-  'and leave the 0.8 mood threshold alone for the scrim and the header chrome. That is',
-  'a contained change with a visible before/after — say the word and it gets its own PR.',
+  'and leave the 0.8 mood threshold alone for the things that are genuinely about mood',
+  '— the scrim, the header chrome. The two are already separate concepts in the code;',
+  '`header-chrome.ts` explicitly calls 0.8 "a *mood* threshold" and keeps its own',
+  'crossover for ink. The widget tile is the surface still using the mood number to',
+  'pick ink. That is a contained change with a visible before/after I can show you on',
+  'a range of wallpapers — say the word and it gets its own PR.',
+  '',
+  '## One more finding, latent rather than visible',
+  '',
+  'While measuring the above: solid colours are scored on a **different luminance',
+  'scale** from everything else. `useBackgroundDarkness` computes them inline in gamma',
+  'space, while images and gradients go through `getLuminance`, which is gamma-',
+  'corrected WCAG. Same threshold, two scales. I checked whether it changes any',
+  'verdict today, and it does not — the two disagree only for greys in the 205–230',
+  'band, and nothing shipped lands there. Filing it separately so it is not lost.',
+// Close to the real comment's 4,026 characters, so the fold is measured against
+// the size of answer that actually gets written on these reports.
 ].join('\n');
 
 const UPDATES = [
@@ -180,6 +203,20 @@ test('the answer written to the reporter is on the screen, newest first', async 
   await expect(said.last()).toContainText('Hello?');
   await expect(updates.getByRole('button', { name: 'Show more' }).first()).toBeVisible();
 
+  // The ask from the app on homecast-cloud#185: no answer arrives as an
+  // unbounded wall of text. Measured here because a CSS clamp only exists in a
+  // real browser — jsdom reports every height as 0, so the unit test can only
+  // assert the class.
+  const newest = updates.locator('article').first();
+  const folded = (await newest.boundingBox())!.height;
+  await updates.getByRole('button', { name: 'Show more' }).first().click();
+  const opened = (await newest.boundingBox())!.height;
+  console.log(`[#182] newest update: folded ${Math.round(folded)}px -> opened ${Math.round(opened)}px`);
+  expect(folded).toBeLessThan(500);
+  expect(opened).toBeGreaterThan(folded);
+  await updates.getByRole('button', { name: 'Show less' }).first().click();
+  await expect.poll(async () => Math.round((await newest.boundingBox())!.height)).toBe(Math.round(folded));
+
   // Read, not reprinted: no `##` or `**` left on the screen, and the source's
   // 80-column wraps reflowed into sentences.
   await expect(updates).not.toContainText('##');
@@ -188,6 +225,9 @@ test('the answer written to the reporter is on the screen, newest first', async 
     'a background as dark below 0.8; WCAG’s crossover — where white and black ink contrast equally — is 0.179.',
   );
 
+  // Back to the top of the section: the measuring taps above scroll the sheet,
+  // and the newest answer is what the capture is of.
+  await updates.scrollIntoViewIfNeeded();
   await page.waitForTimeout(600);
   await sheet(page).screenshot({ path: 'screenshots/output/issue-182-updates.png' });
 });

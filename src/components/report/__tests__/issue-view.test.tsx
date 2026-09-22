@@ -544,13 +544,21 @@ describe('sending feedback from the issue view', () => {
  * such field shows no section rather than an empty one.
  */
 const ANSWER = [
-  'Two of the three asks are fixed in homecast-web#222.',
+  'Two of the three asks are fixed in homecast-web#222. The third — the one in your',
+  'title — I have diagnosed but deliberately **not** changed, because it is a product',
+  'decision rather than a bug.',
   '',
   '## Ask 1 — the widget light/dark treatment. Real, and not mine to change',
   '',
-  "WCAG's crossover is 0.179; this app uses 0.8, deliberately.",
+  "WCAG's crossover is 0.179; this app uses 0.8, deliberately. So white ink goes on",
+  'essentially every photograph and every preset, which is why it feels like it',
+  'changes at the wrong time: it almost never changes at all. That threshold is',
+  'load-bearing — `widget-tint.ts` is built on top of it and reproduces it on purpose,',
+  'so moving it would restyle every tile over every wallpaper for every user.',
   '',
-  '**What I would do, if you want it:** say the word and it gets its own PR.',
+  '**What I would do, if you want it:** move the *ink* decision to the WCAG crossover',
+  'and leave the 0.8 mood threshold alone for the scrim and the header chrome — a',
+  'contained change with a visible before/after — say the word and it gets its own PR.',
 ].join('\n');
 
 const UPDATED: Resolution = {
@@ -593,27 +601,64 @@ describe('what has been said about the report', () => {
     // `**` left on the screen for the reader to parse.
     expect(updates.textContent).not.toContain('##');
     expect(updates.textContent).not.toContain('**');
-    expect(updates.querySelector('strong')?.textContent).toBe('What I would do, if you want it:');
+    expect(updates.querySelector('strong')?.textContent).toBe('not');
     // And the hard wraps in the source are reflowed into one sentence.
     expect(updates.textContent).toContain(
-      "WCAG's crossover is 0.179; this app uses 0.8, deliberately.",
+      "WCAG's crossover is 0.179; this app uses 0.8, deliberately. So white ink goes on "
+      + 'essentially every photograph and every preset,',
     );
   });
 
-  it('opens the newest and folds the rest, and only offers the toggle where there is more', async () => {
+  it('folds every answer, the newest less than the rest, and opens on the tap', async () => {
     fetchResolution.mockResolvedValue(UPDATED);
     render(<IssueView issue={FIXED} onBack={() => {}} />);
 
     const updates = await screen.findByRole('region', { name: 'Updates' });
+    const bodies = Array.from(updates.querySelectorAll('article')).map(
+      (article) => article.querySelector('div[class*="line-clamp"], div[class*="space-y-2"]'),
+    );
+    // Asked for from the app: nothing arrives as an unbounded wall of text.
+    // The newest gets the taller fold; the rest the shorter one. Asserted on
+    // the class because a CSS clamp is not something jsdom can measure.
+    expect(bodies[0]?.className).toContain('line-clamp-[14]');
+    expect(bodies[1]?.className).toContain('line-clamp-6');
+
     const toggles = Array.from(updates.querySelectorAll('button')).filter(
       (button) => /Show (more|less)/.test(button.textContent ?? ''),
     );
-    // One long answer, one 'Hello?' — so one toggle, and it starts open.
+    // One long answer, one 'Hello?' — so one toggle, and it starts folded.
     expect(toggles).toHaveLength(1);
-    expect(toggles[0].textContent).toContain('Show less');
+    expect(toggles[0].textContent).toContain('Show more');
 
     fireEvent.click(toggles[0]);
-    expect(toggles[0].getAttribute('aria-expanded')).toBe('false');
+    expect(toggles[0].textContent).toContain('Show less');
+    expect(
+      updates.querySelectorAll('article')[0].querySelector('div[class*="line-clamp"]'),
+    ).toBeNull();
+  });
+
+  it('lists the most recent and points at GitHub for the earlier ones', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION,
+      updates: Array.from({ length: 14 }, (_, index) => ({
+        id: String(index), url: `${FIXED.url}#issuecomment-${index}`,
+        at: new Date(Date.now() - (14 - index) * 3_600_000).toISOString(),
+        author: 'robjampar', by: 'claude' as const, text: `answer ${index}`, truncated: false,
+      })),
+      earlierUpdates: 6,
+    });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+
+    const updates = await screen.findByRole('region', { name: 'Updates' });
+    // Ten at most on the screen, newest first, and the count of the rest —
+    // a week-old report is otherwise a scroll nobody finishes.
+    const said = updates.querySelectorAll('article');
+    expect(said).toHaveLength(10);
+    expect(said[0].textContent).toContain('answer 13');
+    expect(said[9].textContent).toContain('answer 4');
+    expect(
+      screen.getByRole('button', { name: `Open 4 earlier updates on GitHub on GitHub — ${FIXED.url}` }),
+    ).toBeTruthy();
   });
 
   it('offers the rest of a comment the server had to shorten', async () => {

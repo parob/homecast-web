@@ -32,7 +32,7 @@
  * user expects from a row they tapped.
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
   RefreshCw, Send, Sparkles, User,
@@ -224,7 +224,7 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
           </section>
 
           {resolution?.updates && resolution.updates.length > 0 && (
-            <UpdatesSection updates={resolution.updates} />
+            <UpdatesSection updates={resolution.updates} issueUrl={issue.url} />
           )}
 
           {resolution && <FeedbackSection issue={issue} resolution={resolution} />}
@@ -553,9 +553,15 @@ function prFromUrl(url: string): ResolutionPr {
  * mine four machine-readable things out of them.
  *
  * Newest first, because the complaint that produced this section was about the
- * *new* reply. The newest is open and the rest are clamped: a thread of five
- * long answers is otherwise a wall a phone cannot get past, and the older ones
- * have already been read.
+ * *new* reply. **Every one of them is folded**, the newest to a taller height
+ * than the rest: these answers run to four or five thousand characters, and an
+ * unfolded one is a wall that pushes the whole conversation — and the box for
+ * replying to it — off the bottom of a phone. Fourteen lines is the first two
+ * paragraphs, which is the answer; the tap is there for the rest.
+ *
+ * Only the most recent {MAX_UPDATES_SHOWN} are listed, with a line saying how
+ * many earlier ones there are and where to read them. A report that has been
+ * going for a week is a scroll nobody finishes.
  *
  * The words are read rather than reprinted: `lib/report/comment-markdown.ts`
  * turns the Markdown that was typed into blocks, so a heading is a heading and
@@ -564,19 +570,32 @@ function prFromUrl(url: string): ResolutionPr {
  * became a visual break mid-sentence, with `##` and `**` left as punctuation
  * for the reader to parse. Nothing is rewritten; it is only read as meant.
  */
-function UpdatesSection({ updates }: { updates: ResolutionUpdate[] }) {
+function UpdatesSection({ updates, issueUrl }: { updates: ResolutionUpdate[]; issueUrl: string }) {
   const newestFirst = [...updates].reverse();
+  const shown = newestFirst.slice(0, MAX_UPDATES_SHOWN);
+  const earlier = newestFirst.length - shown.length;
   return (
     <section aria-label="Updates" className="space-y-2">
       <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         Updates
       </h3>
-      {newestFirst.map((update, index) => (
+      {shown.map((update, index) => (
         <Update key={update.id || update.url || index} update={update} newest={index === 0} />
       ))}
+      {earlier > 0 && (
+        <ExternalRow
+          label={`${earlier} earlier ${earlier === 1 ? 'update' : 'updates'} on GitHub`}
+          url={issueUrl}
+        />
+      )}
     </section>
   );
 }
+
+/** How many of a report's updates this screen lists before pointing at GitHub. */
+const MAX_UPDATES_SHOWN = 10;
+/** How much of one update shows before the tap: the newest gets the taller fold. */
+const FOLD = { newest: 'line-clamp-[14]', rest: 'line-clamp-6' } as const;
 
 /** Who said one update, in the words this screen can stand behind. */
 function updateWho(update: ResolutionUpdate): string {
@@ -588,14 +607,29 @@ function updateWho(update: ResolutionUpdate): string {
 /**
  * One thing said: who, when, and the words.
  *
- * Clamped to a readable height unless it is the newest, with the toggle shown
- * only when there is something folded away — a "Show more" that reveals
- * nothing is worse than no button. The comment's own address is offered when
- * the server had to shorten it, so the rest is one tap away rather than lost.
+ * Folded to a readable height — taller for the newest — with the toggle shown
+ * only when something is actually folded away, measured from the rendered
+ * height: a "Show more" that reveals nothing is worse than no button. The
+ * comment's own address is offered whenever the server had to shorten it —
+ * not only once unfolded, because being cut off is the thing a reader needs to
+ * know before they decide they have read it all.
  */
 function Update({ update, newest }: { update: ResolutionUpdate; newest: boolean }) {
-  const [open, setOpen] = useState(newest);
-  const long = update.text.length > 320 || update.text.split('\n').length > 6;
+  const [open, setOpen] = useState(false);
+  const body = useRef<HTMLDivElement>(null);
+  // Whether anything is actually folded away, measured rather than guessed:
+  // the text is rendered as reflowed blocks, so counting its source lines says
+  // very little about how tall it ends up. Only measurable while it is folded,
+  // and only where there is layout at all — under jsdom every height is 0, so
+  // a null measurement falls back to the length.
+  const [overflows, setOverflows] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (open) return;
+    const el = body.current;
+    if (!el || el.clientHeight === 0) return;
+    setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [open, update.text]);
+  const long = overflows ?? update.text.length > (newest ? 900 : 320);
   const when = relativeMoment(update.at);
 
   return (
@@ -610,7 +644,12 @@ function Update({ update, newest }: { update: ResolutionUpdate; newest: boolean 
         {when && <span className="shrink-0">· {when}</span>}
       </div>
 
-      <div className={`min-w-0 space-y-2 break-words text-sm ${open ? '' : 'line-clamp-6'}`}>
+      <div
+        ref={body}
+        className={`min-w-0 space-y-2 break-words text-sm ${
+          open ? '' : newest ? FOLD.newest : FOLD.rest
+        }`}
+      >
         {readComment(update.text).map((block, index) => (
           <CommentBlock key={index} block={block} />
         ))}
@@ -627,7 +666,7 @@ function Update({ update, newest }: { update: ResolutionUpdate; newest: boolean 
         </Button>
       )}
 
-      {update.truncated && open && update.url && (
+      {update.truncated && update.url && (
         <ExternalRow label="Read the rest of this comment" url={update.url} />
       )}
     </article>
