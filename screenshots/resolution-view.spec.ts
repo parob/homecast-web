@@ -223,5 +223,5 @@ test('a merged change still explains the report needs review', async ({ page }) 
   await openIssue(page);
   await expect(page.getByText(/#167.*Needs review/)).toBeVisible();
   await expect(page.getByText('All linked pull requests are merged. This report still needs review; see the updates below.')).toBeVisible();
-  await sheet(page).screenshot({ path: '/tmp/homecast-review-20260922/report-needs-review.png' });
+  await sheet(page).screenshot({ path: test.info().outputPath('report-needs-review.png') });
 });
