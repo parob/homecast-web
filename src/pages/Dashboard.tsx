@@ -1684,7 +1684,6 @@ const Dashboard = () => {
    * the rooms and homes in it.
    */
   const [hiddenExiting, setHiddenExiting] = useState(false);
-  const hiddenExitRef = useRef<number | undefined>(undefined);
   // Read through a ref, the way `editModeRef` below is: these two callbacks are
   // handed out to menus and to the edit bar, and a new identity every time the
   // reveal changed would be one more thing rebuilding under a gesture.
@@ -1799,7 +1798,7 @@ const Dashboard = () => {
   }, []);
 
   /** Reveal them, now. Cancels an exit that was already running — you can come
-   *  back into Edit Layout inside the 200ms, and a stale timer would then take
+   *  back into Edit Layout during the fade, and a stale completion could take
    *  the reveal away underneath you.
    *
    *  `animateReflow` is false on the lift path and true everywhere else. A hold
@@ -1815,7 +1814,6 @@ const Dashboard = () => {
   const revealHiddenItems = useCallback((
     { animateReflow = true, pending = false }: { animateReflow?: boolean; pending?: boolean } = {},
   ) => {
-    window.clearTimeout(hiddenExitRef.current);
     // …and put back the height of any room that was collapsing on the way out.
     emptyCancelRef.current?.();
     emptyCancelRef.current = null;
@@ -1859,7 +1857,6 @@ const Dashboard = () => {
    * it. Hence the anchor, and only the anchor.
    */
   const dropPendingReveal = useCallback(() => {
-    window.clearTimeout(hiddenExitRef.current);
     hiddenEnterRef.current?.();
     hiddenEnterRef.current = null;
     document.documentElement.removeAttribute('data-hidden-entering');
@@ -1874,7 +1871,6 @@ const Dashboard = () => {
   /** Put them away, over HIDDEN_EXIT_MS. A no-op if none are showing, so Done
    *  on a dashboard with nothing hidden costs nothing. */
   const putHiddenItemsAway = useCallback(() => {
-    window.clearTimeout(hiddenExitRef.current);
     // Leaving inside the entrance: drop it rather than let the two run at once.
     // An animation and a transition on the same properties do not average, the
     // animation simply wins, and the exit would not start until it finished.
@@ -1893,27 +1889,7 @@ const Dashboard = () => {
       return;
     }
     setHiddenExiting(true);
-    // A room whose every tile was a revealed one unmounts the moment the reveal
-    // ends, and `heightChanges` cannot animate an element that is already gone —
-    // so it is collapsed here instead, over the same beat its contents fade, and
-    // occupies nothing by the time React removes it. Without this its whole
-    // height closed in one frame (parob/homecast-cloud#60).
-    emptyCancelRef.current?.();
-    emptyCancelRef.current = null;
-    if (!prefersReducedMotion()) {
-      const emptying = emptyingContainers(document.querySelector('main') ?? document);
-      if (emptying.length) emptyCancelRef.current = collapseContainers(emptying, HIDDEN_EXIT_MS);
-    }
-    hiddenExitRef.current = window.setTimeout(() => {
-      // The space closes after the things in it have gone, not with them: the
-      // items are still mounted for the whole fade, so their room's height only
-      // becomes wrong at this instant. Measuring the collapsed height early
-      // would mean unmounting them to find it out.
-      captureReflow();
-      setHiddenExiting(false);
-      setShowHiddenItems(false);
-    }, HIDDEN_EXIT_MS);
-  }, [captureReflow, dropPendingReveal]);
+  }, [dropPendingReveal]);
 
   /**
    * The reflow itself, on the commit that caused it.
@@ -1956,16 +1932,42 @@ const Dashboard = () => {
   // tree: the left menu is a portal, and so is anything else Radix draws.
   useEffect(() => {
     const root = document.documentElement;
-    if (hiddenExiting) root.setAttribute('data-hidden-exiting', 'true');
-    else root.removeAttribute('data-hidden-exiting');
-    return () => root.removeAttribute('data-hidden-exiting');
-  }, [hiddenExiting]);
+    if (!hiddenExiting) {
+      root.removeAttribute('data-hidden-exiting');
+      return;
+    }
+    root.setAttribute('data-hidden-exiting', 'true');
+    let cancelled = false;
+    // Start the collapse after React's commit, alongside the actual fade.
+    // A timer started by Done could expire before a busy device painted it.
+    const frame = requestAnimationFrame(() => {
+      emptyCancelRef.current?.();
+      emptyCancelRef.current = null;
+      const emptying = prefersReducedMotion()
+        ? [] : emptyingContainers(document.querySelector('main') ?? document);
+      if (emptying.length) emptyCancelRef.current = collapseContainers(emptying, HIDDEN_EXIT_MS);
+      const departing = [...root.querySelectorAll('[data-hidden-item="true"]'), ...emptying];
+      // Reading animations flushes styles and starts the transitions. Include
+      // collapsing containers, but never wait for an unrelated infinite wiggle.
+      const animations = new Set(departing.flatMap(el => el.getAnimations())
+        .filter(animation => animation.effect?.getTiming().iterations !== Infinity));
+      void Promise.allSettled([...animations].map(animation => animation.finished)).then(() => {
+        if (cancelled) return; // Re-entering Edit Layout cancels this departure.
+        captureReflow();
+        setHiddenExiting(false);
+        setShowHiddenItems(false);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      root.removeAttribute('data-hidden-exiting');
+    };
+  }, [hiddenExiting, captureReflow]);
 
-  // A dashboard that unmounts mid-exit must not leave a timer behind that then
-  // sets state on it — nor, mid-entrance, an attribute behind on a root that
-  // outlives it.
+  // A dashboard that unmounts mid-entrance must not leave an attribute behind
+  // on a root that outlives it. The exit effect cancels its own completion.
   useEffect(() => () => {
-    window.clearTimeout(hiddenExitRef.current);
     hiddenEnterRef.current?.();
     hiddenEnterRef.current = null;
     document.documentElement.removeAttribute('data-hidden-entering');
