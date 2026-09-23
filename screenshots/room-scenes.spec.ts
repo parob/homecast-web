@@ -83,6 +83,10 @@ test('touch editing can hide and restore an in-room scene', async ({ page }, inf
     height: (node.parentElement as HTMLElement).offsetHeight,
     width: (node.parentElement as HTMLElement).offsetWidth,
   })));
+  // SceneGridSizing sets one shared minimum height; each card animates to it.
+  // Wait for that initial sizing before testing whether edit mode changes it.
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(async () => new Set((await sizes()).map(size => size.height)).size).toBe(1);
   const before = await sizes();
   await page.locator('[data-tour="header-menu"]').click();
   await page.getByRole('menuitem', { name: 'Edit Layout', exact: true }).click();
