@@ -1,9 +1,9 @@
 /**
- * The web half of the native top chrome — a **preview**, off by default.
- *
- * Asked for on parob/homecast-cloud#120. The native bar lives in
- * `app-ios-macos/Sources/App/NativeHeaderBar.swift`; this module is everything
- * the page needs to cooperate with it, and nothing else.
+ * The web half of the native top chrome — the standard iOS header, no opt-out
+ * (parob/homecast-cloud#202; started as a preview on parob/homecast-cloud#120).
+ * The native bar lives in `app-ios-macos/Sources/App/NativeHeaderBar.swift`;
+ * this module is everything the page needs to cooperate with it, and nothing
+ * else.
  *
  * ## Two crossings, and both have to exist
  *
@@ -20,10 +20,11 @@
  *
  * Native code reaches a device through App Review, so an installed build is
  * routinely older than the page it is showing — the Mac and iOS apps load their
- * UI from `homecast.cloud` at runtime. A build that predates this preview sets
- * neither global, so every predicate here answers `false` and the app behaves
- * exactly as it did before. That is the same rule the repo's CLAUDE.md states
- * for bridge methods generally: never call a new one without checking it exists.
+ * UI from `homecast.cloud` at runtime. A build that predates the native bar
+ * sets neither global, so every predicate here answers `false` and the page
+ * falls back to the web header. That is the same rule the repo's CLAUDE.md
+ * states for bridge methods generally: never call a new one without checking
+ * it exists.
  */
 
 /** The four controls, named as the native bar names them. */
@@ -260,8 +261,8 @@ export function nativeHeaderToastTop(onPage: boolean): number {
  * A translation table rather than a shared constant, because the two sides
  * genuinely cannot share one: the web dot is a Tailwind class resolved by the
  * stylesheet, and UIKit needs a literal colour. Keeping the table here — next
- * to the rest of the preview — means the whole thing is deleted in one move if
- * it is rejected.
+ * to the rest of this module — means the whole thing is deleted in one move
+ * if the bar is ever dropped.
  *
  * Matched on the colour name rather than the exact class so that an opacity
  * change (`bg-emerald-500/60`) does not silently fall through to grey.
@@ -313,17 +314,18 @@ function post(message: Record<string, unknown>): boolean {
     return true;
   } catch {
     // A postMessage to a handler the build never registered throws. Swallowed
-    // on purpose: this is a preview, and it must never be the reason the header
-    // fails to render.
+    // on purpose: an older build with no handler must never be the reason the
+    // header fails to render.
     return false;
   }
 }
 
 /**
- * Can this build draw the native bar?
+ * Can this build draw the native bar at all?
  *
- * This is the gate on *offering the switch*, not on using it. A build without
- * it must not show a toggle that would do nothing.
+ * This is the gate on *trusting* `isNativeHeaderEnabled()`, not a setting to
+ * offer — there is no opt-out. A build that predates the native bar sets
+ * neither global, so this answers `false` and the page keeps its own header.
  */
 export function isNativeHeaderAvailable(): boolean {
   return win()?.homecastNativeHeaderAvailable === true;
@@ -340,26 +342,13 @@ export function isNativeHeaderEnabled(): boolean {
 }
 
 /**
- * Turn the preview on or off.
- *
- * Native writes the flag to UserDefaults, shows or hides the bar, and calls
- * `setEnabled` back — so the switch takes effect without a reload, which is
- * what makes it usable as a preview rather than a setting you have to restart
- * to evaluate.
- */
-export function setNativeHeaderPreview(enabled: boolean): boolean {
-  if (!isNativeHeaderAvailable()) return false;
-  return post({ action: 'settings.setNativeHeaderPreview', enabled });
-}
-
-/**
  * Tell the native bar what to draw.
  *
  * Safe and cheap to call on every render: it is a no-op off iOS, and the native
  * side treats a message with no bar on screen as normal rather than an error.
  * Deliberately NOT gated on `isNativeHeaderEnabled()` — the bar must already
- * have a title the moment it appears, so the page keeps publishing while the
- * preview is off.
+ * have a title the moment it appears, so the page keeps publishing before
+ * native has confirmed the bar is up.
  */
 export function publishHeaderState(state: NativeHeaderState): boolean {
   if (!isNativeHeaderAvailable()) return false;
