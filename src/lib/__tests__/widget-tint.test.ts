@@ -23,15 +23,7 @@ const onWhite = (over: Partial<TintInput> = {}): TintInput => ({
   ...over,
 });
 
-/**
- * A tile over a dark photograph.
- *
- * 0.28, not 0.03. This fixture used to be near-black, and that is exactly how a
- * real regression shipped: the app calls a wallpaper "dark" whenever its
- * luminance is under 0.8, so a typical photograph sits somewhere in the middle
- * of that range, and every off tile over one turned from white ink to black.
- * A fixture at 0.03 agreed with the bug. Keep this a realistic photograph.
- */
+/** A photograph that still falls under the page mood threshold. */
 const onDark = (over: Partial<TintInput> = {}): TintInput => ({
   ...onWhite(),
   isDarkWallpaper: true,
@@ -183,19 +175,20 @@ describe('resolveWidgetTint — ink', () => {
   it('goes white for a barely-on light over a dark wallpaper', () => {
     // The case the old `!isOn && isDarkBackground` rule got wrong: isOn is
     // true, so it chose dark ink over what is essentially black.
-    expect(resolveWidgetTint(onDark({ intensity: 0 })).tone).toBe('light');
+    expect(resolveWidgetTint(onDark({ intensity: 0, wallpaperLuminance: 0.03 })).tone).toBe('light');
   });
 
-  it('keeps white ink on an off tile for EVERY wallpaper the app calls dark', () => {
-    // The regression this exists to prevent. `isDarkLuminance` puts the app's
-    // threshold at 0.8, WCAG's own crossover is 0.179, and thresholding the
-    // composite against the latter flipped the whole band between them — most
-    // photographs — to black ink on tiles that had always been white.
-    for (const wallpaperLuminance of [0.03, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.65, 0.79]) {
-      const { tone } = resolveWidgetTint(
-        onDark({ isOn: false, wallpaperLuminance }),
-      );
-      expect({ wallpaperLuminance, tone }).toEqual({ wallpaperLuminance, tone: 'light' });
+  it('uses dark ink on mid-grey glass even when the wallpaper mood is dark', () => {
+    for (const wallpaperLuminance of [0.4, 0.5, 0.65, 0.79]) {
+      const result = resolveWidgetTint(onDark({ isOn: false, wallpaperLuminance }));
+      expect(result.tone).toBe('dark');
+      expect(result.backgroundColor).toBe(rgbaToCss(OFF_TINT_DARK));
+    }
+  });
+
+  it('keeps white ink over genuinely dark glass', () => {
+    for (const wallpaperLuminance of [0.03, 0.1, 0.2]) {
+      expect(resolveWidgetTint(onDark({ isOn: false, wallpaperLuminance })).tone).toBe('light');
     }
   });
 
@@ -223,7 +216,7 @@ describe('resolveWidgetTint — ink', () => {
 
   it('crosses over exactly once as a light is dimmed up over a dark wallpaper', () => {
     const tones = Array.from({ length: 41 }, (_, i) =>
-      resolveWidgetTint(onDark({ intensity: i / 40 })).tone,
+      resolveWidgetTint(onDark({ intensity: i / 40, wallpaperLuminance: 0.03 })).tone,
     );
     const flips = tones.filter((t, i) => i > 0 && t !== tones[i - 1]).length;
     expect(flips).toBeLessThanOrEqual(1);

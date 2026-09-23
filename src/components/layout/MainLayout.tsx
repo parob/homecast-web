@@ -52,6 +52,7 @@ export function MainLayout({
 }: MainLayoutProps) {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [wallpaperImage, setWallpaperImage] = useState<HTMLImageElement | null>(null);
   const [bgImageLuminance, setBgImageLuminance] = useState<number | null>(null);
   // The strip the header sits on, which on a photo can be the opposite verdict
   // to the image as a whole — see `analyzeLoadedImageBand`.
@@ -82,8 +83,8 @@ export function MainLayout({
   // Memoised for the same reason as Dashboard's: a new object identity here
   // re-renders every background-reading widget, memo or not.
   const backgroundContextValue = useMemo(
-    () => ({ hasBackground, isDarkBackground, effectiveLuminance }),
-    [hasBackground, isDarkBackground, effectiveLuminance],
+    () => ({ hasBackground, isDarkBackground, effectiveLuminance, wallpaperImage, wallpaperBrightness: background?.brightness ?? 50 }),
+    [hasBackground, isDarkBackground, effectiveLuminance, wallpaperImage, background?.brightness],
   );
 
   // Swipe in from the left edge to open the menu — the same gesture that closes
@@ -138,7 +139,7 @@ export function MainLayout({
           itself must stay at inset-0 so content keeps clear of the notch. */}
       <div aria-hidden className={cn("fixed-full-screen pointer-events-none -z-10", hasBackground && isDarkBackground ? "bg-black" : "bg-background")} />
       {/* Background image layer */}
-      <BackgroundImage settings={background} onLuminanceChange={setBgImageLuminance} onHeaderLuminanceChange={setBgHeaderLuminance} />
+      <BackgroundImage settings={background} onVisibleImageChange={setWallpaperImage} onLuminanceChange={setBgImageLuminance} onHeaderLuminanceChange={setBgHeaderLuminance} />
 
       <AppHeader
         isInMacApp={isInMacApp}

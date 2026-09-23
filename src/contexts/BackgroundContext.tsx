@@ -1,6 +1,9 @@
 import { createContext, useContext } from 'react';
 
 interface BackgroundContextType {
+  /** Decoded wallpaper for sampling the area behind an individual tile. */
+  wallpaperImage?: HTMLImageElement | null;
+  wallpaperBrightness?: number;
   /** Whether there's an active background image/gradient */
   hasBackground: boolean;
   /** Whether the background is dark (requires light text) */

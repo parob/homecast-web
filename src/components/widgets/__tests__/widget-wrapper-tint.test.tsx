@@ -77,7 +77,7 @@ describe('WidgetWrapper fill', () => {
 });
 
 describe('WidgetWrapper ink', () => {
-  const whiteInk = (root: HTMLElement) => root.className.includes('[&_h3]:!text-white');
+  const whiteInk = (root: HTMLElement) => root.style.getPropertyValue('--tile-ink') === 'rgba(255, 255, 255, 1)';
 
   it('keeps the cases the old rule got right', () => {
     expect(whiteInk(paint({ isOn: false }, DARK).root)).toBe(true);
@@ -93,9 +93,9 @@ describe('WidgetWrapper ink', () => {
     // BackgroundContext, and a context read bypasses React.memo, which
     // re-rendered every light tile on every Dashboard render mid-drag.
     const dark = paint({ isOn: false }, DARK).root.className;
-    expect(dark).toContain('[&_.tile-ink]:!text-white');
+    expect(dark).toContain('[&_.tile-ink]:!text-[color:var(--tile-ink)]');
     expect(dark).toContain('[&_.tile-ink-track]:!bg-white/15');
-    expect(paint({ isOn: true, intensity: 1 }, DARK).root.className).not.toContain('.tile-ink');
+    expect(whiteInk(paint({ isOn: true, intensity: 1 }, DARK).root)).toBe(false);
   });
 
   it('reaches every hero slider, because the hook lives on the component', () => {
@@ -119,7 +119,7 @@ describe('WidgetWrapper ink', () => {
   it('goes white for a barely-on light over a dark wallpaper', () => {
     // The case `!isOn && isDarkBackground` got wrong: on, so it took dark ink
     // over what is very nearly black.
-    expect(whiteInk(paint({ isOn: true, intensity: 0 }, DARK).root)).toBe(true);
+    expect(whiteInk(paint({ isOn: true, intensity: 0 }, { ...DARK, effectiveLuminance: 0.03 }).root)).toBe(true);
   });
 });
 

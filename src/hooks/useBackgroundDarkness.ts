@@ -2,6 +2,8 @@ import { useRef } from 'react';
 import type { BackgroundSettings } from '@/lib/graphql/types';
 import {
   getGradientLuminance,
+  getLuminance,
+  parseColor,
   isDarkLuminance,
   PRESET_SOLID_COLORS,
   PRESET_GRADIENTS,
@@ -68,11 +70,8 @@ export function useBackgroundDarkness(
     let rawLuminance: number | null = null;
 
     if (analysisTarget.type === 'solid') {
-      const hex = analysisTarget.color.replace('#', '');
-      const r = parseInt(hex.substring(0, 2), 16) / 255;
-      const g = parseInt(hex.substring(2, 4), 16) / 255;
-      const b = parseInt(hex.substring(4, 6), 16) / 255;
-      rawLuminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const rgb = parseColor(analysisTarget.color);
+      if (rgb) rawLuminance = getLuminance(rgb.r, rgb.g, rgb.b);
     } else if (analysisTarget.type === 'gradient') {
       rawLuminance = getGradientLuminance(analysisTarget.value);
     } else if (analysisTarget.type === 'image' && imageLuminance != null) {

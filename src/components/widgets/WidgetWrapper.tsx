@@ -2,6 +2,7 @@ import React from 'react';
 import type { IconStyle } from './iconColors';
 import { useBackgroundContext } from '@/contexts/BackgroundContext';
 import { resolveWidgetTint, STANDARD_TINT } from '@/lib/widget-tint';
+import { useWallpaperRegion } from '@/hooks/useWallpaperRegion';
 
 // A wallpaper's darkness isn't known until its image decodes, so a widget first
 // paints with the light recipe and then recolours. These transitions run at the
@@ -89,17 +90,22 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   hiddenItem = false,
   fill = false,
 }) => {
-  const { isDarkBackground, effectiveLuminance } = useBackgroundContext();
+  const { isDarkBackground, effectiveLuminance, wallpaperImage, wallpaperBrightness } = useBackgroundContext();
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const wallpaperRgb = useWallpaperRegion(wrapperRef, wallpaperImage, wallpaperBrightness);
 
   // The fill, the ink and the hairline all come from one decision so they
   // cannot disagree. 'standard' paints every type the same blue; 'colourful'
   // uses the service type's own colour. See lib/widget-tint.ts.
-  const { backgroundColor, tone, ringColor } = resolveWidgetTint({
+  const { backgroundColor, tone, ringColor, foregroundColor, secondaryColor } = resolveWidgetTint({
     tint: iconStyle === 'colourful' ? tint : STANDARD_TINT,
     intensity,
     isOn,
     isDarkWallpaper: isDarkBackground,
-    wallpaperLuminance: effectiveLuminance,
+    // If CORS prevents sampling, retain the dark/light fallback instead of
+    // mistaking the unavailable image average for a measured local patch.
+    wallpaperLuminance: wallpaperImage && !wallpaperRgb ? null : effectiveLuminance,
+    wallpaperRgb,
     alpha: iconStyle === 'colourful' ? tintAlpha : undefined,
   });
 
@@ -114,8 +120,9 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   // useTileTone would subscribe to BackgroundContext, and a context read
   // bypasses React.memo, so every light tile re-rendered on every Dashboard
   // render. That is a slider drag's whole frame budget.
+  const inkClass = '[&_h3]:!text-[color:var(--tile-ink)] [&_.tile-ink]:!text-[color:var(--tile-ink)] [&_p]:!text-[color:var(--tile-secondary)] [&_span:not([data-status-badge])]:!text-[color:var(--tile-secondary)] [&_.tile-ink-secondary]:!text-[color:var(--tile-secondary)]';
   const darkModeClass = tone === 'light'
-    ? '[&_h3]:!text-white [&_p]:!text-white/70 [&_span:not([data-status-badge])]:!text-white/70 [&_[data-state=unchecked]]:!bg-white/20 [&_[data-state=unchecked]>span]:!bg-white/70 [&_.tile-ink]:!text-white [&_.tile-ink-track]:!bg-white/15'
+    ? '[&_[data-state=unchecked]]:!bg-white/20 [&_[data-state=unchecked]>span]:!bg-white/70 [&_.tile-ink-track]:!bg-white/15'
     : '';
 
   // Inset hairline, fading out as the fill comes up rather than disappearing at
@@ -140,8 +147,9 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   return (
     <div
-      className={`relative rounded-2xl ${fill ? 'h-full' : 'h-fit'} ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${darkModeClass} ${className}`}
-      style={{ contain: 'layout style paint', ['--tw-ring-color' as string]: ringColor }}
+      ref={wrapperRef}
+      className={`relative rounded-2xl ${fill ? 'h-full' : 'h-fit'} ${NO_SELECT} ${RECOLOR_TRANSITION} ${borderClass} ${inkClass} ${darkModeClass} ${className}`}
+      style={{ contain: 'layout style paint', ['--tw-ring-color' as string]: ringColor, ['--tile-ink' as string]: foregroundColor, ['--tile-secondary' as string]: secondaryColor }}
     >
       {/* Blur layer - separate from content so it doesn't break during height animation */}
       <div
