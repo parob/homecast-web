@@ -7854,8 +7854,7 @@ const Dashboard = () => {
               style={{
                 '--band-reach-top': '160px',
                 '--band-reach-bottom': '120px',
-                // The top fade is behind the content; the bottom fade below
-                // covers both wallpaper and widgets as they meet Safari's bar.
+                // Both fades belong to the wallpaper, behind scrolling cards.
                 '--top-scrim-run': '70px',
               } as React.CSSProperties}
             >
@@ -7884,7 +7883,10 @@ const Dashboard = () => {
                   and the canvas past the page's ends, so every band is this
                   one colour: the scrims are what let the wallpaper arrive at
                   it softly rather than being cut by it. */}
-              {hasBackground && <div className="sticky-top-scrim" />}
+              {hasBackground && <>
+                <div className="sticky-top-scrim" />
+                <div className="sticky-bottom-scrim" />
+              </>}
             </div>
           ) : (
             <>
@@ -7905,17 +7907,6 @@ const Dashboard = () => {
                 onTopColorChange={setBgImageTopColor}
               />
             </>
-          )}
-
-          {/* The bottom fade belongs above the scrolling widgets as well as
-              the wallpaper. Inside sticky-wallpaper it was behind every tile,
-              leaving them to meet Safari's URL-bar band with a hard cut. Keep
-              the same sticky viewport anchor, below header/menu portals, and
-              leave pointer events to the controls beneath it. */}
-          {phoneBrowser && hasBackground && (
-            <div aria-hidden className="sticky-wallpaper z-[9999]">
-              <div className="sticky-bottom-scrim" />
-            </div>
           )}
 
           {/* Tiles used to be sliced flat at both physical screen edges, with
