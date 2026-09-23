@@ -3,16 +3,16 @@
  * real row mounted, leaving both home names visible after scrolling back. */
 import { test, expect, type Page } from '@playwright/test';
 import { setupMocks, overrideSettings, overrideEntityLayouts, waitForDashboard } from './mocks';
-import { HOME_ID } from './fixtures';
+import { HOME_ID, MY_HOME_ROOMS } from './fixtures';
 
 test.use({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
 
 async function scrollTo(page: Page, y: number) {
-  const target = await page.evaluate(y => {
+  await page.evaluate(y => {
     window.scrollTo({ top: y, behavior: 'instant' });
-    return Math.min(y, document.documentElement.scrollHeight - innerHeight);
   }, y);
-  await expect.poll(() => page.evaluate(() => scrollY)).toBe(target);
+  if (y === 0) await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  else await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
 }
 
 for (const slowSignIn of [false, true]) {
@@ -39,9 +39,25 @@ for (const slowSignIn of [false, true]) {
       if (where === 'room') {
         await page.locator('main').getByRole('button', { name: 'Bedroom', exact: true }).first().click();
         await expect(heading).toContainText('Bedroom');
+        // The heading updates before the URL-driven ScrollToTop effect.
+        // Wait for that navigation reset before starting a new scroll.
+        await expect.poll(() => new URL(page.url()).searchParams.get('room')).toBe(
+          MY_HOME_ROOMS.find(room => room.name === 'Bedroom')!.id,
+        );
+        await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+        // This fixture has only three rows of devices. Give the room real
+        // scrolling content instead of relying on wallpaper overflow below it.
+        await page.setViewportSize({ width: 440, height: 480 });
+        await page.evaluate(() => new Promise<void>(resolve => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }));
       }
       for (let round = 0; round < 2; round++) {
         await scrollTo(page, 300);
+        await expect.poll(() => heading.evaluate(el => {
+          const controls = document.querySelector('[data-native-header="search"]')!;
+          return el.getBoundingClientRect().bottom < controls.getBoundingClientRect().bottom;
+        })).toBe(true);
         await expect(selector).toHaveAttribute('aria-hidden', 'false');
         await expect(selector).toHaveCSS('opacity', '1');
         await scrollTo(page, 0);
