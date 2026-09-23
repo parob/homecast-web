@@ -1914,8 +1914,6 @@ export class ServerWebSocket {
 
     this.failPendingRequests('WebSocket connection closed');
 
-    this.cleanup();
-
     // The close carries the only evidence there is about why a socket ended:
     // the server can observe THAT one went, never why. It rides the transition
     // itself rather than only the separate `ws_close` entry above, so one line
@@ -1927,6 +1925,9 @@ export class ServerWebSocket {
       session_ms: this.lastConnectionDuration ?? undefined,
       heard_from_server: this.heardFromServer,
     };
+
+    // cleanup resets per-socket facts, so capture them before tearing down.
+    this.cleanup();
 
     if (this.isManualDisconnect) {
       this.setState('disconnected', 'manual', closeEvidence);

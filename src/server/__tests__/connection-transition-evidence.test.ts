@@ -97,6 +97,18 @@ describe('every connection transition says why', () => {
     expect(typeof evidence!.delay_ms).toBe('number');
   });
 
+  it.each([false, true])('remembers whether the closing socket heard from the server: %s', heard => {
+    const ws = socket();
+    ws.connect();
+    const transport = FakeSocket.last!;
+    transport.onopen!({});
+    if (heard) transport.onmessage!({ data: JSON.stringify({ type: 'connected', serverInstanceId: 'pod-1' }) });
+    vi.advanceTimersByTime(1_000);
+    transport.onclose!({ code: 1006, reason: '', wasClean: false });
+    expect(lastOpts().evidence?.heard_from_server).toBe(heard);
+    ws.disconnect();
+  });
+
   it('distinguishes the codes that mean something specific', () => {
     const ws = socket();
     ws.connect();
