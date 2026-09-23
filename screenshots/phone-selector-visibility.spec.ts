@@ -50,9 +50,6 @@ for (const slowSignIn of [false, true]) {
         await expect(selector).toHaveCSS('opacity', '0');
         await expect(selector).toHaveCSS('pointer-events', 'none');
       }
-      // Let the scrolling compositor finish the return before capturing the
-      // page; its first screenshot can still contain only the sticky wallpaper.
-      await page.waitForTimeout(400);
       await page.screenshot({ path: info.outputPath(`${where}-at-top.png`) });
     }
   });
