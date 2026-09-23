@@ -9,7 +9,7 @@ vi.mock('@/lib/colorUtils', () => ({
   getAutoPresetId: () => '',
   analyzeLoadedImage: () => 0.5,
   analyzeLoadedImageBand: () => 0.5,
-  getImageTopColor: () => '#888888',
+  getImageTopColor: (_image: unknown, _brightness: number, box: { scale: number }) => box.scale === 1 ? '#112233' : '#334455',
   getImageEdgeColor: () => '#888888',
 }));
 
@@ -75,6 +75,20 @@ describe('wallpaper across room navigation', () => {
     rerender(<BackgroundImage settings={settings} onReady={onReady} />);
     expect(container.querySelector(`img[src="${settings.customUrl}"]`)).toBe(image);
     expect(onReady).toHaveBeenCalledOnce();
+  });
+
+  it('updates the edge colour when blur changes the visible crop of a cached image', () => {
+    const settings = background('blur-crop');
+    const onTopColorChange = vi.fn();
+    const { container, rerender } = render(<BackgroundImage settings={settings} onTopColorChange={onTopColorChange} />);
+    const image = container.querySelector('img')!;
+    Object.defineProperties(image, { complete: { value: true }, naturalHeight: { value: 100 } });
+    fireEvent.load(image);
+    expect(onTopColorChange).toHaveBeenLastCalledWith('#334455');
+    rerender(<BackgroundImage settings={{ ...settings, blur: 0 }} onTopColorChange={onTopColorChange} />);
+    // The URL did not change, so another load event will never arrive.
+    expect(container.querySelector('img')).toBe(image);
+    expect(onTopColorChange).toHaveBeenLastCalledWith('#112233');
   });
 
   it('retains the loading deadline after starting an image transition', () => {

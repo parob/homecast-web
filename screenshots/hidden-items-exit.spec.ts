@@ -60,6 +60,17 @@ async function opacitiesWhileLeaving(page: Page, find: string) {
       .find(b => b.textContent?.trim() === 'Done') as HTMLButtonElement | undefined;
     if (!done) throw new Error('no Done button — is Edit Layout running?');
 
+    // A busy commit can take longer than the old cleanup timer before the
+    // first fade frame. The exit must wait for the real transition to finish.
+    const delayFirstPaint = new MutationObserver(() => {
+      if (!document.documentElement.hasAttribute('data-hidden-exiting')) return;
+      delayFirstPaint.disconnect();
+      const until = performance.now() + 350;
+      while (performance.now() < until) { /* simulate a busy main thread */ }
+    });
+    delayFirstPaint.observe(document.documentElement, {
+      attributes: true, attributeFilter: ['data-hidden-exiting'],
+    });
     const seen: number[] = [];
     const t0 = performance.now();
     done.click();
@@ -74,11 +85,58 @@ async function opacitiesWhileLeaving(page: Page, find: string) {
       };
       requestAnimationFrame(step);
     });
+    delayFirstPaint.disconnect();
     return { seen, stillThere: !!locate() };
   }, find);
 }
 
 test.describe('hidden items on the way out of Edit Layout', () => {
+  test('re-entering Edit Layout cancels a departure that is still animating', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only');
+    overrideEntityLayouts({
+      [`room:${LIVING_ROOM}`]: { visibility: { hiddenAccessoriesHome: [CEILING_LIGHT], hiddenAccessoriesRoom: [] } },
+    });
+    await setupMocks(page);
+    await page.goto(`/portal?home=${HOME_ID}`);
+    await expect(tile(page, 'Coffee Maker')).toBeVisible();
+    await enterEditLayout(page);
+    await expect(tile(page, 'Ceiling Light')).toBeVisible();
+    // Hold the actual transitions, so re-entry exercises cancellation even on
+    // a runner whose locator round trips take longer than the whole fade.
+    await page.evaluate(() => new Promise<void>(resolve => {
+      const observer = new MutationObserver(() => {
+        if (!document.documentElement.hasAttribute('data-hidden-exiting')) return;
+        observer.disconnect();
+        requestAnimationFrame(() => {
+          document.querySelectorAll('[data-hidden-item="true"]').forEach(el =>
+            el.getAnimations().forEach(animation => animation.pause()));
+          resolve();
+        });
+      });
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-hidden-exiting'] });
+      Array.from(document.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Done')!.click();
+    }));
+    await enterEditLayout(page);
+    await expect(tile(page, 'Ceiling Light')).toBeVisible();
+    await expect(page.locator('html')).not.toHaveAttribute('data-hidden-exiting');
+  });
+
+  test('reduced motion still removes revealed items', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    overrideEntityLayouts({
+      [`room:${LIVING_ROOM}`]: { visibility: { hiddenAccessoriesHome: [CEILING_LIGHT], hiddenAccessoriesRoom: [] } },
+    });
+    await setupMocks(page);
+    await page.goto(`/portal?home=${HOME_ID}`);
+    await expect(tile(page, 'Coffee Maker')).toBeVisible();
+    await enterEditLayout(page);
+    await expect(tile(page, 'Ceiling Light')).toBeVisible();
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(tileCount(page, 'Ceiling Light')).toHaveCount(0);
+    await expect(page.locator('html')).not.toHaveAttribute('data-hidden-exiting');
+  });
+
   test('Done fades the revealed tile away instead of cutting it', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
 

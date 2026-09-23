@@ -1,17 +1,10 @@
 /**
  * Paints the page canvas to match the wallpaper.
  *
- * The wallpaper is a fixed layer, so it cannot reach the strip iOS exposes
- * during rubber-band overscroll, nor the bands iOS 26 Safari shows through
- * its glass bars; whatever shows there comes from the canvas. Left alone that
- * is white, which reads as the wallpaper being clipped. The canvas is ONE
- * colour — the wallpaper's top colour, re-exposed at the whole picture's own
- * brightness — and the wallpaper fades into it at both of its edges, so the
- * bars never meet a colour other than their own.
- *
- * That re-exposure, and the lift that follows it, are for the bars alone. An
- * app shell has no bars: it gets the wallpaper's top colour as sampled, for
- * the one strip it is ever seen in — see `CanvasTintSurface`.
+ * Browser and native use the same sampled wallpaper colour, with the user's
+ * brightness applied once. Safari's edge scrims blend into that colour without
+ * re-exposing or whitening it. The canvas covers overscroll and browser bands
+ * beyond the wallpaper's composited layer.
  *
  * Lives in a hook because two screens need it — the dashboard and everything
  * under MainLayout (MQTT, Analytics, Diagnostics). It used to be an effect
@@ -31,33 +24,14 @@ interface Options {
   background: BackgroundSettings | null | undefined;
   sampledTopColor: string | null | undefined;
   isDark: boolean;
-  /**
-   * The wallpaper's whole-image relative luminance (0–1), which is what the
-   * sampled edge colour is re-exposed to — see `lib/canvas-tint.ts`. Omit it
-   * and the sample's own brightness is used, as it was before #157.
-   */
-  wallpaperLuminance?: number | null;
   /** Mac or iOS shell: the backdrop is the WKWebView's, not the document's. */
   isNativeShell: boolean;
 }
 
-export function useCanvasTint({ background, sampledTopColor, isDark, wallpaperLuminance, isNativeShell }: Options): string {
-  // One hook, two surfaces, and this is where they part — see
-  // `CanvasTintSurface`. A browser is asking what to fill iOS 26 Safari's
-  // glass bars with; an app shell is asking what colour the WKWebView's own
-  // backdrop should be. Both wallpaper-matching adjustments (the whole-picture
-  // re-exposure from #157, and the lift towards white) are for the bars, and
-  // handing them to the shell as well is what put a band 4.3× brighter than
-  // the wallpaper it borders on top of the iOS app — parob/homecast-cloud#161.
+export function useCanvasTint({ background, sampledTopColor, isDark, isNativeShell }: Options): string {
   const tint = useMemo(
-    () => resolveCanvasTint({
-      background,
-      sampledTopColor,
-      isDark,
-      wallpaperLuminance,
-      surface: isNativeShell ? 'backdrop' : 'bars',
-    }),
-    [background, sampledTopColor, isDark, wallpaperLuminance, isNativeShell],
+    () => resolveCanvasTint({ background, sampledTopColor, isDark }),
+    [background, sampledTopColor, isDark],
   );
 
   // How dark the overlays currently on screen have made the page. The canvas

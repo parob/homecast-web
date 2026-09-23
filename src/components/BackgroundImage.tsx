@@ -477,10 +477,13 @@ function ImageBackground({
 
   // A quick return can promote the still-mounted outgoing layer back to the
   // current one. It already decoded, but must report readiness for this visit.
+  // Blur also changes the visible crop (scale 1.1 versus 1): re-sample when
+  // saved settings replace an initial auto background or the slider changes.
+  // The URL is unchanged in that case, so no new load event will arrive.
   const reportsReady = Boolean(onLoad);
   useEffect(() => {
     if (reportsReady) onLoadCalledRef.current = false;
-  }, [reportsReady]);
+  }, [reportsReady, blur]);
 
   // Check if image is already complete (loaded before onLoad attached)
   useEffect(() => {

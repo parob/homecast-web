@@ -1,28 +1,6 @@
-/**
- * The canvas tint has two consumers, and they must not be handed one answer.
- *
- * parob/homecast-cloud#161: on a dark photograph the iOS app grew a band across
- * the top that was 1.54× the luminance of the wallpaper it bordered. Nothing in
- * the app had changed — the web app's iOS 26 Safari bar work had, and the colour
- * it computes for those bars is also the colour it hands the native WKWebView as
- * its backdrop (`useCanvasTint` → `backgroundColor` postMessage →
- * `webView.scrollView.backgroundColor`).
- *
- * The two want different answers. Safari's bar is chrome sitting beside a whole
- * screen of wallpaper, so its colour takes the WHOLE picture's brightness
- * (#157 — otherwise a bright sky puts two bright bars around a dark facade). The
- * shell's backdrop is only ever seen against the wallpaper's own TOP ROWS, so it
- * takes those. On a picture whose top disagrees with its average — which is most
- * photographs — those are visibly different colours, and this spec is that
- * difference, end to end: the real dashboard, the real sampler, the real bridge.
- *
- * The app's WKWebView carries a verbatim Safari user agent (`HomecastApp.swift`),
- * so the shell is told apart by the globals it injects at document start, never
- * by the UA. This spec injects exactly those.
- *
- * Captures land in the gitignored `output/`; the pair in the pull request is
- * copied into `evidence/issue-161/`.
- */
+/** The native backdrop is the reference for browser canvas colours too.
+ * Keep dark-top, bright-top and even fixtures: a whole-image average must not
+ * re-expose either platform's sampled edge. Uses the real Dashboard/bridge. */
 import { test, expect, type Page } from '@playwright/test';
 import { setupMocks, overrideSettings, overrideEntityLayouts, waitForDashboard } from './mocks';
 import { HOME_ID } from './fixtures';
@@ -49,15 +27,11 @@ const DEVICE = {
 
 test.use(DEVICE);
 
-/**
- * Each fixture puts the rule under a different input. `expect` is how the
- * picture's top compares with the picture as a whole, which is what decides
- * which way the two answers should differ.
- */
+/** Deliberately different top/whole-picture relationships. */
 const WALLPAPERS = [
-  { key: 'dusk-over-water', what: 'dark sky at the top, lit water at the foot', backdrop: 'darker' },
-  { key: 'sky-over-dark-house', what: 'bright sky over a dark facade — the #157 case', backdrop: 'brighter' },
-  { key: 'even-daylight-room', what: 'the control: top and average agree', backdrop: 'same' },
+  { key: 'dusk-over-water', what: 'dark sky at the top, lit water at the foot' },
+  { key: 'sky-over-dark-house', what: 'bright sky over a dark facade — the #157 case' },
+  { key: 'even-daylight-room', what: 'the control: top and average agree' },
 ] as const;
 
 /** Same-origin so the sampler's canvas is not tainted, as a real upload is. */
@@ -154,20 +128,7 @@ for (const wallpaper of WALLPAPERS) {
     // eslint-disable-next-line no-console
     console.log(`[${LABEL}]`, JSON.stringify(record));
 
-    // The rule, stated as the difference between the two answers rather than as
-    // absolute numbers, so retuning either one does not make this spec lie.
-    const ratio = record.backdropLum / record.barsLum;
-    if (wallpaper.backdrop === 'darker') {
-      // The regression was exactly this ratio going to 1: the shell was being
-      // handed the bars' answer. Reported at 4.3× too bright.
-      expect(ratio).toBeLessThan(0.7);
-    } else if (wallpaper.backdrop === 'brighter') {
-      expect(ratio).toBeGreaterThan(1.3);
-    } else {
-      // Where the picture's top and its average agree, so do the two answers —
-      // give or take the bars' lift towards white.
-      expect(ratio).toBeGreaterThan(0.8);
-      expect(ratio).toBeLessThan(1.2);
-    }
+    expect(record.barsLum).toBe(record.backdropLum);
+
   });
 }
