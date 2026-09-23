@@ -1,24 +1,5 @@
-/**
- * What colour the page canvas takes behind a wallpaper whose top is sky.
- *
- * parob/homecast-cloud#157: on an iPhone in Safari the bands above and below
- * the page — the status bar, the URL bar, and the scrims the wallpaper fades
- * into at both its edges — came out bright blue over a wallpaper that is
- * otherwise dark. The canvas is sampled from the wallpaper's top 5%, and on a
- * photograph of a building against the sky that strip is the sky alone.
- *
- * The bug is a colour, so the check is a colour: the canvas luminance against
- * the wallpaper's own. Measured from the reporter's screenshot, the bands were
- * luminance 169 against a page body of 90 — 1.9× as bright as what they border.
- *
- * `EDGE_COLOUR_LABEL` names the side being captured, so before and after can be
- * filed side by side from two checkouts:
- *
- *   EDGE_COLOUR_LABEL=before npx playwright test wallpaper-edge-colour.spec.ts --project=screenshots
- *
- * Captures land in the gitignored `output/`; the pair in the pull request is
- * copied into `evidence/issue-157/`.
- */
+/** Browser edge colour follows the native reference: the visible top of
+ * the wallpaper, without whole-image re-exposure or a white lift. */
 import { test, expect, type Page } from '@playwright/test';
 import { setupMocks, overrideSettings, overrideEntityLayouts, waitForDashboard } from './mocks';
 import { HOME_ID } from './fixtures';
@@ -170,13 +151,9 @@ for (const wallpaper of WALLPAPERS) {
       expect(Math.abs(measured.wallpaperTopStrip - measured.wallpaperWhole)).toBeLessThan(20);
     }
 
-    // And the rule itself, the same for all three: the band is in the
-    // picture's register, whatever its edge happens to be. Not 1.0 —
-    // `SAMPLED_TINT_LIFT` still nudges it towards white so it does not read as
-    // a shadow, which lands these around 1.2-1.4. The bar is 1.5 either side,
-    // so it guards the regression (reported at 1.9, reproduced at 2.0)
-    // without failing on a lift retuned by a pixel.
-    expect(ratio).toBeLessThanOrEqual(1.5);
-    expect(ratio).toBeGreaterThanOrEqual(0.67);
+    // Match the actual top edge, even when the rest of the photograph is
+    // much brighter or darker. The native shell uses this same reference.
+    expect(Math.abs(canvasLum - measured.wallpaperTopStrip)).toBeLessThan(3);
+
   });
 }

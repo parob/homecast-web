@@ -6492,10 +6492,6 @@ const Dashboard = () => {
     background: displayedBackground,
     sampledTopColor: bgImageTopColor,
     isDark: isDarkBackground,
-    // The raw whole-image figure, not `effectiveLuminance`: canvas-tint applies
-    // the wallpaper's brightness itself, and handing it a value that already
-    // carries it would apply it twice.
-    wallpaperLuminance: bgImageLuminance,
     isNativeShell: isInMacApp || isInMobileApp,
   });
 
@@ -7843,31 +7839,12 @@ const Dashboard = () => {
               there is what showed as white above and below the wallpaper.
               Matches MainLayout: over a dark wallpaper the backdrop has to be
               black, not the theme's white. */}
-          {/* A phone browser's wallpaper is a sticky layer, not a fixed one, so
-              it paints into iOS 26 Safari's bar bands and the page runs under
-              the bars over an unbroken wallpaper — see `.sticky-wallpaper` in
-              index.css for the mechanism and the measurements. The reach past
-              the viewport covers the bands: the status bar alone above (~62pt),
-              or status bar plus URL bar for a Safari set to keep its bar at
-              the top (~140pt) — the page cannot tell which, so it covers the
-              deeper one; the URL bar's tallest state below. Each end fades
-              out over its last 70px so an edge that does come into view meets
-              the canvas softly. The cost is framing: `object-fit: cover` on
-              the taller box scales a landscape wallpaper up by the added
-              height. Everything else keeps the fixed layer. */}
-          {/* No negative z-index on this one, unlike the fixed layer below.
-              Safari's bars are glass over the page, and what shows through
-              them past the viewport's edges is the layer tree there — this
-              layer's overhang under the tiles. A negative z-index here
-              resolves in the ROOT stacking context (this container is
-              `relative`, not a stacking context), and a negative-z layer of
-              the root is not drawn past the viewport: the bands showed the
-              flat canvas colour instead of the wallpaper. At z auto it is.
-              The content still covers it on screen because it comes later
-              in tree order inside a positioned wrapper (`relative`, below),
-              and the header, the edit bar and every portal carry z-indices
-              of their own. Measured on the iPhone 17 Pro simulator,
-              2026-09-18. */}
+          {/* Keep the native wallpaper's size and crop. Safari uses a sticky
+              wrapper so scrolling stays compositor-driven; the separate edge
+              scrims blend into the canvas where its own bars obscure the page.
+              Extra wallpaper height cannot paint into those bars and only
+              changes the cover crop. No negative z-index: content follows the
+              wallpaper in document order and overlays have their own layers. */}
           {phoneBrowser ? (
             <div
               aria-hidden
@@ -7875,7 +7852,6 @@ const Dashboard = () => {
               style={{
                 '--band-reach-top': '160px',
                 '--band-reach-bottom': '120px',
-                '--band-fade-top': '40px',
                 // The top fade is behind the content; the bottom fade below
                 // covers both wallpaper and widgets as they meet Safari's bar.
                 '--top-scrim-run': '70px',

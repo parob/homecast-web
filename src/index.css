@@ -486,18 +486,9 @@ All colors MUST be HSL.
   height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom));
 }
 
-/* The same box, for a wallpaper that has to reach into iOS 26 Safari's bar
-   bands. Safari paints the document into the bands behind its status bar
-   and URL bar but clips every `position: fixed` layer to the viewport, so a
-   fixed wallpaper stops dead at the viewport edge and the band shows the
-   canvas colour. A `position: sticky` layer is document content — painted
-   into the bands like any tile — yet is placed by the scrolling thread like
-   a fixed one, so it never lags a scroll. Hence: a zero-height sticky
-   wrapper (`.sticky-wallpaper`) at the very start of the scroller, and this
-   box absolutely positioned inside it, extended past the viewport by
-   `--band-reach-top` / `--band-reach-bottom` so the bands are covered
-   through the URL bar's collapse. Measured on the iPhone 17 Pro simulator,
-   iOS 26.4, 2026-09-17: fills both bands, stays put across a fling. */
+/* Phone-browser wallpaper: a zero-height sticky wrapper keeps the layer
+   stable during document scrolling. Its children have native-sized wallpaper
+   geometry; only the edge scrims extend towards Safari's bars. */
 .sticky-wallpaper {
   position: sticky;
   /* Where it sticks — the same offset its normal position has (see
@@ -532,21 +523,14 @@ All colors MUST be HSL.
 
 .sticky-full-screen {
   position: absolute;
-  top: calc((var(--safe-area-top) + var(--band-reach-top, 0px)) * -1);
+  /* Cancel the wrapper's document gap so the wallpaper starts where the
+     native fixed layer does. Expanding this box by the toolbar reach used
+     to zoom/reframe every photo and gradient by an extra 280px. */
+  top: calc((var(--safe-area-top) + var(--band-gap, 0px)) * -1);
   left: calc(var(--safe-area-left) * -1);
   width: calc(100vw + var(--safe-area-left) + var(--safe-area-right));
-  height: calc(100vh + var(--safe-area-top) + var(--safe-area-bottom) + var(--band-reach-top, 0px) + var(--band-reach-bottom, 0px));
-  height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom) + var(--band-reach-top, 0px) + var(--band-reach-bottom, 0px));
-  /* The box ends somewhere above the screen; should that edge ever come into
-     view (a Safari whose bar is at the top, a pull) it must not arrive as a
-     hard line against the canvas. The top few px fade out, into the canvas —
-     which is the wallpaper's own sampled edge colour (useCanvasTint), so
-     into a near-match. Only the top: the bottom edge is under the URL bar's
-     glass and never shows. Applied to every layer in the box — the solid
-     backdrop as well as the image — because a line would be the pair of them
-     ending together. */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--band-fade-top, 0px));
-  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--band-fade-top, 0px));
+  height: calc(100vh + var(--safe-area-top) + var(--safe-area-bottom));
+  height: calc(100lvh + var(--safe-area-top) + var(--safe-area-bottom));
 }
 
 /* The wallpaper's two edges, in the page's own background colour. iOS 26
