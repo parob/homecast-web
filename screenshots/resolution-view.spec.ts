@@ -207,7 +207,7 @@ test('Merge names what it merges, asks once, and shows what happened', async ({ 
 
   await confirm.click();
   await expect(page.getByText('Merged homecast-web#208.')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Open homecast-web#208 on GitHub/ })).toContainText('Merged');
+  await expect(page.getByRole('button', { name: /Open homecast-web#208 on GitHub/ })).toContainText('Code merged');
   await expect(page.getByRole('button', { name: /^Merge / })).toHaveCount(0);
   await page.waitForTimeout(300);
   await sheet(page).screenshot({ path: 'screenshots/output/resolution-merged.png' });
@@ -224,4 +224,45 @@ test('a merged change still explains the report needs review', async ({ page }) 
   await expect(page.getByText(/#167.*Needs review/)).toBeVisible();
   await expect(page.getByText('All linked pull requests are merged. This report still needs review; see the updates below.')).toBeVisible();
   await sheet(page).screenshot({ path: test.info().outputPath('report-needs-review.png') });
+});
+
+test('opening investigating report #178 does not present its earlier merged change as resolution', async ({ page }) => {
+  await asAdminReporter(page);
+  const issue = {
+    ...REPORTED_ISSUES.issues[0], issueNumber: 178,
+    title: 'Widgets do not change correctly with the background brightness',
+    url: 'https://github.com/parob/homecast-cloud/issues/178',
+    labels: ['bug', 'claude-attempted'],
+  };
+  const pr = { repo: 'parob/homecast-web', number: 222, url: 'https://github.com/parob/homecast-web/pull/222' };
+  await page.route(/\/rest\/issue-report(\?|$)/, route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ page: 1, hasMore: false, issues: [issue] }),
+  }));
+  await page.route(/\/rest\/issue-report\/178\/resolution$/, route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      ...RESOLUTION, ...issue, reported: [], evidence: [], prs: [pr], primary: pr,
+      reportedText: 'The widget text does not adapt to the background.',
+      summary: 'The picker layout is fixed; widget contrast still needs work.',
+      merge: { ...MERGED, merged: [], plan: [{ ...MERGED.plan[0], ...pr }] },
+    }),
+  }));
+  await page.goto('/');
+  await page.waitForTimeout(2500);
+  await page.keyboard.press('Alt+Shift+KeyR');
+  await sheet(page).waitFor({ state: 'visible' });
+  await page.getByRole('tab', { name: 'Existing' }).click();
+  const row = page.getByRole('button', { name: 'Open #178' });
+  await expect(row).toContainText('Investigating');
+  await row.click();
+  await expect(page.getByText(/#178.*Investigating/)).toBeVisible();
+  const linkedChange = page.getByRole('button', { name: /Open homecast-web#222 on GitHub/ });
+  await expect(linkedChange).toBeVisible();
+  await sheet(page).screenshot({ path: test.info().outputPath('investigating-with-merged-code.png') });
+  await expect(linkedChange).toContainText('Code merged');
+  await expect(page.getByText('This report is still being investigated. Earlier code changes have been merged.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Merge / })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to issues' }).click();
+  await expect(row).toContainText('Investigating');
 });
