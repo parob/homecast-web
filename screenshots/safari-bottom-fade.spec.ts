@@ -38,7 +38,14 @@ test('widgets fade into the bottom canvas while scrolling and resizing', async (
   for (const height of [800, 640, 956]) {
     await page.setViewportSize({ width: 440, height });
     for (const scroll of [0, 400, 1200]) {
-      await page.evaluate(y => scrollTo(0, y), scroll);
+      // The app uses smooth scrolling. Finish each movement before changing
+      // viewport size again or measuring pixels; overlapping nine smooth
+      // scrolls captured an intermediate compositor frame on CI.
+      const target = await page.evaluate(y => {
+        scrollTo(0, y);
+        return Math.min(y, document.documentElement.scrollHeight - innerHeight);
+      }, scroll);
+      await expect.poll(() => page.evaluate(() => scrollY)).toBe(target);
       await expect.poll(async () => (await probeFade(page)).overContent).toBe(true);
       const fade = await probeFade(page);
       expect(fade.top).toBeCloseTo(height - 120, 0);
