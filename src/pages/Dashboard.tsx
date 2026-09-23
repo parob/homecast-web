@@ -165,6 +165,7 @@ import { useBackgroundLongPress } from '@/hooks/useBackgroundLongPress';
 import { useRevealBeforeLift } from '@/hooks/useRevealBeforeLift';
 import { captureHeights, collapseContainers, emptyingContainers, heightChanges, playHeightChanges, prefersReducedMotion, REFLOW_MS, type HeightMap } from '@/lib/reflow';
 import { holdScrollAnchor, isAboveAnchor, pickPageAnchor } from '@/lib/lift-scroll-anchor';
+import { startHiddenItemEntrance } from '@/lib/hidden-item-entrance';
 
 /** Backstop for a drag that never reports an end. Long enough to never race a
  *  real one, short enough that a stuck mode rights itself. */
@@ -181,18 +182,6 @@ const LIFT_WATCHDOG_MS = 8000;
  * starting from an already-dimmed 0.4 was not — see the note beside the rule.
  */
 const HIDDEN_EXIT_MS = 260;
-
-/**
- * …and how long they take to arrive, which is the same distance in the other
- * direction and so the same number.
- *
- * Must match the `hidden-item-in` animation in `index.css`; this is only the
- * window the root carries `data-hidden-entering`, and that rule is what moves
- * them inside it. Shorter and the animation would be cut off part way; much
- * longer and a second reveal arriving straight after the first would find the
- * attribute still set and not replay.
- */
-const HIDDEN_ENTER_MS = 260;
 
 /**
  * …and how long the scroll anchor keeps hold after a reveal or a put-away.
@@ -1702,7 +1691,7 @@ const Dashboard = () => {
   const showHiddenRef = useRef(showHiddenItems);
   showHiddenRef.current = showHiddenItems;
 
-  const hiddenEnterRef = useRef<number | undefined>(undefined);
+  const hiddenEnterRef = useRef<(() => void) | null>(null);
 
   /**
    * The other half: the beat the arriving items animate over.
@@ -1711,15 +1700,13 @@ const Dashboard = () => {
    * one difference from the exit above and the whole reason it works. These
    * items do not exist yet — they mount in the commit this call schedules — and
    * a CSS animation is picked up when an element is first styled, so the
-   * attribute has to be on the root BEFORE that commit paints. An effect, even
-   * a layout effect, runs after it. Nothing in React reads it either way.
+   * attribute has to be on the root BEFORE that commit paints. Cleanup waits
+   * for the actual CSS animations: a timer started here can expire before a
+   * busy device has painted even one frame. Nothing in React reads the flag.
    */
   const markHiddenItemsEntering = useCallback(() => {
-    window.clearTimeout(hiddenEnterRef.current);
-    document.documentElement.setAttribute('data-hidden-entering', 'true');
-    hiddenEnterRef.current = window.setTimeout(() => {
-      document.documentElement.removeAttribute('data-hidden-entering');
-    }, HIDDEN_ENTER_MS);
+    hiddenEnterRef.current?.();
+    hiddenEnterRef.current = startHiddenItemEntrance(document.documentElement);
   }, []);
 
   /**
@@ -1873,7 +1860,8 @@ const Dashboard = () => {
    */
   const dropPendingReveal = useCallback(() => {
     window.clearTimeout(hiddenExitRef.current);
-    window.clearTimeout(hiddenEnterRef.current);
+    hiddenEnterRef.current?.();
+    hiddenEnterRef.current = null;
     document.documentElement.removeAttribute('data-hidden-entering');
     setHiddenExiting(false);
     // Both in the same batch as the unmount below, so the browser never gets a
@@ -1890,7 +1878,8 @@ const Dashboard = () => {
     // Leaving inside the entrance: drop it rather than let the two run at once.
     // An animation and a transition on the same properties do not average, the
     // animation simply wins, and the exit would not start until it finished.
-    window.clearTimeout(hiddenEnterRef.current);
+    hiddenEnterRef.current?.();
+    hiddenEnterRef.current = null;
     document.documentElement.removeAttribute('data-hidden-entering');
     if (!showHiddenRef.current) {
       setHiddenExiting(false);
@@ -1977,7 +1966,8 @@ const Dashboard = () => {
   // outlives it.
   useEffect(() => () => {
     window.clearTimeout(hiddenExitRef.current);
-    window.clearTimeout(hiddenEnterRef.current);
+    hiddenEnterRef.current?.();
+    hiddenEnterRef.current = null;
     document.documentElement.removeAttribute('data-hidden-entering');
     // …and a reveal that was still waiting to be painted when the page went.
     document.documentElement.removeAttribute('data-hidden-pending');

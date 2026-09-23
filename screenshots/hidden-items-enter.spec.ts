@@ -44,6 +44,17 @@ async function opacitiesWhileArriving(page: Page, find: string) {
       .find(n => n.textContent?.trim() === 'Edit Layout') as HTMLElement | undefined;
     if (!item) throw new Error('no Edit Layout menu item — is the ⋮ menu open?');
 
+    // A busy device can spend longer than the old 260ms cleanup timer before
+    // the first paint. Delay that paint, then sample normal browser frames.
+    const delayFirstPaint = new MutationObserver(() => {
+      if (!document.documentElement.hasAttribute('data-hidden-entering')) return;
+      delayFirstPaint.disconnect();
+      const until = performance.now() + 350;
+      while (performance.now() < until) { /* simulate a busy main thread */ }
+    });
+    delayFirstPaint.observe(document.documentElement, {
+      attributes: true, attributeFilter: ['data-hidden-entering'],
+    });
     const seen: number[] = [];
     const t0 = performance.now();
     item.click();
@@ -56,6 +67,7 @@ async function opacitiesWhileArriving(page: Page, find: string) {
       };
       requestAnimationFrame(step);
     });
+    delayFirstPaint.disconnect();
     return { seen, stillThere: !!locate() };
   }, find);
 }
