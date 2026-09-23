@@ -164,7 +164,7 @@ describe('the merge plan, read for the button', () => {
     expect(planStatus(web)).toBe('Waits for deploy');
     expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: true })).toBe('Merged · serving');
     expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: false })).toBe('Merged · deploying');
-    expect(planStatus({ ...web, action: 'merged', merged: true })).toBe('Merged');
+    expect(planStatus({ ...web, action: 'merged', merged: true })).toBe('Code merged');
     expect(planStatus({ ...web, action: 'after', reason: 'after homecast-web#214' })).toBe('after homecast-web#214');
     expect(planStatus({ ...web, action: 'blocked', reason: 'merge conflict' })).toBe('merge conflict');
   });

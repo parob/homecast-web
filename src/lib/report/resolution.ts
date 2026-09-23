@@ -252,7 +252,7 @@ export function planStatus(entry: MergePlanEntry): string {
     case 'merged':
       if (entry.serving === true) return 'Merged · serving';
       if (entry.serving === false) return 'Merged · deploying';
-      return 'Merged';
+      return 'Code merged';
     case 'merge':
       return 'Ready';
     case 'wait_deploy':
@@ -332,6 +332,7 @@ export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): FixSt
 export function mergedReportMessage(status: FixStatus): string {
   const merged = 'All linked pull requests are merged.';
   if (status === 'Fixed') return merged;
+  if (status === 'Investigating') return 'This report is still being investigated. Earlier code changes have been merged.';
   if (status === 'Needs review') return `${merged} This report still needs review; see the updates below.`;
   if (status === 'Blocked upstream') return `${merged} This report is still blocked upstream; see the updates below.`;
   return `${merged} This report is still open pending verification.`;
