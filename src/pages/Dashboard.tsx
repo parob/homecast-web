@@ -4210,7 +4210,6 @@ const Dashboard = () => {
     // the screen's edge. The row's centre line is published by AppHeader
     // (`--top-row-center`: 40px in a browser tab, ~99px under a notch), so
     // the cut is the row's bottom plus a little.
-    const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
     if (phoneBrowser) {
       // The document scrolls here, so read the heading's box on each scroll
       // rather than observe it: iOS Safari's viewport moves as its bars come
@@ -4221,6 +4220,10 @@ const Dashboard = () => {
       const check = () => {
         raf = 0;
         const h = headingRef.current;
+        // Auth can finish after this effect starts, before AppHeader exists.
+        // Read its current position on every check: keeping the boot fallback
+        // made the selector stay visible beside the large title at scroll 0.
+        const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
         setHeadingHidden(!!h && h.getBoundingClientRect().bottom < centre + 28);
       };
       const onScroll = () => { if (!raf) raf = requestAnimationFrame(check); };
@@ -4235,6 +4238,7 @@ const Dashboard = () => {
     }
     const el = headingRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
+    const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
     const observer = new IntersectionObserver(
       ([entry]) => setHeadingHidden(!entry.isIntersecting),
       { rootMargin: `-${Math.round(centre + 28)}px 0px 0px 0px`, threshold: 0 },
