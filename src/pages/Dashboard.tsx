@@ -1455,6 +1455,15 @@ const Dashboard = () => {
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(() => {
     return searchParams.get('enrollment');
   });
+  // Whether the header title's home/room switcher is open. Deliberately
+  // lifted out of the switcher itself: the whole-home heading (and its
+  // DropdownMenu) lives inside the `key={selectedHomeId-...}` accessories
+  // wrapper further down, which remounts on every home change to reset
+  // widget state. A home pick would otherwise destroy the open dropdown
+  // along with everything else in that remount — preventing the item's own
+  // close-on-select (see `renderSwitcherItems`) cannot survive that, only
+  // state that outlives the remount can (homecast-cloud#200).
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   /** How much of a manual refresh has landed, so the overlay can say so. */
@@ -7537,7 +7546,12 @@ const Dashboard = () => {
       {nativeHomes.length > 1 && (
         <>
           {nativeHomes.map((home) => (
-            <DropdownMenuItem key={home.id} onClick={() => handleSelectHome(home.id)}>
+            // `onSelect`, not `onClick` — Radix closes the menu on selection
+            // unless that default is prevented. Picking a room is still the
+            // completing action below and closes as normal; picking a home
+            // should not, so a room in the (new) home's list can be picked
+            // from this same menu once it loads (homecast-cloud#200).
+            <DropdownMenuItem key={home.id} onSelect={(event) => { event.preventDefault(); handleSelectHome(home.id); }}>
               <House className="h-4 w-4 mr-2" />
               <span className="truncate">{home.name}</span>
               {home.id === statusHomeId && <Check className="ml-auto h-4 w-4" />}
@@ -7605,7 +7619,7 @@ const Dashboard = () => {
     // behind the words when the menu opens.
     const asHeading = !className;
     return (
-      <><DropdownMenu>
+      <><DropdownMenu open={switcherOpen} onOpenChange={setSwitcherOpen}>
         <DropdownMenuTrigger asChild plain>
           {/* As a heading, a pill: the menu's scrim is cut out around its
               trigger in the trigger's own shape, and a square box around

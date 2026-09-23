@@ -55,6 +55,7 @@ export default defineConfig({
     'issue-182-updates.spec.ts',
     'background-slow-swap.spec.ts',
     'heading-native-metrics.spec.ts',
+    'issue-200-home-switcher-menu.spec.ts',
   ],
   timeout: 60_000,
   retries: 0,
