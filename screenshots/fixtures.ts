@@ -377,6 +377,9 @@ export const MOCK_USER = {
 
 export const MOCK_SETTINGS = {
   data: JSON.stringify({
+    // These fixtures are an established home, not a first-run account.
+    onboardingCompleted: true,
+    tutorialCompleted: true,
     theme: 'dark',
     sidebarCollapsed: false,
     developerMode: true,

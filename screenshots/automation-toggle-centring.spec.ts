@@ -14,7 +14,7 @@
  * against the intrinsic height of a Radix switch, and jsdom has no layout.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks } from './mocks';
+import { setupMocks, waitForDashboard } from './mocks';
 import { HOME_ID } from './fixtures';
 
 const automationsPill = (page: Page) => page.locator('[data-tour="automations"]');
@@ -30,8 +30,9 @@ async function centreY(locator: ReturnType<typeof automationsPill>) {
 async function openAutomations(page: Page) {
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
-  await expect(automationsPill(page)).toBeVisible({ timeout: 20000 });
-  await automationsPill(page).click();
+  await waitForDashboard(page);
+  await page.locator('[data-tour="header-menu"]').click();
+  await page.getByRole('menuitem', { name: 'Automations', exact: true }).click();
   await expect(card(page, 'hk-auto-1')).toBeVisible();
   // The section expands; measure once it has settled.
   await page.waitForTimeout(500);

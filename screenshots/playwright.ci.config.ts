@@ -9,6 +9,22 @@ export default defineConfig({
   ...base,
   testMatch: [
     'attachment-preview.spec.ts',
+    // Existing functional regressions must run alongside new ones (#146).
+    'accessory-picker-row-overlap.spec.ts',
+    'accessory-visibility-surfaces.spec.ts',
+    'automation-dialog-close.spec.ts',
+    'automation-toggle-centring.spec.ts',
+    'cross-room-drag.spec.ts',
+    'edit-badge-hit-target.spec.ts',
+    'edit-layout-exit-motion.spec.ts',
+    'hidden-items-enter.spec.ts',
+    'hidden-items-exit.spec.ts',
+    'reveal-before-commit.spec.ts',
+    'reveal-during-lift.spec.ts',
+    'room-heading-context-menu.spec.ts',
+    'sharing-settings.spec.ts',
+    'tab-bar-unpin-badge.spec.ts',
+
     'expanded-overlay.spec.ts',
     // The panel's action cluster: Size removed, and every remaining action
     // readable as a word rather than a glyph. homecast-cloud#162.
@@ -63,6 +79,8 @@ export default defineConfig({
     'background-slow-swap.spec.ts',
   ],
   projects: base.projects?.filter(project => project.name !== 'ipad-screenshots'),
+  // Picture-only cases in otherwise functional files remain hand-run.
+  grepInvert: /\bcapture$/,
   workers: 2,
   use: {
     ...base.use,

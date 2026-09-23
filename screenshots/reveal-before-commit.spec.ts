@@ -76,6 +76,8 @@ async function openLivingRoom(page: Page) {
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}&room=${LIVING_ROOM}`);
   await expect(tile(page, 'Thermostat')).toBeVisible({ timeout: 20000 });
+  await tile(page, 'Thermostat').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
   const box = await tile(page, 'Thermostat').boundingBox();
   if (!box) throw new Error('no box for Thermostat');
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };

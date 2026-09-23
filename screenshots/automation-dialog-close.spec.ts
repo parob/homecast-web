@@ -13,7 +13,7 @@
  * does not overlap it. The captures are for the eye.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { setupMocks } from './mocks';
+import { setupMocks, waitForDashboard } from './mocks';
 import { HOME_ID } from './fixtures';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +27,9 @@ const closeX = (page: Page) => dialog(page).locator('button:has(> span.sr-only)'
 async function openAutomationDetail(page: Page) {
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
-  await page.locator('text=Automations').first().click();
+  await waitForDashboard(page);
+  await page.locator('[data-tour="header-menu"]').click();
+  await page.getByRole('menuitem', { name: 'Automations', exact: true }).click();
   await page.getByTestId('automation-hk-auto-1').click();
   await expect(dialog(page)).toBeVisible({ timeout: 20000 });
   // The dialog zooms in; measure once it has landed.
