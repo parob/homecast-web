@@ -7876,12 +7876,9 @@ const Dashboard = () => {
                 '--band-reach-top': '160px',
                 '--band-reach-bottom': '120px',
                 '--band-fade-top': '40px',
-                // How far into the screen each canvas-coloured scrim runs
-                // before the wallpaper is clear: a short one under the status
-                // bar, a longer one above the URL bar, where the wallpaper's
-                // own bottom colour has furthest to travel to meet the canvas.
+                // The top fade is behind the content; the bottom fade below
+                // covers both wallpaper and widgets as they meet Safari's bar.
                 '--top-scrim-run': '70px',
-                '--bottom-scrim-run': '120px',
               } as React.CSSProperties}
             >
               {/* The backdrop under the image, in the canvas colour rather
@@ -7910,7 +7907,6 @@ const Dashboard = () => {
                   one colour: the scrims are what let the wallpaper arrive at
                   it softly rather than being cut by it. */}
               {hasBackground && <div className="sticky-top-scrim" />}
-              {hasBackground && <div className="sticky-bottom-scrim" />}
             </div>
           ) : (
             <>
@@ -7931,6 +7927,17 @@ const Dashboard = () => {
                 onTopColorChange={setBgImageTopColor}
               />
             </>
+          )}
+
+          {/* The bottom fade belongs above the scrolling widgets as well as
+              the wallpaper. Inside sticky-wallpaper it was behind every tile,
+              leaving them to meet Safari's URL-bar band with a hard cut. Keep
+              the same sticky viewport anchor, below header/menu portals, and
+              leave pointer events to the controls beneath it. */}
+          {phoneBrowser && hasBackground && (
+            <div aria-hidden className="sticky-wallpaper z-[9999]">
+              <div className="sticky-bottom-scrim" />
+            </div>
           )}
 
           {/* Tiles used to be sliced flat at both physical screen edges, with

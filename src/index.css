@@ -577,7 +577,8 @@ All colors MUST be HSL.
     transparent 100%
   );
 }
-/* Bottom: the mirror image, anchored to the viewport's bottom edge — the
+/* Bottom: over the widgets as well as the wallpaper, in a separate sticky
+   wrapper below the header and overlays. Anchored to the viewport's bottom edge — the
    SHORTEST viewport's (`svh`, the URL bar expanded), so the wallpaper has
    reached the canvas colour by the time it meets the bar whatever state the
    bar is in; with the bar collapsed the last 40px above it are simply the
