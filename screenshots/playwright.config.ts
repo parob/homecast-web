@@ -48,6 +48,7 @@ export default defineConfig({
     'phone-back-button.spec.ts',
     'native-backdrop-colour.spec.ts',
     'lock-battery-ink.spec.ts',
+    'widget-contrast.spec.ts',
     'overlay-band-colour.spec.ts',
     'room-opens-scrolled.spec.ts',
     'background-dialog-space.spec.ts',

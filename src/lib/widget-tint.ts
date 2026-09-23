@@ -82,18 +82,49 @@ const ASSUMED_LUMINANCE_DARK = 0.05;
  * backdrop, by WCAG 2.0: solving 1.05/(L+0.05) = (L+0.05)/0.05 gives
  * L = sqrt(0.0525) - 0.05. Below it white wins, above it black does.
  *
- * This decides the ink for a tile at FULL strength only. It deliberately does
- * not decide it for an off tile — see `resolveWidgetTint`, where using it for
- * both was a real regression.
+ * This is independent of the wallpaper's mood threshold: a translucent tile
+ * on a mid-grey wallpaper needs dark ink even if the page is styled as dark.
  */
 const INK_CROSSOVER = Math.sqrt(0.0525) - 0.05;
 
-/** White ink or the usual slate. */
+/** White or black ink. */
 type Tone = 'light' | 'dark';
 
-/** A translucent fill's luminance once composited over what sits behind it. */
-function compositeLuminance(fill: Rgba, backdrop: number): number {
-  return fill.a * getLuminance(fill.r, fill.g, fill.b) + (1 - fill.a) * backdrop;
+/**
+ * CSS blends sRGB channels, not their linear luminances. The wallpaper exposes
+ * an average luminance, so reconstruct an equivalent neutral sRGB backdrop.
+ * This is exact for flat greys and an estimate for coloured/spatial images.
+ */
+function compositeSurface(fill: Rgba, backdrop: number, rgb?: readonly number[] | null): number[] {
+  const l = Math.max(0, Math.min(1, backdrop));
+  const grey = 255 * (l <= 0.0031308 ? 12.92 * l : 1.055 * l ** (1 / 2.4) - 0.055);
+  return [fill.r, fill.g, fill.b].map((c, i) => c * fill.a + (rgb?.[i] ?? grey) * (1 - fill.a));
+}
+
+function surfaceLuminance(rgb: number[]): number {
+  return getLuminance(rgb[0], rgb[1], rgb[2]);
+}
+
+/** Keep secondary text subdued only while it remains readable on the glass. */
+function secondaryInk(channel: number, surface: number[]): string {
+  const backdrop = surfaceLuminance(surface);
+  const contrast = (alpha: number) => {
+    const ink = surfaceLuminance(surface.map(c => channel * alpha + c * (1 - alpha)));
+    return (Math.max(ink, backdrop) + 0.05) / (Math.min(ink, backdrop) + 0.05);
+  };
+  // Leave headroom for texture and the difference between a label and tile average.
+  const targetContrast = 5.5;
+  let low = channel === 255 ? 0.7 : 0.55;
+  let high = 1;
+  if (contrast(low) < targetContrast) {
+    for (let i = 0; i < 10; i++) {
+      const mid = (low + high) / 2;
+      if (contrast(mid) < targetContrast) low = mid;
+      else high = mid;
+    }
+    low = Math.ceil(high * 1000) / 1000;
+  }
+  return rgbaToCss({ r: channel, g: channel, b: channel, a: low });
 }
 
 /**
@@ -168,6 +199,8 @@ export interface TintInput {
   isDarkWallpaper: boolean;
   /** The wallpaper's luminance 0-1, or null while it is unknown. */
   wallpaperLuminance: number | null | undefined;
+  /** Local sampled image colour when available; includes brightness adjustment. */
+  wallpaperRgb?: readonly number[] | null;
   /** The alpha this accent paints at when full. Defaults to {@link TINT_ALPHA}. */
   alpha?: number;
 }
@@ -177,6 +210,8 @@ export interface TintResult {
   backgroundColor: string;
   /** Which ink the content needs: 'light' is white, 'dark' is the usual slate. */
   tone: Tone;
+  foregroundColor: string;
+  secondaryColor: string;
   /** The inset hairline's colour, faded out as the fill comes up. */
   ringColor: string;
   /** The resolved fill level, 0-1. Exposed for tests and callers that animate. */
@@ -186,9 +221,8 @@ export interface TintResult {
 /**
  * Resolve everything a tile needs to paint itself at a given intensity.
  *
- * At `level` 0 and 1 this reproduces exactly what the old two-class swap
- * produced, so a lock, a switch and a non-dimmable bulb are pixel-identical to
- * before; everything in between is new.
+ * The fill and ring retain the wallpaper's appearance; text follows the
+ * estimated painted surface at every level, including off.
  */
 export function resolveWidgetTint({
   tint,
@@ -196,6 +230,7 @@ export function resolveWidgetTint({
   isOn,
   isDarkWallpaper,
   wallpaperLuminance,
+  wallpaperRgb,
   alpha = TINT_ALPHA,
 }: TintInput): TintResult {
   const off = isDarkWallpaper ? OFF_TINT_DARK : OFF_TINT_LIGHT;
@@ -213,34 +248,9 @@ export function resolveWidgetTint({
     wallpaperLuminance ??
     (isDarkWallpaper ? ASSUMED_LUMINANCE_DARK : ASSUMED_LUMINANCE_LIGHT);
 
-  // Ink is decided by interpolating between the two ENDS, not by thresholding
-  // the composite luminance against an absolute constant.
-  //
-  // Thresholding was the obvious approach and it was wrong. This app calls a
-  // wallpaper "dark" whenever its luminance is below 0.8 (isDarkLuminance) —
-  // a deliberate choice that puts white ink on glass over almost any
-  // photograph. WCAG's own crossover is 0.179. An off tile is only 20% black,
-  // so its composite is dominated by the wallpaper, and every wallpaper in the
-  // band between those two numbers — which is most photographs — flipped from
-  // white ink to black. Interpolating the decision instead reproduces the old
-  // behaviour at both ends *by construction*, for every wallpaper.
-  const offTone: Tone = isDarkWallpaper ? 'light' : 'dark';
-  const onLuminance = compositeLuminance({ ...accentRgb, a: alpha }, backdrop);
-  const onTone: Tone = onLuminance < INK_CROSSOVER ? 'light' : 'dark';
-
-  let tone: Tone;
-  if (offTone === onTone) {
-    // Nothing to interpolate — over a light wallpaper both ends are dark ink,
-    // so the tile never flips however far it opens.
-    tone = offTone;
-  } else {
-    // The ends disagree, so the ink turns over somewhere along the ramp. Take
-    // the midpoint of the two composite luminances: it lands where the fill has
-    // taken over from the wallpaper, and it cannot drift off either end.
-    const offLuminance = compositeLuminance(off, backdrop);
-    const midpoint = (offLuminance + onLuminance) / 2;
-    tone = compositeLuminance(fill, backdrop) < midpoint ? offTone : onTone;
-  }
+  const surface = compositeSurface(fill, backdrop, wallpaperRgb);
+  const tone: Tone = surfaceLuminance(surface) < INK_CROSSOVER ? 'light' : 'dark';
+  const channel = tone === 'light' ? 255 : 0;
 
   // The ring marks an off tile's edge. Dropping it at the on/off boundary made
   // it pop, so it fades out as the fill comes up. Over a dark wallpaper it was
@@ -253,6 +263,8 @@ export function resolveWidgetTint({
   return {
     backgroundColor: rgbaToCss(fill),
     tone,
+    foregroundColor: rgbaToCss({ r: channel, g: channel, b: channel, a: 1 }),
+    secondaryColor: secondaryInk(channel, surface),
     ringColor,
     level,
   };

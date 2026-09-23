@@ -50,6 +50,7 @@ export default defineConfig({
     'phone-back-button.spec.ts',
     'native-backdrop-colour.spec.ts',
     'lock-battery-ink.spec.ts',
+    'widget-contrast.spec.ts',
     'overlay-band-colour.spec.ts',
     // A room entered from a scrolled home opens at the top. homecast-cloud#175.
     // In the CI subset from day one on purpose: #192 and #193 are both specs

@@ -42,6 +42,7 @@ export default function BgDemo() {
   const [entranceMs, setEntranceMs] = useState(4000);
   const [entranceRun, setEntranceRun] = useState(0);
   const [settings, setSettings] = useState<BackgroundSettings | null>(null);
+  const [wallpaperImage, setWallpaperImage] = useState<HTMLImageElement | null>(null);
   const [bgImageLuminance, setBgImageLuminance] = useState<number | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   const t0 = useRef(0);
@@ -105,7 +106,7 @@ export default function BgDemo() {
   useEffect(() => { if (runId) mark(`isDarkBackground -> ${isDarkBackground}`); }, [isDarkBackground]); // eslint-disable-line
   useEffect(() => { if (runId && bgImageLuminance != null) mark(`luminance -> ${bgImageLuminance.toFixed(3)}`); }, [bgImageLuminance]); // eslint-disable-line
 
-  const ctx = useMemo(() => ({ hasBackground, isDarkBackground, effectiveLuminance }), [hasBackground, isDarkBackground, effectiveLuminance]);
+  const ctx = useMemo(() => ({ hasBackground, isDarkBackground, effectiveLuminance, wallpaperImage, wallpaperBrightness: displayed?.brightness ?? 50 }), [hasBackground, isDarkBackground, effectiveLuminance, wallpaperImage, displayed?.brightness]);
 
   return (
     <BackgroundContext.Provider value={ctx}>
@@ -116,6 +117,7 @@ export default function BgDemo() {
           entityId={ENTITIES[entityIdx]}
           autoBackgroundsEnabled={autoBg}
           onReady={() => mark('onReady (background visible)')}
+          onVisibleImageChange={setWallpaperImage}
           onLuminanceChange={setBgImageLuminance}
         />
 

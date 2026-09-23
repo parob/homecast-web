@@ -391,7 +391,7 @@ export const WidgetCard = memo(React.forwardRef<HTMLDivElement, WidgetCardProps>
   // When locationSubtitle is provided, show it as a second line or after the main subtitle
   const effectiveSubtitle = !isReachable ? 'No Response' : (
     locationSubtitle
-      ? (subtitle ? <>{subtitle}<span className="opacity-60"> {locationSubtitle}</span></> : <span className="opacity-80">{locationSubtitle}</span>)
+      ? (subtitle ? <>{subtitle}<span> {locationSubtitle}</span></> : <span>{locationSubtitle}</span>)
       : subtitle
   );
 

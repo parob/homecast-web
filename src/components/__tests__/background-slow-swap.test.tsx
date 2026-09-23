@@ -57,11 +57,14 @@ describe('a wallpaper that is slow rather than broken', () => {
     vi.useFakeTimers();
     const onLuminanceChange = vi.fn();
     const onTopColorChange = vi.fn();
-    const props = { onLuminanceChange, onTopColorChange };
+    const onVisibleImageChange = vi.fn();
+    const props = { onLuminanceChange, onTopColorChange, onVisibleImageChange };
     const { container, rerender } = render(<BackgroundImage settings={background('home')} {...props} />);
     fireEvent.load(container.querySelector('img')!);
     onLuminanceChange.mockClear();
     onTopColorChange.mockClear();
+    expect(onVisibleImageChange).toHaveBeenCalledWith(container.querySelector("img"));
+    onVisibleImageChange.mockClear();
 
     rerender(<BackgroundImage settings={background('slow')} {...props} />);
     act(() => { vi.advanceTimersByTime(2_500); });
@@ -69,6 +72,7 @@ describe('a wallpaper that is slow rather than broken', () => {
     // The old wallpaper is what is painted; its measurement must stand.
     expect(onLuminanceChange).not.toHaveBeenCalled();
     expect(onTopColorChange).not.toHaveBeenCalled();
+    expect(onVisibleImageChange).not.toHaveBeenCalled();
   });
 
   it('completes the crossfade when the slow image finally arrives', () => {

@@ -6268,6 +6268,7 @@ const Dashboard = () => {
   // Local override for immediate UI update after saving (bypasses Apollo cache delays)
   const [savedBackgroundOverride, setSavedBackgroundOverride] = useState<BackgroundSettings | null>(null);
   // Image luminance reported by BackgroundImage (synchronized with visual crossfade)
+  const [wallpaperImage, setWallpaperImage] = useState<HTMLImageElement | null>(null);
   const [bgImageLuminance, setBgImageLuminance] = useState<number | null>(null);
   // The strip the header sits on. On a photo this is routinely the opposite
   // verdict to the image as a whole — see `analyzeLoadedImageBand`.
@@ -6482,8 +6483,8 @@ const Dashboard = () => {
   // background would re-render with it. Dashboard renders on every optimistic
   // cache write, which means once per slider commit mid-drag.
   const backgroundContextValue = useMemo(
-    () => ({ hasBackground, isDarkBackground, effectiveLuminance }),
-    [hasBackground, isDarkBackground, effectiveLuminance],
+    () => ({ hasBackground, isDarkBackground, effectiveLuminance, wallpaperImage, wallpaperBrightness: displayedBackground?.brightness ?? 50 }),
+    [hasBackground, isDarkBackground, effectiveLuminance, wallpaperImage, displayedBackground?.brightness],
   );
   // Light background: has background but not dark enough for dark mode styling
   const isLightBackground = hasBackground && !isDarkBackground;
@@ -7907,6 +7908,7 @@ const Dashboard = () => {
                 settings={activeBackground}
                 entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
                 autoBackgroundsEnabled={autoBackgrounds}
+                onVisibleImageChange={setWallpaperImage}
                 onLuminanceChange={setBgImageLuminance}
                 onHeaderLuminanceChange={setBgHeaderLuminance}
                 onTopColorChange={setBgImageTopColor}
@@ -7933,6 +7935,7 @@ const Dashboard = () => {
                 settings={activeBackground}
                 entityId={selectedCollectionGroupId || selectedCollectionId || selectedRoomId || selectedHomeId || undefined}
                 autoBackgroundsEnabled={autoBackgrounds}
+                onVisibleImageChange={setWallpaperImage}
                 onLuminanceChange={setBgImageLuminance}
                 onHeaderLuminanceChange={setBgHeaderLuminance}
                 onTopColorChange={setBgImageTopColor}

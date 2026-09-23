@@ -42,6 +42,8 @@ interface BackgroundImageProps {
   onReady?: () => void;
   /** Reports image luminance when the visible background changes. null for solid/gradient/none (handled synchronously by useBackgroundDarkness). */
   onLuminanceChange?: (luminance: number | null) => void;
+  /** The decoded image actually on screen, retained during a slow swap. */
+  onVisibleImageChange?: (image: HTMLImageElement | null) => void;
   /**
    * Reports the luminance of just the band the app header sits over, which can
    * differ sharply from the whole-image figure — see `analyzeLoadedImageBand`.
@@ -68,7 +70,7 @@ function getBackgroundKey(settings?: BackgroundSettings | null): string {
  * Brightness: 50 = no change, <50 = darker, >50 = brighter
  * Uses crossfade technique to smoothly transition between backgrounds.
  */
-export function BackgroundImage({ settings, className, placement = 'fixed', entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onHeaderLuminanceChange, onTopColorChange, onBottomColorChange }: BackgroundImageProps) {
+export function BackgroundImage({ settings, className, placement = 'fixed', entityId, autoBackgroundsEnabled, onReady, onLuminanceChange, onVisibleImageChange, onHeaderLuminanceChange, onTopColorChange, onBottomColorChange }: BackgroundImageProps) {
   // Compute effective settings: explicit > auto > none
   // solid-white is special: it means "no background" and overrides auto-backgrounds
   const effectiveSettings = useMemo((): BackgroundSettings | null => {
@@ -105,6 +107,7 @@ export function BackgroundImage({ settings, className, placement = 'fixed', enti
   const onReadyCalledRef = useRef(false);
 
   // Track luminance and top color from the current image layer
+  const pendingImageRef = useRef<HTMLImageElement | null>(null);
   const pendingLuminanceRef = useRef<number | null>(null);
   const pendingHeaderLuminanceRef = useRef<number | null>(null);
   const pendingTopColorRef = useRef<string | null>(null);
@@ -125,6 +128,7 @@ export function BackgroundImage({ settings, className, placement = 'fixed', enti
     if (!effectiveSettings || effectiveSettings.type === 'none' || isSolid || isGradient) {
       callOnReady();
       onLuminanceChange?.(null);
+      onVisibleImageChange?.(null);
       onHeaderLuminanceChange?.(null);
       onTopColorChange?.(null);
 onBottomColorChange?.(null);
@@ -144,6 +148,7 @@ onBottomColorChange?.(null);
 
       // Reset onReady flag for new background
       onReadyCalledRef.current = false;
+      pendingImageRef.current = null;
       pendingLuminanceRef.current = null;
       pendingHeaderLuminanceRef.current = null;
       pendingTopColorRef.current = null;
@@ -164,6 +169,7 @@ onBottomColorChange?.(null);
         callOnReady();
         // Report null — solids/gradients are computed synchronously by useBackgroundDarkness / getDominantColor
         onLuminanceChange?.(null);
+        onVisibleImageChange?.(null);
         onHeaderLuminanceChange?.(null);
         onTopColorChange?.(null);
 onBottomColorChange?.(null);
@@ -240,6 +246,7 @@ onBottomColorChange?.(null);
     callOnReady();
     // Report luminance and top color now that the image is visible
     onLuminanceChange?.(pendingLuminanceRef.current);
+    onVisibleImageChange?.(pendingImageRef.current);
     onHeaderLuminanceChange?.(pendingHeaderLuminanceRef.current);
     onTopColorChange?.(pendingTopColorRef.current);
     onBottomColorChange?.(pendingBottomColorRef.current);
@@ -296,6 +303,7 @@ onBottomColorChange?.(null);
           blur={effectiveSettings?.blur ?? 20}
           opacity={!isTransitioning || newBgReady ? 1 : 0}
           instant={instant}
+          onImageReady={image => { pendingImageRef.current = image; }}
           onImageLoad={handleNewBgReady}
           onImageLuminance={handleImageLuminance}
           onImageHeaderLuminance={handleImageHeaderLuminance}
@@ -314,6 +322,7 @@ interface BackgroundLayerProps {
   opacity: number;
   /** Cold start: paint at full opacity on decode rather than fading up. */
   instant?: boolean;
+  onImageReady?: (image: HTMLImageElement) => void;
   onImageLoad?: () => void;
   onImageLuminance?: (luminance: number) => void;
   onImageHeaderLuminance?: (luminance: number) => void;
@@ -321,7 +330,7 @@ interface BackgroundLayerProps {
   onImageBottomColor?: (color: string) => void;
 }
 
-function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageLoad, onImageLuminance, onImageHeaderLuminance, onImageTopColor, onImageBottomColor }: BackgroundLayerProps) {
+function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImageReady, onImageLoad, onImageLuminance, onImageHeaderLuminance, onImageTopColor, onImageBottomColor }: BackgroundLayerProps) {
   const isSolid = settings.type === 'preset' && settings.presetId?.startsWith('solid-');
   const isGradient = settings.type === 'preset' && settings.presetId?.startsWith('gradient-');
 
@@ -348,6 +357,7 @@ function BackgroundLayer({ settings, brightness, blur, opacity, instant, onImage
           blur={blur}
           brightness={brightness}
           instant={instant}
+          onImageReady={onImageReady}
           onLoad={onImageLoad}
           onLuminanceReady={onImageLuminance}
           onHeaderLuminanceReady={onImageHeaderLuminance}
@@ -422,6 +432,7 @@ interface ImageBackgroundProps {
   brightness: number;
   /** Cold start: paint at full opacity on decode rather than fading up. */
   instant?: boolean;
+  onImageReady?: (image: HTMLImageElement) => void;
   onLoad?: () => void;
   onLuminanceReady?: (luminance: number) => void;
   onHeaderLuminanceReady?: (luminance: number) => void;
@@ -436,6 +447,7 @@ function ImageBackground({
   brightness,
   instant,
   onLoad,
+  onImageReady,
   onLuminanceReady,
   onHeaderLuminanceReady,
   onTopColorReady,
@@ -476,6 +488,7 @@ function ImageBackground({
       onLoadCalledRef.current = true;
       if (imageUrl) imageCache.set(imageUrl, imgRef.current);
       setIsLoaded(true);
+      onImageReady?.(imgRef.current);
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
       onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
       onTopColorReady?.(getImageTopColor(imgRef.current, 50, visibleBox(blur)));
@@ -511,6 +524,7 @@ function ImageBackground({
     setIsLoaded(true);
     // Analyze luminance and top color from the loaded image element
     if (imgRef.current) {
+      onImageReady?.(imgRef.current);
       onLuminanceReady?.(analyzeLoadedImage(imgRef.current));
       onHeaderLuminanceReady?.(analyzeLoadedImageBand(imgRef.current));
       onTopColorReady?.(getImageTopColor(imgRef.current, 50, visibleBox(blur)));
