@@ -17,6 +17,9 @@ async function openDashboard(page: Page, presetId = 'gradient-ocean') {
   await page.goto(`/portal?home=${HOME_ID}`);
   await waitForDashboard(page);
   await page.evaluate(() => document.fonts.ready);
+  // The heading can render before the saved layout and its crossfade finish.
+  // Match the native-parity suite before measuring a tile's scroll position.
+  await page.waitForTimeout(1000);
 }
 
 async function probeFade(page: Page) {
