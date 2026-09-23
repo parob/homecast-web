@@ -204,25 +204,26 @@ export function playHeightChanges(
     style.height = `${to}px`;
 
     let done = false;
-    let timer = 0;
+    let frame = 0;
     const finish = () => {
       if (done) return;
       done = true;
       style.height = hadHeight;
       style.overflow = hadOverflow;
       style.transition = hadTransition;
-      el.removeEventListener('transitionend', onEnd);
-      window.clearTimeout(timer);
+      cancelAnimationFrame(frame);
     };
-    const onEnd = (e: Event) => {
-      if ((e as TransitionEvent).propertyName === 'height') finish();
-    };
-    el.addEventListener('transitionend', onEnd);
-    // `transitionend` never arrives for an element that is removed mid-flight,
-    // or whose transition is interrupted. The timer is what guarantees the
-    // inline height comes back off — leaving one on would freeze that room at
-    // the size it happened to be.
-    timer = window.setTimeout(finish, durationMs + 80);
+    // A busy commit can outlast a wall-clock cleanup timer before the first
+    // paint, removing the transition while it is still at time zero. Read the
+    // actual transition after the commit and retain its height until it ends.
+    // Cancellation (including removal) settles too; no transition means there
+    // is nothing to wait for. Explicit cancellation also cancels this frame.
+    frame = requestAnimationFrame(() => {
+      const transitions = el.getAnimations().filter(animation =>
+        'transitionProperty' in animation && animation.transitionProperty === 'height',
+      );
+      void Promise.allSettled(transitions.map(animation => animation.finished)).then(finish);
+    });
     finishers.push(finish);
   }
 
