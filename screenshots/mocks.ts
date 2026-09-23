@@ -398,7 +398,7 @@ function withOverriddenNames<T extends { id: string; name: string }>(rooms: T[])
 
 export function getEffectiveSettings() {
   if (settingsOverride) {
-    const override = { data: JSON.stringify(settingsOverride) };
+    const override = { data: JSON.stringify({ ...JSON.parse(MOCK_SETTINGS.data), ...settingsOverride }) };
     settingsOverride = null;
     return override;
   }

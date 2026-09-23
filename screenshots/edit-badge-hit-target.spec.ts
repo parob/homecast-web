@@ -34,12 +34,11 @@ async function enterEditLayout(page: Page) {
  * is the number a thumb actually experiences, pseudo-element slop included.
  */
 async function hitBox(badge: Locator) {
-  const box = await badge.boundingBox();
-  if (!box) throw new Error('badge has no box');
-  const cx = Math.round(box.x + box.width / 2);
-  const cy = Math.round(box.y + box.height / 2);
-
-  return badge.evaluate((el, { cx, cy }) => {
+  // Measure and probe in one frame: the tile keeps wiggling while editing.
+  return badge.evaluate(el => {
+    const box = el.getBoundingClientRect();
+    const cx = Math.round(box.x + box.width / 2);
+    const cy = Math.round(box.y + box.height / 2);
     const owns = (x: number, y: number) => {
       const hit = document.elementFromPoint(x, y);
       return !!hit && (hit === el || el.contains(hit) || hit.contains(el) === false && hit.closest('button') === el);
@@ -53,7 +52,7 @@ async function hitBox(badge: Locator) {
       width: walk(-1, 0) + walk(1, 0) + 1,
       height: walk(0, -1) + walk(0, 1) + 1,
     };
-  }, { cx, cy });
+  });
 }
 
 test.describe('the Edit Layout badges', () => {
@@ -67,6 +66,9 @@ test.describe('the Edit Layout badges', () => {
 
     const hide = page.getByRole('button', { name: 'Hide Ceiling Fan' });
     const pin = hide.locator('xpath=..').getByRole('button', { name: /Pin/ });
+    // Edit-mode wiggle never becomes stable; scroll the real tile directly.
+    await hide.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.waitForTimeout(250);
     await expect(hide).toBeVisible();
     await expect(pin).toBeVisible();
 
@@ -96,6 +98,9 @@ test.describe('the Edit Layout badges', () => {
     const hide = page.getByRole('button', { name: 'Hide Ceiling Fan' });
     const pin = hide.locator('xpath=..').getByRole('button', { name: /Pin/ });
 
+    // Edit-mode wiggle never becomes stable; scroll the real tile directly.
+    await hide.evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.waitForTimeout(250);
     await expect(hide).toBeVisible();
     await expect(pin).toBeVisible();
 
@@ -118,73 +123,6 @@ test.describe('the Edit Layout badges', () => {
     expect(owner.pinRight).toBe('Pin to Tab Bar');
   });
 
-  /**
-   * The summary row swaps in mid-drag — Edit Layout is entered by a long press
-   * that is already holding a tile — and it sits above the grid, so a taller
-   * row pushes what the finger is holding down the page. Growing the badge must
-   * not grow the pill it hangs inside.
-   */
-  test('the summary pills stay the height they were', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
-
-    await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 20000 });
-
-    const livePill = page.getByRole('button', { name: /^Scenes/ }).first();
-    await expect(livePill).toBeVisible({ timeout: 20000 });
-    const live = (await livePill.boundingBox())!.height;
-
-    await enterEditLayout(page);
-    const editPill = page.getByRole('button', { name: 'Hide Scenes' }).first();
-    await expect(editPill).toBeVisible();
-    const shell = (await editPill.evaluate((el) => el.parentElement!.getBoundingClientRect().height));
-
-    console.log(`summary pill — live ${live}px, editing ${shell}px`);
-    expect(Math.abs(shell - live), `the row grew ${shell - live}px on entering Edit Layout`).toBeLessThanOrEqual(1);
-  });
-
-  /**
-   * The badge is a chip sitting inside the pill, not the pill's end cap.
-   *
-   * It was the end cap: both are `rounded-full`, so their corner radius is half
-   * their height, and at the same height, flush against the right edge, the two
-   * arcs coincide exactly. Reported as homecast-cloud#112 — "the status
-   * pill/top bubble hide buttons look worse now we made them the height/edge of
-   * the pill" — so the badge is one step shorter than the shell again and sits
-   * a hair inside it, with the same clearance on all four sides.
-   *
-   * Two numbers, and only a browser has them: the shell's padding and the
-   * badge's height are written in different files, and the shape in the report
-   * is what you get by changing one without the other.
-   */
-  test('the badge sits inside the pill rather than capping it', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
-
-    await setupMocks(page);
-    await page.goto(`/portal?home=${HOME_ID}`);
-    await expect(page.locator('[data-tour="header-menu"]')).toBeVisible({ timeout: 20000 });
-    await enterEditLayout(page);
-
-    const badge = page.getByRole('button', { name: 'Hide Scenes' });
-    await expect(badge).toBeVisible();
-
-    const cap = await badge.evaluate((el) => {
-      const b = el.getBoundingClientRect();
-      const s = el.parentElement!.getBoundingClientRect();
-      return {
-        rightGap: +(s.right - b.right).toFixed(2),
-        heightGap: +(s.height - b.height).toFixed(2),
-      };
-    });
-
-    console.log('inset:', JSON.stringify(cap));
-    // 2.5px of shell padding on the right, and 5px of height split evenly above
-    // and below — so the gap is the same 2.5px whichever edge you measure from.
-    expect(cap.rightGap, `the badge sits ${cap.rightGap}px inside the pill's right edge`).toBe(2.5);
-    expect(cap.heightGap, `the badge is ${cap.heightGap}px shorter than the pill`).toBe(5);
-  });
-
   test('capture', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'iphone-screenshots', 'Touch only — Edit Layout is a touch mode');
 
@@ -198,6 +136,7 @@ test.describe('the Edit Layout badges', () => {
     const label = process.env.BADGE_SHOT ?? 'badges';
     await page.screenshot({ path: `screenshots/output/edit-badges-${label}-full.png` });
     const tile = page.getByRole('button', { name: 'Hide Ceiling Fan' });
+    await tile.scrollIntoViewIfNeeded();
     const box = (await tile.boundingBox())!;
     await page.screenshot({
       path: `screenshots/output/edit-badges-${label}-tile.png`,

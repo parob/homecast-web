@@ -144,6 +144,8 @@ test.describe('revealing hidden tiles at the lift', () => {
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}&room=${LIVING_ROOM}`);
     await expect(tile(page, 'Thermostat')).toBeVisible({ timeout: 20000 });
+    await tile(page, 'Thermostat').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
     await expect(page.locator('main').getByText('HomePod', { exact: true })).toHaveCount(0);
 
     const from = await centreOf(page, 'Thermostat');
@@ -165,6 +167,8 @@ test.describe('revealing hidden tiles at the lift', () => {
     await setupMocks(page);
     await page.goto(`/portal?home=${HOME_ID}&room=${LIVING_ROOM}`);
     await expect(tile(page, 'Thermostat')).toBeVisible({ timeout: 20000 });
+    await tile(page, 'Thermostat').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
 
     const before = await tileOrder(page, TILES);
     test.skip(before.length < 2, 'needs at least two visible tiles in the room');

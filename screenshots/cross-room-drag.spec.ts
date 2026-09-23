@@ -1,11 +1,9 @@
 /**
  * Cross-room drag for virtual accessories.
  *
- * Every room used to render its own DndContext, so a drag could not leave a
- * room at all. This exercises the single shared context: a virtual accessory
- * dragged into another room must be saved with that room, and a real accessory
- * dragged the same way must not move — Apple Home owns its room and rejects our
- * writes, so appearing to move it would show a change that never happened.
+ * The shared drag context must reach the destination and explain why a
+ * cross-room move is refused. Virtual accessory location belongs in its
+ * editor; HomeKit devices belong in Apple Home. Neither drop should save.
  *
  * Driven with real pointer events because that is the only thing that exercises
  * dnd-kit. A unit test of the drag-end handler would pass whether or not a drag
@@ -41,8 +39,8 @@ async function captureSaves(page: Page) {
 
 /** dnd-kit needs movement past its activation distance, in steps. */
 async function dragTile(page: Page, fromText: string, toText: string) {
-  const source = page.locator(`text=${fromText}`).first();
-  const target = page.locator(`text=${toText}`).first();
+  const source = page.locator('main').getByText(fromText, { exact: true }).first();
+  const target = page.locator('main').getByText(toText, { exact: true }).first().locator('xpath=ancestor::*[@data-draggable-item][1]');
   await source.scrollIntoViewIfNeeded();
   const from = await source.boundingBox();
   const to = await target.boundingBox();
@@ -75,16 +73,15 @@ async function openDashboard(page: Page) {
 }
 
 test.describe('cross-room drag', () => {
-  test('a virtual accessory can be dragged into a room', async ({ page }, testInfo) => {
+  test('a virtual accessory drop points to its editor without moving it', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'screenshots', 'Desktop only');
     const saves = await openDashboard(page);
 
     // Home Mode lives at the top of the home (no room). Drag it into Bedroom.
     await dragTile(page, 'Home Mode', 'Ceiling Fan');
 
-    const moved = saves.find(s => s.data?.name === 'Home Mode');
-    expect(moved, 'dropping into a room should save the virtual accessory').toBeTruthy();
-    expect(moved!.data.roomId, 'it should be saved with the destination room').toBeTruthy();
+    await expect(page.getByText('Edit the virtual accessory to change its location', { exact: true })).toBeVisible();
+    expect(saves, 'the refused drop must not rewrite the accessory').toHaveLength(0);
   });
 
   test('a real accessory is not moved between rooms', async ({ page }, testInfo) => {
@@ -94,6 +91,7 @@ test.describe('cross-room drag', () => {
     // Ceiling Fan is a HomeKit device in Bedroom; drag it at the Garden tiles.
     await dragTile(page, 'Ceiling Fan', 'Irrigation');
 
+    await expect(page.getByText('Use the Apple Home app to move accessories between rooms', { exact: true })).toBeVisible();
     expect(saves, 'a HomeKit accessory must never be written a new room').toHaveLength(0);
   });
 
@@ -102,14 +100,14 @@ test.describe('cross-room drag', () => {
     await openDashboard(page);
 
     // Same-room drag must not be mistaken for a cross-room move.
-    const before = await page.locator('[data-room-name="Bedroom"]').first().innerText();
+    const before = await page.locator('[data-room-name="Bedroom"]').first().locator('h3').allTextContents();
     await dragTile(page, 'Ceiling Fan', 'Blinds');
-    const after = await page.locator('[data-room-name="Bedroom"]').first().innerText();
+    const after = await page.locator('[data-room-name="Bedroom"]').first().locator('h3').allTextContents();
 
     // The order should change; the tiles should all still be present.
     for (const name of ['Ceiling Fan', 'Blinds']) {
       expect(after, `${name} should survive a reorder`).toContain(name);
     }
-    expect(before.length).toBeGreaterThan(0);
+    expect(after, 'dropping on a neighbour must change the displayed order').not.toEqual(before);
   });
 });

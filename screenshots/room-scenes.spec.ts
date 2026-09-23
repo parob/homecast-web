@@ -76,13 +76,17 @@ test('scene location changes the grid without changing its targets', async ({ pa
 
 
 test('touch editing can hide and restore an in-room scene', async ({ page }, info) => {
-  test.skip(info.project.name !== 'iphone', 'Touch editing');
+  test.skip(info.project.name !== 'iphone-screenshots', 'Touch editing');
   const { saves } = await openHome(page);
   const sizes = () => page.locator('[data-scene-tile-content]').evaluateAll(nodes => nodes.map(node => ({
     name: node.querySelector('p')!.textContent,
     height: (node.parentElement as HTMLElement).offsetHeight,
     width: (node.parentElement as HTMLElement).offsetWidth,
   })));
+  // SceneGridSizing sets one shared minimum height; each card animates to it.
+  // Wait for that initial sizing before testing whether edit mode changes it.
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(async () => new Set((await sizes()).map(size => size.height)).size).toBe(1);
   const before = await sizes();
   await page.locator('[data-tour="header-menu"]').click();
   await page.getByRole('menuitem', { name: 'Edit Layout', exact: true }).click();
@@ -98,7 +102,7 @@ test('touch editing can hide and restore an in-room scene', async ({ page }, inf
 });
 
 for (const grouped of [true, false]) test(`desktop scenes reorder in ${grouped ? 'rooms' : 'the ungrouped home'}`, async ({ page }, info) => {
-  test.skip(info.project.name !== 'desktop', 'Mouse drag');
+  test.skip(info.project.name !== 'screenshots', 'Mouse drag');
   const { saves } = await openHome(page, grouped);
   const source = page.getByText(sceneName, { exact: true });
   const target = page.locator(grouped ? '[data-room-name="Living Room"]' : '[data-room-name="All Accessories"]').getByRole('heading', { name: 'Ceiling Light', exact: true });
@@ -118,7 +122,7 @@ for (const grouped of [true, false]) test(`desktop scenes reorder in ${grouped ?
 
 
 test('revealing hidden scenes keeps visible scene heights unchanged', async ({ page }, info) => {
-  test.skip(info.project.name !== 'iphone', 'Touch editing');
+  test.skip(info.project.name !== 'iphone-screenshots', 'Touch editing');
   await openHome(page, true, true);
   const card = page.getByText(sceneName, { exact: true });
   const height = () => card.evaluate(el => (el.closest('[data-scene-tile-content]')!.parentElement as HTMLElement).offsetHeight);
