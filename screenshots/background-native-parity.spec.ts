@@ -32,7 +32,7 @@ async function open(page: Page, example: typeof examples[number], native: boolea
   await setupMocks(page);
   await page.goto(`/portal?home=${HOME_ID}`);
   await waitForDashboard(page);
-  const layer = page.locator(native ? '.fixed-full-screen.overflow-hidden' : '.sticky-full-screen.overflow-hidden');
+  const layer = page.locator('.fixed-full-screen.overflow-hidden, .sticky-full-screen.overflow-hidden');
   if (PRESET_IMAGES[example.preset]) {
     // The dashboard title can precede the saved home layout. Wait for the
     // requested wallpaper, not the auto wallpaper painted during that load.
