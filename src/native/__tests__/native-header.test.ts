@@ -6,7 +6,7 @@
  *
  * **Feature detection.** The iOS app loads its UI from `homecast.cloud` at
  * runtime, so an installed build is routinely older than the page it renders.
- * Every predicate must answer `false` on a build that predates this preview
+ * Every predicate must answer `false` on a build that predates the native bar
  * rather than throwing into a bridge that isn't there — that is the repo's
  * standing rule for new bridge methods, and it is the one this module could
  * break silently.
@@ -23,7 +23,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   isNativeHeaderAvailable,
   isNativeHeaderEnabled,
-  setNativeHeaderPreview,
   publishHeaderState,
   installNativeHeaderBridge,
   findHeaderTarget,
@@ -87,11 +86,10 @@ describe('an older build, which is the common case', () => {
     expect(isNativeHeaderEnabled()).toBe(false);
   });
 
-  it('does not throw when asked to publish or toggle with no bridge at all', () => {
+  it('does not throw when asked to publish with no bridge at all', () => {
     // A browser tab: no `webkit`, no handler. This is most of the traffic.
     expect(() => publishHeaderState({ title: 'Home' })).not.toThrow();
     expect(publishHeaderState({ title: 'Home' })).toBe(false);
-    expect(setNativeHeaderPreview(true)).toBe(false);
   });
 
   it('swallows a postMessage that throws rather than taking the header down', () => {
@@ -191,12 +189,6 @@ describe('what the page publishes down', () => {
     expect(statusDotHex('bg-muted-foreground/40')).toBe('#8e8e93');
     expect(statusDotHex(null)).toBeNull();
     expect(statusDotHex(undefined)).toBeNull();
-  });
-
-  it('asks native to write the preference when the switch is flipped', () => {
-    const sent = installNativeBuild();
-    expect(setNativeHeaderPreview(true)).toBe(true);
-    expect(sent).toEqual([{ action: 'settings.setNativeHeaderPreview', enabled: true }]);
   });
 });
 
