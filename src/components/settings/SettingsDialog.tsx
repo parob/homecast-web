@@ -356,17 +356,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   // Which sub-sections the open home offers, for both the sidebar's third
   // level and the mobile row list — one source so the two can't disagree.
-  // Per home, not per dialog: Cameras exists only for a cloud-managed home,
-  // and the third level only ever renders for the one that is open.
-  const selectedHomeCloudManaged = isCloudManagedHome(selectedHome, props.accountType);
   const homeSections = useMemo(
     () => visibleHomeSettingsSections({
       isCommunity,
       developerMode,
       mqttBridgeAvailable: isMQTTAvailable(),
-      cloudManaged: selectedHomeCloudManaged,
     }),
-    [developerMode, selectedHomeCloudManaged],
+    [developerMode],
   );
 
   // Clamp rather than reset: if developer mode goes off while the MQTT page is
@@ -665,6 +661,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               developerMode={props.developerMode}
               section={activeHomeSection}
               sections={homeSections}
+              cloudManaged={isCloudManagedHome(selectedHome, props.accountType)}
               onSelectSection={setHomeSection}
               showSectionList={isMobile}
               onCloudRelayRemoved={() => {

@@ -27,8 +27,8 @@ function fact(status: string, by = 'mini') {
     by: status === 'served' ? by : null, kind: status === 'served' ? 'cloud' : null,
     graceEndsAt: status === 'waiting' ? new Date(Date.now() + 180_000).toISOString() : null } });
 }
-function page(section: 'cameras' | 'mqtt') {
-  return render(<HomeDetailView home={home} section={section} sections={[section]} onSelectSection={() => {}} showSectionList={false} />);
+function page(section: 'cameras' | 'mqtt', cloudManaged = true) {
+  return render(<HomeDetailView home={home} section={section} sections={[section]} cloudManaged={cloudManaged} onSelectSection={() => {}} showSectionList={false} />);
 }
 beforeEach(() => {
   resetHomeServing(); state.homes = []; state.quality = 'good';
@@ -36,29 +36,6 @@ beforeEach(() => {
   state.request.mockReset().mockResolvedValue({ supported: true, engineWindow: true, captureAvailable: true });
 });
 afterEach(cleanup);
-
-it('checks camera access after a serving push despite a stale offline homes row', async () => {
-  fact('served');
-  page('cameras');
-  await screen.findByText('Ready');
-  expect(state.request).toHaveBeenCalledWith('camera.capabilities', { homeId: home.id });
-  expect(screen.queryByText('Relay offline')).toBeNull();
-});
-
-it('keeps unknown camera routing neutral instead of declaring the relay offline', () => {
-  page('cameras');
-  expect(screen.getByText('Checking the route to Test Home…')).toBeTruthy();
-  expect(screen.queryByText('Relay offline')).toBeNull();
-  expect(state.request).not.toHaveBeenCalled();
-});
-
-it('explains a camera takeover wait even when the old home row still says connected', () => {
-  state.homes = [{ ...home, relayConnected: true }];
-  fact('waiting');
-  page('cameras');
-  expect(screen.getByText('Waiting for backup')).toBeTruthy();
-  expect(state.request).not.toHaveBeenCalled();
-});
 
 it('does not treat Local Mode as evidence that the cloud MQTT path is available', () => {
   setDeviceServing(() => ({ active: true }));
@@ -78,35 +55,18 @@ it('drops stale MQTT Active when the cloud route becomes unavailable', () => {
   expect(screen.getByText('Waiting for backup')).toBeTruthy();
 });
 
-it('checks the replacement relay and ignores the old relay’s delayed camera result', async () => {
-  let finishOld!: (value: unknown) => void;
-  state.request.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
-  fact('served', 'old-relay');
-  page('cameras');
-  act(() => fact('served', 'new-relay'));
-  await screen.findByText('Ready');
-  expect(state.request).toHaveBeenCalledTimes(2);
-  await act(async () => { finishOld({ supported: false, engineWindow: false }); });
-  expect(screen.getByText('Ready')).toBeTruthy();
-  expect(screen.queryByText('Capture unavailable')).toBeNull();
+it('is one Cameras switch on a cloud-managed home', () => {
+  page('cameras', true);
+  const toggle = screen.getByRole('switch', { name: 'Cameras' }) as HTMLButtonElement;
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  expect(toggle.disabled).toBe(false);
+  expect(state.request).not.toHaveBeenCalled();
 });
 
-it('keeps a camera application error separate from home availability', async () => {
-  fact('served');
-  state.request.mockRejectedValue({ code: 'UNKNOWN_METHOD', message: 'Not supported on this relay' });
-  page('cameras');
-  await screen.findByText('Relay update needed');
-  expect(screen.getByText('Test Home is working')).toBeTruthy();
-  expect(screen.queryByText('Relay offline')).toBeNull();
-});
-
-it('clears stale camera readiness when this client disconnects', async () => {
-  fact('served');
-  const view = page('cameras');
-  await screen.findByText('Ready');
-  state.quality = 'offline';
-  view.rerender(<HomeDetailView home={home} section="cameras" sections={['cameras']} onSelectSection={() => {}} showSectionList={false} />);
-  expect(screen.queryByText('Ready')).toBeNull();
-  expect(screen.getByText('Not checked')).toBeTruthy();
-  expect((screen.getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(true);
+it('explains Cameras is a Cloud Managed feature on any other home, with the switch off', () => {
+  page('cameras', false);
+  const toggle = screen.getByRole('switch', { name: 'Cameras' }) as HTMLButtonElement;
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  expect(toggle.disabled).toBe(true);
+  expect(screen.getByText('Cameras are available with Cloud Managed.')).toBeTruthy();
 });
