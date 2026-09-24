@@ -7739,24 +7739,34 @@ const Dashboard = () => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent scrim align="end" className="min-w-[200px]">
-        {overflowSections.map(section => section.title ? (
-          <div key={section.id} className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">{section.title}</span>
-              <button
-                onClick={refreshAll}
-                disabled={refreshing}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${refreshing ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            {section.items.map(renderOverflowItem)}
-          </div>
-        ) : (
+        {/* One card with hairline dividers between logical groups — what a
+            native UIMenu looks like — rather than the titled section sitting
+            in its own boxed, separately-tinted panel (parob/homecast-cloud#199).
+            The title is just a header row inside the same card; a separator
+            marks it off from whatever comes after, not a background colour. */}
+        {overflowSections.map((section, index) => (
           <React.Fragment key={section.id}>
-            {section.separator && <DropdownMenuSeparator />}
-            {section.items.map(renderOverflowItem)}
+            {section.title ? (
+              <>
+                <div className="flex items-center justify-between px-2.5 py-1.5">
+                  <span className="text-xs font-medium text-muted-foreground truncate">{section.title}</span>
+                  <button
+                    onClick={refreshAll}
+                    disabled={refreshing}
+                    className="-mr-1 p-1 rounded hover:bg-accent disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${refreshing ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                {section.items.map(renderOverflowItem)}
+              </>
+            ) : (
+              <>
+                {section.separator && <DropdownMenuSeparator />}
+                {section.items.map(renderOverflowItem)}
+              </>
+            )}
+            {section.title && index < overflowSections.length - 1 && <DropdownMenuSeparator />}
           </React.Fragment>
         ))}
         {hasStagingAccess && (() => {
