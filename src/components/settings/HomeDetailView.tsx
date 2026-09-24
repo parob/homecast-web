@@ -36,6 +36,8 @@ interface HomeDetailViewProps {
   section: HomeSettingsSectionId | null;
   /** Sub-sections available for this home, from `visibleHomeSettingsSections`. */
   sections: HomeSettingsSectionId[];
+  /** `isCloudManagedHome` — only these homes can turn cameras on. */
+  cloudManaged: boolean;
   onSelectSection: (id: HomeSettingsSectionId) => void;
   /** True where there is no sidebar to navigate from — i.e. mobile. */
   showSectionList: boolean;
@@ -48,6 +50,7 @@ export function HomeDetailView({
   developerMode,
   section,
   sections,
+  cloudManaged,
   onSelectSection,
   showSectionList,
   onCloudRelayRemoved,
@@ -81,7 +84,7 @@ export function HomeDetailView({
       case 'analytics':
         return <HomeHistorySettings home={home} isAdmin={isAdmin} />;
       case 'cameras':
-        return <HomeCamerasSection home={home} isAdmin={isAdmin} />;
+        return <HomeCamerasSection home={home} isAdmin={isAdmin} cloudManaged={cloudManaged} />;
       case 'mqtt':
         return (
           <HomeMQTTSection
