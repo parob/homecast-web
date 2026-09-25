@@ -1357,6 +1357,13 @@ export class ServerWebSocket {
   private startRelayDuties(): void {
     if (!isRelayEnabled()) return;
 
+    // A socket close runs cleanup(), which drops isActiveRelay but not the
+    // duties, so the next relay_status lands here with the last run's timers
+    // still live. Measured: every reconnect added a resolver (a 5-min HomeKit
+    // poll), a 30s drift interval and a wake listener — ~228 of each per day
+    // on the managed relay, until the app restarted.
+    this.releaseDutyTimers();
+
     void this.refreshLiveHomes();
     this.subscribeToHomeKitEvents();
 
@@ -1517,22 +1524,25 @@ export class ServerWebSocket {
     // longer arrive, and leaving these to time out holds the map past teardown.
     for (const resolve of this.pendingNotifies.values()) resolve(NOTIFY_DELIVERY_UNKNOWN);
     this.pendingNotifies.clear();
-    this.serviceGroupResolver?.stop();
-    this.serviceGroupResolver = null;
+    this.releaseDutyTimers();
     teardownAutomationEngine();
     clearAutomationHandlers();
 
-    // Tear down wake/drift handlers
+    HomeKit.stopObserving().catch(() => {});
+  }
+
+  /** The resolver, wake listener and drift interval one startRelayDuties() run owns. */
+  private releaseDutyTimers(): void {
+    this.serviceGroupResolver?.stop();
+    this.serviceGroupResolver = null;
     if (this.automationWakeHandler && typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.automationWakeHandler);
-      this.automationWakeHandler = null;
     }
+    this.automationWakeHandler = null;
     if (this.clockDriftInterval) {
       clearInterval(this.clockDriftInterval);
       this.clockDriftInterval = null;
     }
-
-    HomeKit.stopObserving().catch(() => {});
   }
 
   private handleMessage(event: MessageEvent): void {
