@@ -72,6 +72,16 @@ type CacheListener = (reason?: 'reset') => void;
  */
 const PERSIST_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const PERSIST_KEY = 'homecast-homekit-cache';
+/** Topology (fetched lists, group membership) persists soon after it changes. */
+const PERSIST_SOON_MS = 2000;
+/**
+ * Live values persist at most this often. The persisted copy only paints the
+ * next cold start, and a busy home always has another update pending, so the
+ * 2s cadence rewrote the whole snapshot (1.6 MB on a three-home account) every
+ * ~3s for as long as the app was open: 681 writes, 1.08 GB, in 36 minutes.
+ * Backgrounding flushes, so the next launch still paints the latest values.
+ */
+const PERSIST_VALUES_MS = 60_000;
 /** Only these prefixes are worth persisting — the ones the first screen needs. */
 const PERSIST_PREFIXES = ['homes', 'rooms:', 'accessories:', 'serviceGroups:'];
 
@@ -82,6 +92,7 @@ class DataCache {
   // Track pending requests globally to deduplicate across hook instances
   private pendingRequests = new Map<string, { epoch: number; promise: Promise<unknown> }>();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private persistDueAt = 0;
   /** Did this session start with usable data on disk? Reported in boot timing. */
   private hydratedCount = 0;
   /** Requests started by an ended account must never publish into a new one. */
@@ -95,6 +106,16 @@ class DataCache {
 
   constructor() {
     this.hydrate();
+    // Last chance before iOS suspends or kills the page: write any pending
+    // snapshot now, so a lazily scheduled value write is never lost.
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') this.flushPersist();
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => this.flushPersist());
+    }
   }
 
   get wasHydrated(): boolean {
@@ -107,12 +128,12 @@ class DataCache {
     return entry.data as T;
   }
 
-  set<T>(key: string, data: T, fetched = true): void {
+  set<T>(key: string, data: T, fetched = true, persistAfter = PERSIST_SOON_MS): void {
     // A value broadcast confirms that value, not the cached topology's source.
     this.cache.set(key, { data, timestamp: Date.now(),
       epoch: fetched ? this.epochFor(key) : this.cache.get(key)?.epoch });
     this.notify(key);
-    this.schedulePersist();
+    this.schedulePersist(persistAfter);
   }
 
   /**
@@ -157,12 +178,26 @@ class DataCache {
    * characteristic change), and serializing the whole cache on each would put
    * a JSON.stringify of every accessory on the hot path.
    */
-  private schedulePersist(): void {
-    if (this.persistTimer) return;
+  private schedulePersist(delay = PERSIST_SOON_MS): void {
+    const due = Date.now() + delay;
+    // One pending write, at the earliest time anyone asked for it: a topology
+    // change pulls a lazy value write forward, never the other way round.
+    if (this.persistTimer) {
+      if (due >= this.persistDueAt) return;
+      clearTimeout(this.persistTimer);
+    }
+    this.persistDueAt = due;
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
       this.persist();
-    }, 2000);
+    }, delay);
+  }
+
+  private flushPersist(): void {
+    if (!this.persistTimer) return;
+    clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    this.persist();
   }
 
   private persist(): void {
@@ -1271,7 +1306,7 @@ function updateCharacteristicInCacheKey(
   });
 
   if (updated) {
-    cache.set(cacheKey, newAccessories, false);
+    cache.set(cacheKey, newAccessories, false, PERSIST_VALUES_MS);
   }
   return updated;
 }
@@ -1337,7 +1372,7 @@ function updateReachabilityInCacheKey(
   });
 
   if (updated) {
-    cache.set(cacheKey, newAccessories, false);
+    cache.set(cacheKey, newAccessories, false, PERSIST_VALUES_MS);
   }
   return updated;
 }

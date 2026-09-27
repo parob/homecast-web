@@ -129,6 +129,78 @@ describe('HomeKit cache persistence', () => {
     vi.useRealTimers();
   });
 
+  // A live value only needs to reach disk before the next cold start. The 2s
+  // cadence rewrote the whole snapshot every ~3s on a busy home (681 writes,
+  // 1.08 GB in 36 minutes on the production dashboard).
+  describe('live values', () => {
+    const lamp = (on: boolean) => [{
+      id: 'A1', name: 'Lamp', isReachable: true,
+      services: [{ serviceType: 'lightbulb', characteristics: [{ characteristicType: 'power_state', value: JSON.stringify(on) }] }],
+    }];
+    const persistedLamp = () => {
+      const written = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}');
+      return written['accessories:H1']?.data?.[0]?.services?.[0]?.characteristics?.[0]?.value;
+    };
+
+    it('are written lazily, not on the topology cadence', async () => {
+      seed({ 'accessories:H1': { data: lamp(false), timestamp: Date.now() } });
+      vi.useFakeTimers();
+      const { updateAccessoryCharacteristicInCache } = await freshCacheModule();
+
+      updateAccessoryCharacteristicInCache('H1', 'A1', 'power_state', true);
+      await vi.advanceTimersByTimeAsync(2500);
+      expect(persistedLamp()).toBe('false');
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(persistedLamp()).toBe('true');
+      vi.useRealTimers();
+    });
+
+    it('coalesce a burst into one write', async () => {
+      seed({ 'accessories:H1': { data: lamp(false), timestamp: Date.now() } });
+      vi.useFakeTimers();
+      const { updateAccessoryCharacteristicInCache } = await freshCacheModule();
+      const writes = vi.spyOn(localStorage, 'setItem');
+
+      for (let i = 0; i < 100; i++) {
+        updateAccessoryCharacteristicInCache('H1', 'A1', 'power_state', i % 2 === 0);
+        await vi.advanceTimersByTimeAsync(500);
+      }
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(writes.mock.calls.filter(([k]) => k === PERSIST_KEY)).toHaveLength(1);
+      writes.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('ride along with a topology change instead of waiting', async () => {
+      seed({ 'accessories:H1': { data: lamp(false), timestamp: Date.now() } });
+      vi.useFakeTimers();
+      const { updateAccessoryCharacteristicInCache, setServiceGroupsInCache } = await freshCacheModule();
+
+      updateAccessoryCharacteristicInCache('H1', 'A1', 'power_state', true);
+      setServiceGroupsInCache('H1', []);
+      await vi.advanceTimersByTimeAsync(2500);
+
+      expect(persistedLamp()).toBe('true');
+      vi.useRealTimers();
+    });
+
+    it('are flushed when the page is hidden, so the next launch still paints them', async () => {
+      seed({ 'accessories:H1': { data: lamp(false), timestamp: Date.now() } });
+      vi.useFakeTimers();
+      const { updateAccessoryCharacteristicInCache } = await freshCacheModule();
+
+      updateAccessoryCharacteristicInCache('H1', 'A1', 'power_state', true);
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+
+      expect(persistedLamp()).toBe('true');
+      vi.useRealTimers();
+    });
+  });
+
   it('clears the persisted copy on sign-out', async () => {
     seed({ homes: { data: [{ id: 'H1', name: 'County Hall' }], timestamp: Date.now() } });
 
