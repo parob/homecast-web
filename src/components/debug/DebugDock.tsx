@@ -14,6 +14,8 @@
 import { useEffect, useState, lazy, Suspense, type ReactNode } from 'react';
 import { isRequestPanelEnabled, subscribeRequestPanelEnabled } from '@/lib/request-log';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
+import { useLocation } from 'react-router-dom';
+import { isMarketingPath } from '@/lib/marketing-routes';
 
 // Lazy so the panel's markup never lands in the entry chunk for the people who
 // will never open it.
@@ -33,7 +35,13 @@ export function DebugDock({ children }: { children: ReactNode }) {
   // page pads itself by the dock's height instead (`useDebugDockHeight`).
   const nativeHeader = useNativeHeaderActive();
 
-  if (!open || nativeHeader) return <>{children}</>;
+  // The website is not the app: a developer with the log switched on should
+  // still see the landing page as a visitor does. `mqtt.` serves the MQTT
+  // browser at `/`, which is the app, so it keeps the log.
+  const { pathname } = useLocation();
+  const onWebsite = isMarketingPath(pathname) && !location.hostname.includes('mqtt.');
+
+  if (!open || nativeHeader || onWebsite) return <>{children}</>;
 
   return (
     <div className="fixed inset-0 flex flex-col">
