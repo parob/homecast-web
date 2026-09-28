@@ -14,15 +14,12 @@
     {"file": "05-expanded-widget.png", "title": "Every detail, *one tap away*", "sub": "Open any accessory for its full controls.", "tilt": "4deg"}
   ],
   "mac": [
-    {"file": "01-home-overview.png", "title": "Your home. *One screen.*", "sub": "Every room and accessory, live on your Mac.", "tilt": "0deg"},
-    {"file": "02-living-room.png", "title": "Room *by room*", "sub": "Lights, climate, blinds and more, in one view.", "tilt": "-2deg"},
-    {"file": "03-bedroom.png", "title": "A look *for every room*", "sub": "Pick a wallpaper for each home and room.", "tilt": "2deg", "theme": "dark"},
-    {"file": "04-compact-mode.png", "title": "Compact *when you want it*", "sub": "More accessories on screen, less scrolling.", "tilt": "-2deg"},
-    {"file": "05-beach-house.png", "title": "Every home *you have*", "sub": "Switch between homes in a click.", "tilt": "2deg"},
-    {"file": "06-settings.png", "title": "Yours *to tune*", "sub": "Display, notifications, sharing and plans.", "tilt": "-2deg", "theme": "dark"},
-    {"file": "07-api-access.png", "title": "An API *for your home*", "sub": "REST, MCP and WebSockets with your own tokens.", "tilt": "2deg"},
-    {"file": "08-webhooks.png", "title": "Webhooks *for everything*", "sub": "Push changes to any service the moment they happen.", "tilt": "-2deg"},
-    {"file": "09-sharing.png", "title": "Share *with anyone*", "sub": "Family, guests, or a public link.", "tilt": "2deg", "theme": "dark"},
-    {"file": "10-oauth-consent.png", "title": "Connect *AI assistants*", "sub": "Claude, ChatGPT and more, with OAuth you control.", "tilt": "-2deg"}
+    {"file": "02-living-room.png", "title": "Do more with *Apple Home*", "sub": "Your Mac runs the relay that opens HomeKit to every device.", "tilt": "0deg"},
+    {"file": "09-sharing.png", "title": "Share *with anyone*", "sub": "Send family and guests a link. No Apple ID needed.", "tilt": "-2deg", "theme": "dark"},
+    {"file": "10-oauth-consent.png", "title": "Control it *with AI*", "sub": "Claude and ChatGPT connect over MCP. You pick which homes they can touch.", "tilt": "2deg"},
+    {"file": "07-api-access.png", "title": "An API *for every home*", "sub": "REST, GraphQL and MCP endpoints, with tokens you scope and revoke.", "tilt": "-2deg", "theme": "dark"},
+    {"file": "08-webhooks.png", "title": "Webhooks *on every change*", "sub": "Each accessory change is posted to your URL the moment it happens.", "tilt": "2deg"},
+    {"file": "05-beach-house.png", "title": "Every home, *one sidebar*", "sub": "Switch homes in a click. Each keeps its own rooms and wallpaper.", "tilt": "-2deg", "theme": "dark"},
+    {"file": "03-bedroom.png", "title": "Full control, *on the tile*", "sub": "Brightness, colour temperature and blinds without opening anything.", "tilt": "2deg"}
   ]
 }

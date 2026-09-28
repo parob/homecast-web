@@ -22,7 +22,9 @@
   .device .island { position: absolute; left: 50%; top: calc(var(--bezel, 24px) + 22px); transform: translateX(-50%); width: 25%; height: 3.2%; max-height: 92px; background: #000; border-radius: 999px; }
   body.no-island .device .island { display: none; }
   /* Mac: a window with its title-bar lights, headline left, window big and low. */
-  body.landscape .copy { left: 6%; right: auto; top: 8%; max-width: 58%; }
+  body.landscape .copy { left: 6%; right: auto; top: 8%; width: 58%; }
+  /* A fixed width, not max-width: shrink-to-fit made the subtitle wrap at the headline's width. */
+  body.landscape .copy p { text-wrap: balance; }
   body.landscape .device { top: var(--device-top, 30%); width: var(--device-w, 92%); border-radius: 26px; padding: 0; background: #1c1c1e;
             box-shadow: 0 60px 140px rgba(11,18,32,0.30), 0 0 0 1px rgba(0,0,0,0.25); overflow: hidden; }
   body.landscape .device .bar { height: 52px; background: linear-gradient(#3a3a3c, #2c2c2e); display: flex; align-items: center; gap: 14px; padding-left: 22px; }
