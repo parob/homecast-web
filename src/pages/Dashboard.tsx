@@ -1,3 +1,4 @@
+import { useHeadingVisibility } from '@/hooks/useHeadingVisibility';
 import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
@@ -4202,50 +4203,8 @@ const Dashboard = () => {
   // the bar shows the page's name with the switcher — what the native bar
   // does with its large title. Watched, not computed from scroll offsets:
   // the heading's own box says when it is gone.
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const [headingHidden, setHeadingHidden] = useState(false);
   const phoneBrowser = isMobile && !isInMobileApp && !isInMacApp;
-  useEffect(() => {
-    // The heading counts as gone once it is under the header row, not at
-    // the screen's edge. The row's centre line is published by AppHeader
-    // (`--top-row-center`: 40px in a browser tab, ~99px under a notch), so
-    // the cut is the row's bottom plus a little.
-    if (phoneBrowser) {
-      // The document scrolls here, so read the heading's box on each scroll
-      // rather than observe it: iOS Safari's viewport moves as its bars come
-      // and go, and an observer cut from the viewport's edge went quiet on
-      // the simulator where this plain comparison did not. The heading is
-      // looked up per check, as it can mount after this runs.
-      let raf = 0;
-      const check = () => {
-        raf = 0;
-        const h = headingRef.current;
-        // Auth can finish after this effect starts, before AppHeader exists.
-        // Read its current position on every check: keeping the boot fallback
-        // made the selector stay visible beside the large title at scroll 0.
-        const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
-        setHeadingHidden(!!h && h.getBoundingClientRect().bottom < centre + 28);
-      };
-      const onScroll = () => { if (!raf) raf = requestAnimationFrame(check); };
-      check();
-      window.addEventListener('scroll', onScroll, { passive: true });
-      window.addEventListener('resize', onScroll);
-      return () => {
-        window.removeEventListener('scroll', onScroll);
-        window.removeEventListener('resize', onScroll);
-        if (raf) cancelAnimationFrame(raf);
-      };
-    }
-    const el = headingRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const centre = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-row-center')) || 96;
-    const observer = new IntersectionObserver(
-      ([entry]) => setHeadingHidden(!entry.isIntersecting),
-      { rootMargin: `-${Math.round(centre + 28)}px 0px 0px 0px`, threshold: 0 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [selectedHomeId, selectedRoomId, selectedRoomGroupId, selectedCollectionId, phoneBrowser]);
+  const { headingRef, headingHidden } = useHeadingVisibility();
   // The request-log dock stops squashing the app while the native header is
   // on (see `DebugDock`) and overlays the bottom instead, so the page clears
   // it itself. Zero whenever the dock is closed.
