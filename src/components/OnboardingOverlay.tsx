@@ -317,20 +317,21 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
   hasHomes?: boolean;
   onAddHomeInSettings?: () => void;
 }) {
-  const [homeName, setHomeName] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Paying doesn't register a home. The home is added straight afterwards, in
+  // Settings → Homes, where the customer gives the Apple ID they'll invite
+  // from and can change the relay. Stripe returns there on its own (the
+  // checkout=success redirect); an in-app purchase finishes here, so hand
+  // over the same way.
   const handleCheckout = useCallback(async () => {
-    if (!homeName.trim()) {
-      toast.error('Please enter your home name');
-      return;
-    }
     setLoading(true);
     try {
-      const result = await purchasePlan('cloud', { homeName: homeName.trim() });
+      const result = await purchasePlan('cloud');
       if (result.upgraded) {
         toast.success('Cloud relay activated!');
-        onComplete();
+        if (onAddHomeInSettings) onAddHomeInSettings();
+        else onComplete();
       } else if (result.redirectUrl) {
         window.location.href = result.redirectUrl;
       } else if (result.error) {
@@ -339,7 +340,7 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
     } finally {
       setLoading(false);
     }
-  }, [homeName, onComplete]);
+  }, [onComplete, onAddHomeInSettings]);
 
   // Already subscribed, or already running homes: this step's job is checkout,
   // and there is nothing to check out. Settings → Homes owns adding a home to
@@ -391,35 +392,17 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
         We'll run a relay for you, so your smart home stays reachable even when your Mac is off.
       </p>
 
-      <div className="space-y-2">
-        <label className="text-xs font-medium">What's your Apple Home called?</label>
-        {/* No autoFocus: on a phone it throws the keyboard up over the page
-            the moment this step opens, so the explanation, the price and the
-            hub requirement are all hidden behind it before anyone reads them. */}
-        <Input
-          placeholder="My Home"
-          value={homeName}
-          onChange={(e) => setHomeName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleCheckout()}
-        />
-        <p className="text-xs text-muted-foreground">
-          Enter the exact name as it appears in the Apple Home app.
-        </p>
-      </div>
-
-      <CollapsibleHelp title="How to find your home name">
-        <p>1. Open the Home app on your iPhone or iPad</p>
-        <p>2. Tap the three dots (...) in the top right</p>
-        <p>3. Tap Home Settings</p>
-        <p>4. Your home name is at the top</p>
-      </CollapsibleHelp>
+      <p className="text-xs text-muted-foreground">
+        After subscribing you'll add your home: we'll suggest a relay, and you'll
+        invite it from the Apple Home app.
+      </p>
 
       <div className="rounded-lg border border-primary/50 p-3 space-y-2 flex flex-col">
         <h3 className="text-sm font-medium">Cloud</h3>
         <p className="text-xs text-muted-foreground flex-1">Unlimited accessories · always on</p>
         <p className="text-sm font-medium">{pricing.cloud.formatted}/mo</p>
         <p className="text-xs text-amber-600">Requires an Apple Home Hub (Apple TV or HomePod)</p>
-        <Button size="sm" className="w-full text-xs" onClick={handleCheckout} disabled={loading || !homeName.trim()}>
+        <Button size="sm" className="w-full text-xs" onClick={handleCheckout} disabled={loading}>
           {loading ? 'Loading...' : 'Subscribe'}
         </Button>
       </div>

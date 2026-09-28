@@ -870,6 +870,37 @@ export const GET_MANAGED_RELAY_RECENT_LOGS = gql`
 
 // --- Cloud Managed Queries ---
 
+/**
+ * The relays a Cloud customer can put a home on. Its own document (not folded
+ * into GET_MY_ENROLLMENTS) so a server without the field fails only this
+ * query — the add dialog then falls back to its region dropdown.
+ */
+export const AVAILABLE_CLOUD_RELAYS = gql`
+  query AvailableCloudRelays($region: String) {
+    availableCloudRelays(region: $region) {
+      id
+      label
+      region
+      availability
+      online
+      recommended
+    }
+  }
+`;
+
+/**
+ * How many cloud homes this customer may hold and holds. Separate from
+ * GET_ACCOUNT for the same reason: a missing field must not break the account.
+ */
+export const CLOUD_HOME_ALLOWANCE = gql`
+  query CloudHomeAllowance {
+    account {
+      cloudHomeLimit
+      cloudHomesUsed
+    }
+  }
+`;
+
 export const GET_MY_ENROLLMENTS = gql`
   query GetMyEnrollments {
     myCloudManagedEnrollments {
