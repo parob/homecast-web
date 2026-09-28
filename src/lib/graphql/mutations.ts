@@ -151,6 +151,22 @@ export const CREATE_CLOUD_MANAGED_CHECKOUT = gql`
   }
 `;
 
+/**
+ * The same mutation with the relay the customer chose. Only sent once
+ * AVAILABLE_CLOUD_RELAYS has answered, so an older server never sees
+ * $relayId (it would reject the whole document).
+ */
+export const CREATE_CLOUD_MANAGED_CHECKOUT_ON_RELAY = gql`
+  mutation CreateCloudManagedCheckoutOnRelay($region: String, $appleId: String, $relayId: String) {
+    createCloudManagedCheckout(region: $region, appleId: $appleId, relayId: $relayId) {
+      success
+      checkoutUrl
+      enrollmentId
+      error
+    }
+  }
+`;
+
 export const CANCEL_CLOUD_MANAGED_ENROLLMENT = gql`
   mutation CancelCloudManagedEnrollment($enrollmentId: String!) {
     cancelCloudManagedEnrollment(enrollmentId: $enrollmentId)

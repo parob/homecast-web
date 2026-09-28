@@ -2110,6 +2110,26 @@ export interface CreateCloudManagedCheckoutResponse {
   createCloudManagedCheckout: CloudManagedCheckoutResult;
 }
 
+export type CloudRelayAvailability = 'plenty' | 'limited' | 'full';
+
+/** A managed relay as a customer adding a home sees it — no Apple ID, no counts. */
+export interface CloudRelayOption {
+  id: string;
+  label: string;
+  region: string | null;
+  availability: CloudRelayAvailability;
+  online: boolean;
+  recommended: boolean;
+}
+
+export interface AvailableCloudRelaysResponse {
+  availableCloudRelays: CloudRelayOption[];
+}
+
+export interface CloudHomeAllowanceResponse {
+  account: { cloudHomeLimit: number; cloudHomesUsed: number };
+}
+
 export interface CancelCloudManagedEnrollmentResponse {
   cancelCloudManagedEnrollment: boolean;
 }

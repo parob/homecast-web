@@ -24,8 +24,8 @@ import { isCommunity } from '@/lib/config';
 import { regionLabel, guessRegion, REGION_OPTIONS } from '@/lib/regions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { config } from '@/lib/config';
-import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { CREATE_CLOUD_MANAGED_CHECKOUT, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, VERIFY_CLOUD_MANAGED_HOME, UPDATE_ENROLLMENT_APPLE_ID } from '@/lib/graphql/mutations';
+import { GET_MY_ENROLLMENTS, AVAILABLE_CLOUD_RELAYS, CLOUD_HOME_ALLOWANCE } from '@/lib/graphql/queries';
+import { CREATE_CLOUD_MANAGED_CHECKOUT, CREATE_CLOUD_MANAGED_CHECKOUT_ON_RELAY, CANCEL_CLOUD_MANAGED_ENROLLMENT, CONFIRM_INVITE_SENT, RESET_INVITE_STATUS, VERIFY_CLOUD_MANAGED_HOME, UPDATE_ENROLLMENT_APPLE_ID } from '@/lib/graphql/mutations';
 import type {
   MyCloudManagedEnrollmentsResponse,
   CreateCloudManagedCheckoutResponse,
@@ -33,7 +33,11 @@ import type {
   VerifyCloudManagedHomeResponse,
   UpdateEnrollmentAppleIdResponse,
   HomeKitHome,
+  AvailableCloudRelaysResponse,
+  CloudHomeAllowanceResponse,
 } from '@/lib/graphql/types';
+import { allFull, canAddCloudHome, homeLimitMessage, initialRelay, isRelayTakenError } from '@/lib/relay-picker';
+import { RelayChoice } from './RelayChoice';
 import { toast } from 'sonner';
 import { useHomes } from '@/hooks/useHomeKitData';
 import { CLOUD_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
@@ -416,6 +420,36 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   });
 
   const [createCheckout] = useMutation<CreateCloudManagedCheckoutResponse>(CREATE_CLOUD_MANAGED_CHECKOUT);
+  const [createCheckoutOnRelay] = useMutation<CreateCloudManagedCheckoutResponse>(CREATE_CLOUD_MANAGED_CHECKOUT_ON_RELAY);
+
+  // How many cloud homes this customer may hold. Unknown (older server, or
+  // still loading) lets them try; the server enforces the limit regardless.
+  const { data: allowanceData, refetch: refetchAllowance } = useQuery<CloudHomeAllowanceResponse>(CLOUD_HOME_ALLOWANCE, {
+    fetchPolicy: 'network-only',
+    skip: !isCloudPlan || isCommunity,
+  });
+  const allowance = allowanceData?.account;
+  const canAdd = canAddCloudHome(allowance);
+
+  // The relays, fetched when the dialog opens. If the server doesn't know
+  // this field yet the query errors and the dialog keeps its region dropdown.
+  const { data: relaysData, error: relaysError, refetch: refetchRelays } = useQuery<AvailableCloudRelaysResponse>(AVAILABLE_CLOUD_RELAYS, {
+    variables: { region },
+    fetchPolicy: 'network-only',
+    skip: !isCloudPlan || isCommunity || !addDialogOpen,
+  });
+  const relays = relaysError ? null : relaysData?.availableCloudRelays ?? null;
+  const [relayId, setRelayId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!relays) return;
+    // Keep the customer's pick while it's still selectable; otherwise start on
+    // the recommendation.
+    setRelayId(prev => {
+      const still = prev && relays.find(r => r.id === prev && r.availability !== 'full');
+      return still ? prev : initialRelay(relays)?.id ?? null;
+    });
+  }, [relays]);
+  const everyRelayFull = !!relays && allFull(relays);
   const [cancelEnrollment] = useMutation(CANCEL_CLOUD_MANAGED_ENROLLMENT);
   const [confirmInviteSent] = useMutation(CONFIRM_INVITE_SENT);
   const [resetInviteStatus] = useMutation(RESET_INVITE_STATUS);
@@ -433,10 +467,10 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const sharedSelfHostedHomes = selfHostedHomes.filter(h => !isOwned(h));
 
   useEffect(() => {
-    if (autoOpenEnroll && isCloudPlan && enrollments.length === 0) {
+    if (autoOpenEnroll && isCloudPlan && canAdd && enrollments.length === 0) {
       setAddDialogOpen(true);
     }
-  }, [autoOpenEnroll, isCloudPlan, enrollments.length]);
+  }, [autoOpenEnroll, isCloudPlan, canAdd, enrollments.length]);
 
   const [cancelledEnrollment, setCancelledEnrollment] = useState<CustomerEnrollmentInfo | null>(null);
 
@@ -450,11 +484,12 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
       const enrollment = enrollments.find(e => e.id === enrollmentId);
       await cancelEnrollment({ variables: { enrollmentId } });
       toast.success('Home removed from cloud relay');
+      refetchAllowance();
       setCancelledEnrollment(enrollment || { id: enrollmentId, homeName: '', status: 'cancelled', inviteEmail: null, matchedHomeName: null, needsHomeId: false, createdAt: '', matchedAt: null });
     } catch {
       toast.error('Failed to cancel enrollment');
     }
-  }, [cancelEnrollment, enrollments]);
+  }, [cancelEnrollment, enrollments, refetchAllowance]);
 
   const handleConfirmInvite = useCallback(async (enrollmentId: string) => {
     try {
@@ -482,23 +517,27 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
     }
     setLoading(true);
     try {
-      const { data: result } = await createCheckout({
-        variables: { region, appleId: trimmedAppleId },
-      });
+      // A chosen relay goes with the on-relay document; with no relay list
+      // (older server) or no relay to choose (all full → queue), the plain one.
+      const { data: result } = relays && relayId
+        ? await createCheckoutOnRelay({ variables: { region, appleId: trimmedAppleId, relayId } })
+        : await createCheckout({ variables: { region, appleId: trimmedAppleId } });
       const r = result?.createCloudManagedCheckout;
       if (r?.enrollmentId) {
         toast.success('Cloud home setup started');
         setAddDialogOpen(false);
         refetch();
+        refetchAllowance();
       } else if (r?.error) {
         toast.error(r.error);
+        if (isRelayTakenError(r.error)) refetchRelays();
       }
     } catch {
       toast.error('Failed to create enrollment');
     } finally {
       setLoading(false);
     }
-  }, [region, appleId, createCheckout, refetch]);
+  }, [region, appleId, relays, relayId, createCheckout, createCheckoutOnRelay, refetch, refetchAllowance, refetchRelays]);
 
   if (!isCloudPlan) {
     return (
@@ -603,7 +642,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
               <SelfHostedHomeCard
                 key={home.id}
                 home={home}
-                onSwitchToCloud={() => { setRegion(guessRegion()); setAppleId(''); setAddDialogOpen(true); }}
+                onSwitchToCloud={canAdd ? () => { setRegion(guessRegion()); setAppleId(''); setAddDialogOpen(true); } : undefined}
                 onClick={() => handleSelectHome(home)}
               />
             ))}
@@ -619,7 +658,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
           </>
         )}
 
-        {!isCommunity && (
+        {!isCommunity && (canAdd ? (
           <Button
             variant="outline"
             size="sm"
@@ -629,7 +668,11 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
             <Plus className="h-4 w-4 mr-2" />
             Add Home to Cloud Relay
           </Button>
-        )}
+        ) : allowance && (
+          <p className="text-xs text-muted-foreground text-center py-1">
+            {homeLimitMessage(allowance.cloudHomeLimit)}
+          </p>
+        ))}
       </div>
 
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
@@ -641,6 +684,16 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
             <DialogDescription className="sr-only">Add a home to the cloud relay</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {relays ? (
+              everyRelayFull ? (
+                <p className="text-xs rounded-md border bg-muted/30 px-3 py-2 text-muted-foreground">
+                  Every relay is full right now. Continue and we'll put your home on
+                  the first relay that frees up, and email you when it's ready.
+                </p>
+              ) : (
+                <RelayChoice relays={relays} selectedId={relayId} onSelect={setRelayId} regionHint={region} />
+              )
+            ) : relaysError ? (
             <div className="space-y-2">
               <label className="text-xs font-medium">Where is your home?</label>
               <Select value={region} onValueChange={setRegion}>
@@ -654,6 +707,9 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 </SelectContent>
               </Select>
             </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Finding a relay…</p>
+            )}
             <div className="space-y-2">
               <label className="text-xs font-medium">Which Apple ID will you invite the relay from?</label>
               <Input
@@ -669,12 +725,11 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
               </p>
             </div>
             <p className="text-xs text-muted-foreground">
-              We'll connect your home to a relay near you for the fastest control.
               In the next step you'll invite the relay in the Apple Home app.
             </p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleAdd} disabled={loading || !appleId.trim().includes('@')}>
+              <Button size="sm" onClick={handleAdd} disabled={loading || !appleId.trim().includes('@') || (!relays && !relaysError)}>
                 {loading ? 'Loading...' : 'Continue'}
               </Button>
             </div>
