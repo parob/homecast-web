@@ -13,6 +13,7 @@
 // for; the pixels were checked in Chromium.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { DebugDock } from '../DebugDock';
 import { MobileTabBar, type PinnedTabStatus } from '@/components/layout/MobileTabBar';
 import { setRequestPanelEnabled } from '@/lib/request-log';
@@ -34,8 +35,9 @@ const TABS: PinnedTab[] = [
 /** The dock's own number, from RequestLogPanel. */
 const DEFAULT_HEIGHT = 260;
 
-function renderApp() {
+function renderApp(path = '/portal') {
   return render(
+    <MemoryRouter initialEntries={[path]}>
     <DebugDock>
       <div>dashboard</div>
       <MobileTabBar
@@ -53,7 +55,8 @@ function renderApp() {
         resolveStatus={(): PinnedTabStatus => 'ready'}
         resolveAccessory={() => undefined}
       />
-    </DebugDock>,
+    </DebugDock>
+    </MemoryRouter>,
   );
 }
 
@@ -129,5 +132,13 @@ describe('the tab bar and the request log dock', () => {
     rerender(<div />);
 
     await waitFor(() => expect(getDebugDockHeight()).toBe(0));
+  });
+
+  it('stays off the website even while switched on', async () => {
+    setRequestPanelEnabled(true);
+    renderApp('/');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText('Requests')).toBeNull();
+    expect(bar().style.bottom).toBe('0px');
   });
 });

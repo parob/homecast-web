@@ -6,6 +6,7 @@
 // could not scroll at all. So the squash is skipped while the header is on.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { DebugDock } from '../DebugDock';
 import { setRequestPanelEnabled } from '@/lib/request-log';
 
@@ -31,13 +32,13 @@ describe('DebugDock', () => {
   });
 
   it('squashes the app into a fixed box when the log is on', () => {
-    const { getByText } = render(<DebugDock><div>dashboard</div></DebugDock>);
+    const { getByText } = render(<MemoryRouter initialEntries={['/portal']}><DebugDock><div>dashboard</div></DebugDock></MemoryRouter>);
     expect(getByText('dashboard').closest('.fixed.inset-0')).not.toBeNull();
   });
 
   it('leaves the document free to scroll under the iOS native header', () => {
     setNativeHeader(true);
-    const { getByText } = render(<DebugDock><div>dashboard</div></DebugDock>);
+    const { getByText } = render(<MemoryRouter initialEntries={['/portal']}><DebugDock><div>dashboard</div></DebugDock></MemoryRouter>);
     expect(getByText('dashboard').closest('.fixed.inset-0')).toBeNull();
   });
 });
