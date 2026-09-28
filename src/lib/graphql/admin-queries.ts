@@ -66,6 +66,28 @@ export const GET_USER_DETAIL = gql`
   }
 `;
 
+/**
+ * A customer's cloud-home allowance. Kept out of GET_USER_DETAIL so the user
+ * page still loads against a server that doesn't have these fields yet.
+ */
+export const GET_USER_CLOUD_HOME_LIMIT = gql`
+  query GetUserCloudHomeLimit($userId: String!) {
+    userDetail(userId: $userId) {
+      id
+      cloudHomeLimit
+      defaultCloudHomeLimit
+      cloudHomesUsed
+    }
+  }
+`;
+
+/** `limit: null` returns the customer to the global limit. */
+export const SET_USER_CLOUD_HOME_LIMIT = gql`
+  mutation SetUserCloudHomeLimit($userId: String!, $limit: Int) {
+    setUserCloudHomeLimit(userId: $userId, limit: $limit)
+  }
+`;
+
 export const GET_LOGS = gql`
   query GetLogs(
     $level: String
