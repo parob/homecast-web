@@ -544,7 +544,7 @@ export function WebhookListView({ onClose }: WebhookListViewProps) {
 
               <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="truncate max-w-[150px]">{webhook.url}</span>
-                <span className="shrink-0">{webhook.eventTypes?.length || 0} events</span>
+                <span className="shrink-0">{webhook.eventTypes?.length || 0} {webhook.eventTypes?.length === 1 ? 'event' : 'events'}</span>
                 <span className="shrink-0">{formatRelativeTime(webhook.lastTriggeredAt)}</span>
               </div>
 

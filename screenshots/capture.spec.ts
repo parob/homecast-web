@@ -869,6 +869,14 @@ test.describe('App Store screenshots', () => {
     await setupMocks(page);
     await gotoMyHome(page);
     await openSettings(page, 'API Access');
+    // The endpoints are built from config.apiUrl, which on the dev server is
+    // localhost:8080. Show what a signed-in user actually sees.
+    await page.evaluate(() => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (n.nodeValue?.includes('http://localhost:8080')) n.nodeValue = n.nodeValue.replaceAll('http://localhost:8080', 'https://api.homecast.cloud');
+      }
+    });
     await page.screenshot({ path: appStoreImg('07-api-access.png') });
   });
 

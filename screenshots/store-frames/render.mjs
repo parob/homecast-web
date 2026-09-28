@@ -17,7 +17,7 @@ const captions = JSON.parse(readFileSync(resolve(here, 'captions.json'), 'utf8')
 // headline with one phrase in the brand colour, and the device drawn large
 // and slightly tilted so it runs off the frame. `theme`/`tilt` per caption.
 const targets = {
-  mac:     { w: 2560, h: 1600, raw: '.',      names: captions.mac,    q: { landscape: '1', h1: '96px', p: '36px', 'device-top': '31%', 'device-w': '90%', 'shift-x': '4%' } },
+  mac:     { w: 2560, h: 1600, raw: '.',      names: captions.mac,    q: { landscape: '1', h1: '124px', p: '48px', 'device-top': '31%', 'device-w': '90%', 'shift-x': '4%' } },
   iphone:  { w: 1284, h: 2778, raw: 'iphone', names: captions.iphone, q: { h1: '124px', p: '42px', 'device-top': '27%', 'device-w': '96%', radius: '132px', bezel: '24px' } },
   ipad:    { w: 2048, h: 2732, raw: 'ipad',   names: captions.ipad,   q: { h1: '140px', p: '50px', 'device-top': '25%', 'device-w': '96%', radius: '78px', bezel: '36px', island: '0' } },
   android: { w: 1440, h: 2560, raw: 'iphone', names: captions.iphone, q: { h1: '128px', p: '44px', 'device-top': '27%', 'device-w': '96%', radius: '110px', bezel: '22px', island: '0' } },

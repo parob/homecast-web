@@ -433,7 +433,8 @@ export const MOCK_WEBHOOKS = [
     maxRetries: 3,
     consecutiveFailures: 0,
     secret: 'whsec_mock_secret_1',
-    lastTriggeredAt: '2026-02-16T07:45:00Z',
+    // Relative to the capture, so a store screenshot never reads "225d ago".
+    lastTriggeredAt: new Date(Date.now() - 4 * 60_000).toISOString(),
     createdAt: '2025-10-01T00:00:00Z',
   },
   {
@@ -449,7 +450,7 @@ export const MOCK_WEBHOOKS = [
     maxRetries: 5,
     consecutiveFailures: 2,
     secret: 'whsec_mock_secret_2',
-    lastTriggeredAt: '2026-02-16T06:30:00Z',
+    lastTriggeredAt: new Date(Date.now() - 38 * 60_000).toISOString(),
     createdAt: '2025-12-01T00:00:00Z',
   },
 ];
