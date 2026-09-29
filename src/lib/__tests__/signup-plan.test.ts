@@ -1,8 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { clearSignupPlan, parsePlan, rememberSignupPlan, signupPlanDestination, subscribePath } from '@/lib/signup-plan';
 
 describe('signup plan', () => {
-  beforeEach(() => localStorage.clear());
+  // Its own storage: Node's built-in localStorage differs by version (a stub
+  // on 25, absent on 22), and this is about what the helper writes, not the DOM.
+  beforeEach(() => {
+    const data = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => { data.set(k, String(v)); },
+      removeItem: (k: string) => { data.delete(k); },
+      clear: () => data.clear(),
+    });
+  });
 
   it('accepts only the paid plans', () => {
     expect(parsePlan('cloud')).toBe('cloud');
