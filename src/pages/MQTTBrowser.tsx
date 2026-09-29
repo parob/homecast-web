@@ -601,17 +601,22 @@ export default function MQTTBrowser() {
     return () => clearInterval(interval);
   }, [connected]);
 
-  // Filter topics by search text. Group members are excluded — they render
-  // nested under their group node, never in the plain lists.
+  // With both groupings off the pane is a plain MQTT topic list: every topic
+  // its own row, fully qualified, nothing nested.
+  const flatList = !groupByHome && !groupByRoom;
+
+  // Filter topics by search text. Group members are excluded while grouping —
+  // they render nested under their group node — but in the plain list a member
+  // is a topic like any other.
   const filteredTopics = useMemo(() => {
     return Object.entries(messages)
       .filter(([topic]) => {
         if (filter && !topic.toLowerCase().includes(filter.toLowerCase())) return false;
-        if (memberTopicSet.has(topic)) return false;
+        if (!flatList && memberTopicSet.has(topic)) return false;
         return true;
       })
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [messages, filter, memberTopicSet]);
+  }, [messages, filter, memberTopicSet, flatList]);
 
   const topicTree = useMemo(
     () => buildTopicTree(filteredTopics, groupMembers, slugToTopic, messages, { groupByHome, groupByRoom }),
@@ -834,6 +839,7 @@ export default function MQTTBrowser() {
           <div className={selectedTopic ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:gap-4 lg:items-start' : undefined}>
             <TreePane
               tree={topicTree}
+              flatTopics={flatList ? filteredTopics : undefined}
               groupByHome={groupByHome}
               groupByRoom={groupByRoom}
               openHomes={openHomes}

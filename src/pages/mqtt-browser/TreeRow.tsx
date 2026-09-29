@@ -1,4 +1,4 @@
-import { TopicPath, FmtVal, TypeBadge, AccessoryTypeIcon } from './helpers';
+import { TopicPath, FmtVal, TypeBadge, AccessoryTypeIcon, type PathContext } from './helpers';
 import type { TopicMessage, MqttRowType } from './topic-tree';
 import type { DeviceInfo } from './widget-adapter';
 
@@ -10,7 +10,10 @@ interface TreeRowProps {
   info?: DeviceInfo | null;
   rowType: MqttRowType;
   indentPx: number;
-  shortPath?: boolean;
+  /** Home and room already shown by headers above this row. */
+  known?: PathContext;
+  /** The whole topic, `homecast/` included — the ungrouped plain list. */
+  full?: boolean;
   selected: boolean;
   onSelect: (topic: string) => void;
 }
@@ -24,7 +27,7 @@ export function rowKey(topic: string, message: TopicMessage): string {
 // Read-only leaf row: availability dot, type icon + badge, topic path,
 // live value summary and timestamp. Clicking selects the topic for the
 // inspector — rows never expand in place.
-export function TreeRow({ topic, message, effectivePayload, availability, info, rowType, indentPx, shortPath, selected, onSelect }: TreeRowProps) {
+export function TreeRow({ topic, message, effectivePayload, availability, info, rowType, indentPx, known, full, selected, onSelect }: TreeRowProps) {
   const isOffline = availability === 'offline';
   const isRecent = Date.now() - message.timestamp < 8000;
   return (
@@ -39,7 +42,7 @@ export function TreeRow({ topic, message, effectivePayload, availability, info, 
       <AccessoryTypeIcon payload={effectivePayload} info={info} />
       <TypeBadge type={rowType} />
       <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
-        <TopicPath topic={topic} short={shortPath} />
+        <TopicPath topic={topic} known={known} full={full} />
       </span>
       {message.updates > 1 && <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{message.updates} updates</span>}
       <span className="ml-auto flex items-center gap-2 min-w-0">

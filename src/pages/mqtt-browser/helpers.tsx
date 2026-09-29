@@ -175,21 +175,37 @@ function PropRow({ name, value, onPublish }: { name: string; value: string | num
   );
 }
 
-export function TopicPath({ topic, short }: { topic: string; short?: boolean }) {
+/** The home and room a row already sits under — the headers on screen above it. */
+export interface PathContext { home?: string; room?: string }
+
+/**
+ * A topic's path, minus only the segments a header above it already shows.
+ *
+ * It used to drop home and room together whenever a row was nested at all, so
+ * with room grouping off every accessory lost its room, and a group header
+ * printed its bare slug in every layout — with grouping off entirely, nothing
+ * said which home or room a group was in. A segment is now hidden only when it
+ * *equals* the header's, which also keeps the room on a group member that lives
+ * in a different room from its group.
+ */
+export function TopicPath({ topic, known, full }: { topic: string; known?: PathContext; full?: boolean }) {
   const p = topic.split('/');
-  if (p[0] === 'homecast' && p.length >= 4) {
-    if (short) return <span className="text-foreground">{p.slice(3).join('/')}</span>;
-    return <><span className="text-blue-500">{p[1]}</span>/<span className="text-purple-400">{p[2]}</span>/<span className="text-foreground">{p.slice(3).join('/')}</span></>;
-  }
+  if (p[0] !== 'homecast' || p.length < 3) return <>{topic}</>;
   // homecast/{home}/{accessory} — an accessory that belongs to the home rather
-  // than to a room, so there is no room segment to colour. Without this it fell
-  // through to the raw topic and these rows printed their whole path while
-  // every room row beside them showed a bare slug.
-  if (p[0] === 'homecast' && p.length === 3) {
-    if (short) return <span className="text-foreground">{p[2]}</span>;
-    return <><span className="text-blue-500">{p[1]}</span>/<span className="text-foreground">{p[2]}</span></>;
-  }
-  return <>{topic}</>;
+  // than to a room, so there is no room segment to colour.
+  const room = p.length >= 4 ? p[2] : null;
+  const name = p.slice(room === null ? 2 : 3).join('/');
+  const showHome = known?.home !== p[1];
+  const showRoom = room !== null && known?.room !== room;
+  return (
+    <>
+      {/* The plain list: the topic exactly as a subscriber sees it. */}
+      {full && <span className="text-muted-foreground">{p[0]}/</span>}
+      {showHome && <><span className="text-blue-500">{p[1]}</span>/</>}
+      {showRoom && <><span className="text-purple-400">{room}</span>/</>}
+      <span className="text-foreground">{name}</span>
+    </>
+  );
 }
 
 export function FmtVal({ payload, omitKeys }: { payload: string; omitKeys?: string[] }) {
