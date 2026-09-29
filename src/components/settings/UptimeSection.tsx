@@ -412,8 +412,12 @@ function TimelineStrip({ byHour, days, outages, selectedDay, onSelectDay }: Time
 }
 
 /** The section, given its data. The query wrapper below is what the settings
- *  page mounts; this is what the dev preview mounts with a fixture. */
-export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
+ *  page mounts; this is what the dev preview mounts with a fixture.
+ *
+ *  `embedded` is the home page's Connection card, which already states the
+ *  live status: it drops the heading, the card and the status badge, and keeps
+ *  the history — last check, reachable share and the 7-day strip. */
+export function UptimeSectionView({ summary: s, embedded = false }: { summary: UptimeSummary; embedded?: boolean }) {
   const badge = statusBadge(s.currentStatus);
   const lastProbe = s.lastProbe;
   // A day of the strip opens its own panel, naming every outage that ran
@@ -429,12 +433,12 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
 
   return (
     <TooltipProvider delayDuration={80} skipDelayDuration={400}>
-      <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reliability</p>
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-3 text-xs">
+      <div className={embedded ? '' : 'space-y-2'}>
+        {!embedded && <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reliability</p>}
+        <div className={embedded ? 'space-y-3' : 'rounded-lg border bg-muted/30 p-3 space-y-3 text-xs'}>
           {/* Live status. The server answers this from the sessions table, so
-              it agrees with the Connection block above it — and says since when. */}
-          <div className="flex items-center justify-between gap-2">
+              it agrees with the Connection block — and says since when. */}
+          {!embedded && <div className="flex items-center justify-between gap-2">
             <span className={`flex items-center gap-1.5 font-medium px-1.5 py-0.5 rounded-full ${badge.classes}`}>
               {badge.icon}
               {badge.label}
@@ -442,7 +446,7 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
             {s.currentStatus === 'offline' && s.statusSince && (
               <span className="text-muted-foreground">went offline {formatRelativeAgo(s.statusSince)}</span>
             )}
-          </div>
+          </div>}
 
           {/* Last probe detail — not while offline, when the last check is
               older than the outage and says nothing the badge doesn't. */}
@@ -541,9 +545,11 @@ export function UptimeSectionView({ summary: s }: { summary: UptimeSummary }) {
 
 interface UptimeSectionProps {
   homeId: string;
+  /** Inside the home page's Connection card — see `UptimeSectionView`. */
+  embedded?: boolean;
 }
 
-export function UptimeSection({ homeId }: UptimeSectionProps) {
+export function UptimeSection({ homeId, embedded = false }: UptimeSectionProps) {
   const { data, loading, error } = useQuery<GetHomeUptimeResponse>(GET_HOME_UPTIME, {
     variables: { homeId, days: 30 },
     pollInterval: 60_000,
@@ -551,6 +557,7 @@ export function UptimeSection({ homeId }: UptimeSectionProps) {
   });
 
   if (loading && !data) {
+    if (embedded) return <div className="text-muted-foreground">Loading reliability…</div>;
     return (
       <div className="space-y-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reliability</p>
@@ -562,5 +569,5 @@ export function UptimeSection({ homeId }: UptimeSectionProps) {
     return null;
   }
 
-  return <UptimeSectionView summary={data.homeUptime} />;
+  return <UptimeSectionView summary={data.homeUptime} embedded={embedded} />;
 }

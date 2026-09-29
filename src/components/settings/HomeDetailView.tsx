@@ -2,45 +2,35 @@ import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Home as HomeIcon } from 'lucide-react';
 import { useHomes } from '@/hooks/useHomeKitData';
-import {
-  HOME_SETTINGS_SECTION_META,
-  type HomeSettingsSectionId,
-} from '@/lib/home-settings-sections';
+import type { HomeSettingsSectionId } from '@/lib/home-settings-sections';
 import type { HomeKitHome } from '@/lib/graphql/types';
-import { isCommunity } from '@/lib/config';
 import { HomeScreenSection } from './HomeScreenSection';
 import { HomeHistorySettings } from './HistorySection';
-import { UptimeSection } from './UptimeSection';
 import { HomeOverviewSection } from './home/HomeOverviewSection';
 import { HomeNotificationsSection } from './home/HomeNotificationsSection';
 import { HomeMQTTSection } from './home/HomeMQTTSection';
 import { HomeCamerasSection } from './home/HomeCamerasSection';
-import { HomeSectionList } from './home/HomeSectionList';
+import { RemoveFromCloudRelay } from './home/RemoveFromCloudRelay';
 
 /**
- * One home's settings.
+ * One home's settings, on one page.
  *
- * This used to be a single flat scroll with every home-specific setting
- * stacked into it under bare headings. Each of those is now a page of its own,
- * selected by the host (`SettingsDialog`) — from a third level in the desktop
- * sidebar, or from the row list this renders on mobile, which has no sidebar.
+ * The overview leads (its Connection card carries Reliability too), every
+ * section this home offers is stacked beneath it under its own heading, and the
+ * one destructive action — leaving the cloud relay — comes last. They used to be pages of their own behind a third
+ * navigation level — a tap in and a tap back for each handful of switches.
  *
- * The container keeps what every page shares: one live `home` object, polled
- * here rather than in each sub-page so the poll can't be duplicated.
+ * The container keeps what every section shares: one live `home` object, polled
+ * here rather than in each section so the poll can't be duplicated.
  */
 
 interface HomeDetailViewProps {
   home: HomeKitHome;
   developerMode?: boolean;
-  /** null = the overview. */
-  section: HomeSettingsSectionId | null;
-  /** Sub-sections available for this home, from `visibleHomeSettingsSections`. */
+  /** Sections available for this home, from `visibleHomeSettingsSections`. */
   sections: HomeSettingsSectionId[];
   /** `isCloudManagedHome` — only these homes can turn cameras on. */
   cloudManaged: boolean;
-  onSelectSection: (id: HomeSettingsSectionId) => void;
-  /** True where there is no sidebar to navigate from — i.e. mobile. */
-  showSectionList: boolean;
   /** Called after this home's cloud relay enrollment is removed (navigates back). */
   onCloudRelayRemoved?: () => void;
 }
@@ -48,11 +38,8 @@ interface HomeDetailViewProps {
 export function HomeDetailView({
   home: homeProp,
   developerMode,
-  section,
   sections,
   cloudManaged,
-  onSelectSection,
-  showSectionList,
   onCloudRelayRemoved,
 }: HomeDetailViewProps) {
   // Keep the detail view fresh so relayLastSeenAt / relayConnected reflect the
@@ -73,60 +60,49 @@ export function HomeDetailView({
   const isShared = !isOwner;
   const isAdmin = !home.role || home.role === 'owner' || home.role === 'admin';
 
-  const renderSection = () => {
+  const renderSection = (section: HomeSettingsSectionId) => {
     switch (section) {
       case 'home-screen':
         return <HomeScreenSection home={home} />;
       case 'notifications':
         return <HomeNotificationsSection home={home} />;
-      case 'reliability':
-        return isCommunity ? null : <UptimeSection homeId={home.id} />;
       case 'analytics':
         return <HomeHistorySettings home={home} isAdmin={isAdmin} />;
       case 'cameras':
         return <HomeCamerasSection home={home} isAdmin={isAdmin} cloudManaged={cloudManaged} />;
       case 'mqtt':
-        return (
-          <HomeMQTTSection
-            home={home}
-            isAdmin={isAdmin}
-          />
-        );
-      default:
-        return (
-          <HomeOverviewSection
-            home={home}
-            developerMode={developerMode}
-            onCloudRelayRemoved={onCloudRelayRemoved}
-          >
-            {showSectionList && <HomeSectionList sections={sections} onSelect={onSelectSection} />}
-          </HomeOverviewSection>
-        );
+        return <HomeMQTTSection home={home} isAdmin={isAdmin} />;
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* The home's name leads every page — the desktop content pane has no
-          chrome of its own, and on mobile the dialog title shows the sub-section
-          rather than which home it belongs to. */}
+      {/* The desktop content pane has no chrome of its own, so the home's name
+          leads the page. */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <HomeIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
         <h3 className="min-w-0 text-base font-semibold break-words">{home.name}</h3>
-        {section && (
-          <span className="text-base text-muted-foreground break-words">
-            {HOME_SETTINGS_SECTION_META[section].label}
-          </span>
-        )}
-        {!section && home.isPrimary && (
+        {home.isPrimary && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0">Primary</Badge>
         )}
-        {!section && isShared && (
+        {isShared && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0">Shared</Badge>
         )}
       </div>
 
-      {renderSection()}
+      <HomeOverviewSection home={home} developerMode={developerMode} />
+
+      {sections.map(id => (
+        <section
+          key={id}
+          data-home-section={id}
+          className="border-t pt-4"
+        >
+          {renderSection(id)}
+        </section>
+      ))}
+
+      <RemoveFromCloudRelay home={home} onRemoved={onCloudRelayRemoved} />
     </div>
   );
 }

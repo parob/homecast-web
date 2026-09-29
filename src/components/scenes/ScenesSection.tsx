@@ -40,9 +40,10 @@ import type { HomeKitScene } from '@/lib/graphql/types';
  *
  * Homecast scenes (derived from the home's accessories) and Apple Home scenes
  * both mean "run something in this home", so they share a pill, a grid and an
- * ordering. Each half has its own visibility switch, and individual cards of
- * either kind can be hidden; the section only disappears when both halves are
- * off.
+ * ordering. Individual cards of either kind can be hidden. Homecast scenes also
+ * have a per-home switch; Apple Home scenes do not — the user made those, so
+ * they always show unless hidden one by one. A home's old `scenes` switch is
+ * left in its blob and no longer read.
  */
 
 /**
@@ -57,7 +58,6 @@ function visibleScenes(
   layout: HomeLayoutData | null | undefined,
   showHidden = false,
 ) {
-  if (!isSummarySectionVisible(layout, 'scenes')) return [];
   return (scenes ?? []).filter(s =>
     !isHiddenBuiltInScene(s) && (showHidden || isSceneVisible(layout, s.id)));
 }
@@ -346,7 +346,6 @@ export function useSceneCards({
     />
   );
 
-  const canShowScenes = isSummarySectionVisible(homeLayout, 'scenes');
   const itemIds = cards.map(cardKey);
   const createScene = () => {
     if (relayCannotEdit) { setViewOnlyOpen(true); return; }
@@ -405,16 +404,16 @@ export function useSceneCards({
         </AlertDialogContent>
       </AlertDialog>
   </>);
-  return { cards, itemIds, renderCard, dialogs, createScene, reorder, canShowScenes, editMode, touchMode };
+  return { cards, itemIds, renderCard, dialogs, createScene, reorder, editMode, touchMode };
 }
 
 export function ScenesSection(props: ScenesSectionProps) {
   const { compact, isDarkBackground, open, dndEnabled = true, onReorderCards } = props;
-  const { cards, itemIds, renderCard, dialogs, createScene, reorder, canShowScenes, editMode, touchMode } = useSceneCards(props);
+  const { cards, itemIds, renderCard, dialogs, createScene, reorder, editMode, touchMode } = useSceneCards(props);
   return (<>
       <AnimatedCollapse open={open}>
         <div className={compact ? 'mb-3' : 'mb-6'}>
-          {cards.length === 0 && canShowScenes && (
+          {cards.length === 0 && (
             <p className={`text-xs mb-2 ${isDarkBackground ? 'text-white/40' : 'text-muted-foreground/50'}`}>
               No scenes yet. A scene sets several accessories at once — create one to get started.
             </p>
@@ -439,7 +438,7 @@ export function ScenesSection(props: ScenesSectionProps) {
                   <DragHandleArea>{renderCard(card)}</DragHandleArea>
                 </SortableItem>
               ))}
-              {!editMode && canShowScenes && <button
+              {!editMode && <button
                 onClick={createScene}
                 className={`flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed p-3 text-xs font-medium transition-colors ${
                   isDarkBackground

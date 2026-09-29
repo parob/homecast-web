@@ -11,6 +11,16 @@ interface DisplaySectionProps {
   toggleHideAccessoryCounts: (value: boolean) => void;
   groupByRoom: boolean;
   toggleGroupByRoom: (value: boolean) => void;
+  showHomeStatus: boolean;
+  toggleShowHomeStatus: (value: boolean) => void;
+  /** Null when the account has no Smart Deals at all. */
+  smartDeals: {
+    enabled: boolean;
+    /** The free plan carries deals — shown on, and not switchable. */
+    locked: boolean;
+    onChange: (enabled: boolean) => void;
+    onUpgrade: () => void;
+  } | null;
   layoutMode: 'grid' | 'masonry';
   changeLayoutMode: (mode: 'grid' | 'masonry') => void;
   fullWidth: boolean;
@@ -37,6 +47,9 @@ export function DisplaySection({
   toggleHideAccessoryCounts,
   groupByRoom,
   toggleGroupByRoom,
+  showHomeStatus,
+  toggleShowHomeStatus,
+  smartDeals,
   layoutMode,
   changeLayoutMode,
   fullWidth,
@@ -105,6 +118,23 @@ export function DisplaySection({
           <Switch
             checked={groupByRoom}
             onCheckedChange={toggleGroupByRoom}
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Home status</p>
+          <p className="text-xs text-muted-foreground">Temperature, humidity and sensor readings under each home's name</p>
+        </div>
+        <div className="relative flex items-center">
+          {settingSaveError === 'showHomeStatus' && (
+            <div className="absolute right-full mr-2 whitespace-nowrap rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground shadow-lg">
+              Failed to save
+            </div>
+          )}
+          <Switch
+            checked={showHomeStatus}
+            onCheckedChange={toggleShowHomeStatus}
           />
         </div>
       </div>
@@ -266,6 +296,28 @@ export function DisplaySection({
           onCheckedChange={toggleAutoBackgrounds}
         />
       </div>
+      {smartDeals && (
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Smart Deals</p>
+            <p className="text-xs text-muted-foreground">
+              Personalised deals on your accessories
+              {smartDeals.locked && (
+                <>
+                  {' · '}
+                  <button className="text-primary hover:underline" onClick={smartDeals.onUpgrade}>Upgrade to turn off</button>
+                </>
+              )}
+            </p>
+          </div>
+          <Switch
+            checked={smartDeals.locked || smartDeals.enabled}
+            disabled={smartDeals.locked}
+            onCheckedChange={smartDeals.onChange}
+            aria-label="Smart Deals"
+          />
+        </div>
+      )}
     </div>
   );
 }

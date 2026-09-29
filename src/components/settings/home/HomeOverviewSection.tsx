@@ -1,45 +1,26 @@
 import { useState, useCallback, useMemo } from 'react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
 import { Users, Sparkles, X } from 'lucide-react';
 import { isCommunity } from '@/lib/config';
 import { homeAccessLabel, homeAccessHint } from '@/lib/homekit-errors';
 import { isNoticeDismissed, dismissNotice } from '@/lib/notice-dismissal';
 import { RelayFullAccessDialog } from './RelayFullAccessDialog';
-import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_MY_ENROLLMENTS } from '@/lib/graphql/queries';
-import { CANCEL_CLOUD_MANAGED_ENROLLMENT } from '@/lib/graphql/mutations';
-import type { HomeKitHome, MyCloudManagedEnrollmentsResponse } from '@/lib/graphql/types';
-import { toast } from 'sonner';
+import type { HomeKitHome } from '@/lib/graphql/types';
+import { UptimeSection } from '../UptimeSection';
+import { useCloudEnrollment } from './RemoveFromCloudRelay';
 import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
 import { useHomeServing } from '@/hooks/useHomeServing';
 
 /**
- * The home's landing page — who and what it is, and the one destructive action
- * that belongs to the home as a whole. Everything configurable is a page of
- * its own now; this is the summary you land on.
+ * The top of a home's page — who and what it is, and how well it has been
+ * reachable. The Connection card carries Reliability's history beneath the
+ * live facts, since both answer "is this home working".
  */
 export function HomeOverviewSection({
   home,
   developerMode,
-  onCloudRelayRemoved,
-  children,
 }: {
   home: HomeKitHome;
   developerMode?: boolean;
-  onCloudRelayRemoved?: () => void;
-  /** The sub-section list, on layouts that have no sidebar to show it. */
-  children?: React.ReactNode;
 }) {
   const serving = useHomeServing(home.id);
   // Dismissed for good, by id *and* name — a home's id varies in case between
@@ -63,33 +44,7 @@ export function HomeOverviewSection({
   const isShared = !isOwner;
   const isCloudManaged = home.isCloudManaged === true;
 
-  // Active cloud-managed enrollment backing this home (removal lives here on
-  // the individual home page, not in the homes list).
-  const { data: enrollmentsData } = useQuery<MyCloudManagedEnrollmentsResponse>(GET_MY_ENROLLMENTS, {
-    skip: !isCloudManaged || isCommunity,
-    fetchPolicy: 'cache-and-network',
-  });
-  const cloudEnrollment = (enrollmentsData?.myCloudManagedEnrollments || []).find(
-    e => e.status === 'active' && (
-      (e.matchedHomeId && e.matchedHomeId.toUpperCase() === home.id.toUpperCase()) ||
-      (e.matchedHomeName || e.homeName).toLowerCase() === home.name.toLowerCase()
-    )
-  );
-  const [cancelEnrollment] = useMutation(CANCEL_CLOUD_MANAGED_ENROLLMENT);
-  const [removingRelay, setRemovingRelay] = useState(false);
-  const handleRemoveFromCloudRelay = async () => {
-    if (!cloudEnrollment) return;
-    setRemovingRelay(true);
-    try {
-      await cancelEnrollment({ variables: { enrollmentId: cloudEnrollment.id } });
-      toast.success(`${home.name} removed from cloud relay`);
-      onCloudRelayRemoved?.();
-    } catch {
-      toast.error('Failed to remove home from cloud relay');
-    } finally {
-      setRemovingRelay(false);
-    }
-  };
+  const cloudEnrollment = useCloudEnrollment(home);
 
   const roleLabel = isShared
     ? (home.role === 'admin' ? 'Admin'
@@ -225,54 +180,15 @@ export function HomeOverviewSection({
               <span className="font-mono text-[10px] truncate max-w-[180px]" title={home.id}>{home.id}</span>
             </div>
           )}
+
+          {/* Reliability — uptime samples are recorded server-side, so CE has none. */}
+          {!isCommunity && (
+            <div className="border-t pt-3">
+              <UptimeSection homeId={home.id} embedded />
+            </div>
+          )}
         </div>
       </div>
-
-      {children}
-
-      {/* Remove from cloud relay — only for the enrollment owner of a cloud-managed home */}
-      {isCloudManaged && cloudEnrollment && (
-        <div className="flex justify-end pt-2">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-xs text-destructive hover:text-destructive" disabled={removingRelay}>
-                {removingRelay ? 'Removing…' : 'Remove Home from Cloud Relay'}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent style={{ zIndex: 10050 }}>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Remove "{home.name}" from the cloud relay?</AlertDialogTitle>
-                <AlertDialogDescription asChild>
-                  <div className="space-y-2">
-                    <p>
-                      This disconnects the home from Homecast — remote access, API, and automations
-                      through Homecast stop working. Your Apple Home itself is untouched, and you
-                      can re-enroll at any time.
-                    </p>
-                    {cloudEnrollment?.inviteEmail && (
-                      <p>
-                        We recommend also removing the relay from your home: in the Apple Home app,
-                        open <strong>Home Settings</strong>, tap{' '}
-                        <strong className="font-mono text-xs">{cloudEnrollment.inviteEmail}</strong>{' '}
-                        and choose <strong>Remove</strong>.
-                      </p>
-                    )}
-                  </div>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => { void handleRemoveFromCloudRelay(); }}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Remove
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      )}
     </div>
   );
 }

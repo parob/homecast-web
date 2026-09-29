@@ -36,13 +36,14 @@ export function HomeCamerasSection({ home, isAdmin, cloudManaged }: Props) {
   };
 
   return (
-    <div className="rounded-lg border p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium">Cameras</div>
-          <p className="text-sm text-muted-foreground">
+    <div className="space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Cameras</p>
+      <div className="flex items-center justify-between gap-3 py-1">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Show cameras</p>
+          <p className="text-xs text-muted-foreground">
             {cloudManaged
-              ? 'Show stills and live view from your HomeKit cameras.'
+              ? 'Stills and live view from your HomeKit cameras'
               : 'Cameras are available with Cloud Managed.'}
           </p>
         </div>

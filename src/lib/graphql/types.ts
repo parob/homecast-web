@@ -632,6 +632,8 @@ export interface DeviceDisplaySettings {
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;
   fullWidth?: boolean;
+  /** Status readings under each home's name. Absent means shown. */
+  showHomeStatus?: boolean;
   /** How the pinned tab bar draws itself. See lib/tab-bar-mode.ts. */
   tabBarMode?: TabBarMode;
   pinnedTabs?: PinnedTab[];
@@ -644,7 +646,7 @@ export interface DeviceDisplaySettings {
 export const DEVICE_SETTING_KEYS: readonly (keyof DeviceDisplaySettings)[] = [
   'compactMode', 'hideInfoDevices', 'hideAccessoryCounts',
   'layoutMode', 'groupByRoom', 'iconStyle',
-  'fontSize', 'autoBackgrounds', 'fullWidth', 'tabBarMode', 'pinnedTabs', 'lastView',
+  'fontSize', 'autoBackgrounds', 'fullWidth', 'showHomeStatus', 'tabBarMode', 'pinnedTabs', 'lastView',
 ] as const;
 
 // Get display settings for a specific device, falling back to legacy flat fields
@@ -677,6 +679,8 @@ export interface UserSettingsData {
   fontSize?: 'small' | 'medium' | 'large';
   autoBackgrounds?: boolean;
   fullWidth?: boolean;
+  /** Status readings under each home's name. Absent means shown. */
+  showHomeStatus?: boolean;
   /** How the pinned tab bar draws itself. See lib/tab-bar-mode.ts. */
   tabBarMode?: TabBarMode;
   pinnedTabs?: PinnedTab[];

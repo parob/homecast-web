@@ -505,8 +505,8 @@ export function AccountSection({
         {onReplaySetup && (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Setup Options</p>
-              <p className="text-xs text-muted-foreground">Show the "how do you want to connect" chooser again</p>
+              <p className="text-sm font-medium">Connection Setup</p>
+              <p className="text-xs text-muted-foreground">Choose how Homecast connects to your homes</p>
             </div>
             <Button variant="outline" size="sm" onClick={onReplaySetup}>
               <BookOpen className="h-3.5 w-3.5 mr-1.5" />

@@ -21,7 +21,6 @@ import {
   ChevronRight,
   ChevronDown,
   ArrowLeft,
-  Tag,
   Bell,
   LineChart,
   ExternalLink,
@@ -31,11 +30,7 @@ import type { HomeKitHome, UserSettingsData, GetSettingsResponse } from '@/lib/g
 import { isCommunity, getRelayAddress } from '@/lib/config';
 import { isMQTTAvailable } from '@/lib/mqtt-bridge';
 import { invalidateHomeKitCache } from '@/hooks/useHomeKitData';
-import {
-  HOME_SETTINGS_SECTION_META,
-  visibleHomeSettingsSections,
-  type HomeSettingsSectionId,
-} from '@/lib/home-settings-sections';
+import { visibleHomeSettingsSections } from '@/lib/home-settings-sections';
 import { isCloudManagedHome } from '@/lib/camera-snapshot';
 import { Input } from '@/components/ui/input';
 import { RelayInfoCard } from './RelayInfoCard';
@@ -68,7 +63,7 @@ import { NotificationsSection } from './NotificationsSection';
 import { LocalModeSection } from './LocalModeSection';
 import { isLocalCapable } from '@/native/homekit-bridge';
 
-export type SettingsTab = 'plan' | 'smart-deals' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'local-mode' | 'account';
+export type SettingsTab = 'plan' | 'display' | 'notifications' | 'api-access' | 'webhooks' | 'sharing' | 'homes' | 'self-hosted-relay' | 'local-mode' | 'account';
 
 interface MenuItem {
   id: SettingsTab;
@@ -82,12 +77,11 @@ export interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   initialTab?: SettingsTab;
   /**
-   * With `initialTab: 'homes'`, open straight onto this home and, if given,
-   * one of its sub-sections — the connection popover's "Details" link lands
-   * on Reliability this way. Read only when the dialog opens.
+   * With `initialTab: 'homes'`, open straight onto this home — the connection
+   * popover's "Details" link lands on its Connection card this way. Read only
+   * when the dialog opens.
    */
   initialHomeId?: string | null;
-  initialHomeSection?: HomeSettingsSectionId | null;
   // Account / billing
   accountType: string;
   usedAccessorySlots: number;
@@ -109,7 +103,7 @@ export interface SettingsDialogProps {
   cloudSignupsAvailable: boolean;
   isRelayCapable: () => boolean;
   setAccessorySelectionOpen: (open: boolean) => void;
-  // Smart Deals
+  // Smart Deals — the account's master flag; the switch itself is on Display
   showSmartDeals: boolean;
   settingsData: GetSettingsResponse | undefined;
   saveSettings: (updates: Partial<UserSettingsData>, settingName: string) => Promise<boolean>;
@@ -120,6 +114,8 @@ export interface SettingsDialogProps {
   toggleHideAccessoryCounts: (value: boolean) => void;
   groupByRoom: boolean;
   toggleGroupByRoom: (value: boolean) => void;
+  showHomeStatus: boolean;
+  toggleShowHomeStatus: (value: boolean) => void;
   // Style
   layoutMode: 'grid' | 'masonry';
   changeLayoutMode: (mode: 'grid' | 'masonry') => void;
@@ -165,7 +161,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     onOpenChange,
     initialTab,
     initialHomeId,
-    initialHomeSection,
     developerMode,
     isInMacApp,
     isInMobileApp,
@@ -177,7 +172,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // Cloud components — resolved at render time so initCloud() has completed
   const _cloud = getCloud();
   const PlanSection = _cloud?.PlanSection ?? null;
-  const SmartDealsSection = _cloud?.SmartDealsSection ?? null;
   const SelfHostedRelaySection = _cloud?.SelfHostedRelaySection ?? null;
 
   // The relay's address on the LAN. `window.location.origin` is never it:
@@ -251,8 +245,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [mobileSection, setMobileSection] = useState<SettingsTab | null>(null);
   // Desktop: which home is selected within the Homes section (null = show Homes list)
   const [selectedHomeId, setSelectedHomeId] = useState<string | null>(null);
-  // Third level: which of the selected home's sub-sections is open (null = its overview)
-  const [homeSection, setHomeSection] = useState<HomeSettingsSectionId | null>(null);
 
   // Reset to the initial tab when the dialog opens.
   //
@@ -272,15 +264,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
       setMobileSection(initialTab ?? null);
       const deepLinked = initialTab === 'homes' && initialHomeId ? initialHomeId : null;
       setSelectedHomeId(deepLinked);
-      setHomeSection(deepLinked ? initialHomeSection ?? null : null);
     }
-  }, [open, initialTab, initialHomeId, initialHomeSection]);
+  }, [open, initialTab, initialHomeId]);
 
   // Clear home selection whenever neither the desktop tab nor the mobile section is on 'homes'
   useEffect(() => {
     if (activeTab !== 'homes' && mobileSection !== 'homes' && selectedHomeId) {
       setSelectedHomeId(null);
-      setHomeSection(null);
     }
   }, [activeTab, mobileSection, selectedHomeId]);
 
@@ -292,14 +282,30 @@ export function SettingsDialog(props: SettingsDialogProps) {
     }
   }, [developerMode, activeTab]);
 
+  // Smart Deals is one switch on Display. The free plan carries deals, so there
+  // it reads on and locked, with the way out beside it.
+  const smartDeals = showSmartDeals && !isCommunity
+    ? (() => {
+        const locked = props.accountType === 'free';
+        let enabled = true;
+        if (!locked && props.settingsData?.settings?.data) {
+          try {
+            enabled = (JSON.parse(props.settingsData.settings.data) as UserSettingsData).smartDealsEnabled !== false;
+          } catch { /* unreadable blob — the server's default is on */ }
+        }
+        return {
+          enabled,
+          locked,
+          onChange: (checked: boolean) => { void props.saveSettings({ smartDealsEnabled: checked }, 'smartDealsEnabled'); },
+          onUpgrade: () => { void props.handleUpgrade(); },
+        };
+      })()
+    : null;
+
   const menuItems = useMemo(() => {
     const items: MenuItem[] = [
       { id: 'plan', label: isCommunity ? 'Community' : 'Plan', group: 'General', icon: isCommunity ? HomeIcon : CreditCard },
     ];
-
-    if (showSmartDeals && !isCommunity) {
-      items.push({ id: 'smart-deals', label: 'Smart Deals', group: 'General', icon: Tag });
-    }
 
     items.push({ id: 'display', label: 'Display', group: 'General', icon: Monitor });
 
@@ -344,7 +350,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     items.push({ id: 'account', label: 'Account', group: 'Account', icon: User });
 
     return items;
-  }, [developerMode, isInMacApp, isInMobileApp, isRelayCapable, launchAtLoginSupported, showSmartDeals]);
+  }, [developerMode, isInMacApp, isInMobileApp, isRelayCapable, launchAtLoginSupported]);
 
   // Matched case-insensitively: home ids reach us from sources that disagree on
   // case (the relay and dashboard cache use uppercase, the cloud lowercase).
@@ -354,8 +360,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ? props.homes.find(h => h.id.toUpperCase() === selectedHomeId.toUpperCase()) ?? null
     : null;
 
-  // Which sub-sections the open home offers, for both the sidebar's third
-  // level and the mobile row list — one source so the two can't disagree.
+  // Which sections the open home's page stacks.
   const homeSections = useMemo(
     () => visibleHomeSettingsSections({
       isCommunity,
@@ -365,17 +370,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     [developerMode],
   );
 
-  // Clamp rather than reset: if developer mode goes off while the MQTT page is
-  // open, drop to the home's overview instead of stranding the user on a page
-  // that no longer has a row in the sidebar.
-  const activeHomeSection = homeSection && homeSections.includes(homeSection) ? homeSection : null;
-  useEffect(() => {
-    if (homeSection && !homeSections.includes(homeSection)) setHomeSection(null);
-  }, [homeSection, homeSections]);
-
   const selectHome = (homeId: string) => {
     setSelectedHomeId(homeId);
-    setHomeSection(null);
   };
 
   // Group menu items by their group
@@ -602,17 +598,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
             setAccessorySelectionOpen={props.setAccessorySelectionOpen}
           />
         ) : null;
-      case 'smart-deals':
-        return SmartDealsSection ? (
-          <SmartDealsSection
-            accountType={props.accountType}
-            isInMacApp={props.isInMacApp}
-            isInMobileApp={props.isInMobileApp}
-            handleUpgrade={props.handleUpgrade}
-            settingsData={props.settingsData}
-            saveSettings={props.saveSettings}
-          />
-        ) : null;
       case 'display':
         return (
           <DisplaySection
@@ -622,6 +607,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
             toggleHideAccessoryCounts={props.toggleHideAccessoryCounts}
             groupByRoom={props.groupByRoom}
             toggleGroupByRoom={props.toggleGroupByRoom}
+            showHomeStatus={props.showHomeStatus}
+            toggleShowHomeStatus={props.toggleShowHomeStatus}
+            smartDeals={smartDeals}
             layoutMode={props.layoutMode}
             changeLayoutMode={props.changeLayoutMode}
             fullWidth={props.fullWidth}
@@ -659,14 +647,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
             <HomeDetailView
               home={selectedHome}
               developerMode={props.developerMode}
-              section={activeHomeSection}
               sections={homeSections}
               cloudManaged={isCloudManagedHome(selectedHome, props.accountType)}
-              onSelectSection={setHomeSection}
-              showSectionList={isMobile}
               onCloudRelayRemoved={() => {
                 setSelectedHomeId(null);
-                setHomeSection(null);
                 // The homes list is served from the client-side HomeKit cache —
                 // drop it so the removed home disappears immediately rather than
                 // lingering until the TTL expires.
@@ -730,16 +714,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   const activeLabel = menuItems.find(i => i.id === (isMobile ? mobileSection : activeTab))?.label || 'Settings';
 
-  // Mobile is a push stack three levels deep: menu → section → home → sub-section.
-  // The title names the level you are on, and back pops exactly one.
+  // Mobile is a push stack: menu → section → home. The title names the level
+  // you are on, and back pops exactly one.
   const inHomes = mobileSection === 'homes';
   const mobileTitle = inHomes && selectedHome
-    ? (activeHomeSection ? HOME_SETTINGS_SECTION_META[activeHomeSection].label : selectedHome.name)
+    ? selectedHome.name
     : (mobileSection ? activeLabel : 'Settings');
   const handleMobileBack = () => {
-    if (inHomes && activeHomeSection) {
-      setHomeSection(null);
-    } else if (inHomes && selectedHomeId) {
+    if (inHomes && selectedHomeId) {
       setSelectedHomeId(null);
     } else {
       setMobileSection(null);
@@ -840,7 +822,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
                               setActiveTab(item.id);
                               if (isHomesRow) {
                                 setSelectedHomeId(null);
-                                setHomeSection(null);
                               }
                             }}
                             className={cn(
@@ -869,44 +850,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
                                   }}
                                   className={cn(
                                     "w-[calc(100%-1rem)] mx-2 flex items-center gap-2 pl-7 pr-3 py-1 text-xs transition-colors rounded-lg",
-                                    homeOpen && !activeHomeSection
+                                    homeOpen
                                       ? "bg-muted font-medium text-foreground"
                                       : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                                   )}
                                 >
                                   <span className="flex-1 text-left truncate">{home.name}</span>
-                                  {homeSections.length > 0 && (
-                                    homeOpen
-                                      ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                      : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                  )}
                                 </button>
-                                {/* Third level. Only the open home expands —
-                                    expanding every home would put six rows per
-                                    home in a rail that has to stay narrow. The
-                                    left border does the indenting that another
-                                    round of padding could no longer afford. */}
-                                {homeOpen && homeSections.length > 0 && (
-                                  <div className="ml-7 mr-2 border-l pl-1.5 py-0.5">
-                                    {homeSections.map((id) => (
-                                      <button
-                                        key={id}
-                                        onClick={() => setHomeSection(id)}
-                                        title={HOME_SETTINGS_SECTION_META[id].label}
-                                        className={cn(
-                                          "w-full flex items-center px-2 py-1 text-xs transition-colors rounded-md",
-                                          activeHomeSection === id
-                                            ? "bg-muted font-medium text-foreground"
-                                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                                        )}
-                                      >
-                                        <span className="flex-1 text-left truncate">
-                                          {HOME_SETTINGS_SECTION_META[id].label}
-                                        </span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}

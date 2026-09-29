@@ -69,7 +69,7 @@ import { MasonryGrid } from '@/components/MasonryGrid';
 import { AreaSummary } from '@/components/summary';
 import { useRunHomeAction } from '@/components/actions/useRunHomeAction';
 import {
-  isSummarySectionVisible, withHomeActionVisibility,
+  withHomeActionVisibility,
   withSceneVisibility,
   type HomeActionId,
 } from '@/lib/summary-sections';
@@ -277,7 +277,6 @@ import { StatusBadge } from '@/components/layout/StatusBadge';
 import { useHomeServing, useHomeServingVersion } from '@/hooks/useHomeServing';
 import { unavailableHomePresentation } from '@/lib/status-badge';
 import { isHomeServed, isHomeUnserved } from '@/server/home-serving';
-import type { HomeSettingsSectionId } from '@/lib/home-settings-sections';
 import { BackgroundImage } from '@/components/BackgroundImage';
 import { BackgroundSettingsDialog } from '@/components/BackgroundSettingsDialog';
 import { AccessorySelectionDialog } from '@/components/AccessorySelectionDialog';
@@ -1628,6 +1627,7 @@ const Dashboard = () => {
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('large');
   const [autoBackgrounds, setAutoBackgrounds] = useState<boolean>(true);
   const [fullWidth, setFullWidth] = useState<boolean>(true);
+  const [showHomeStatus, setShowHomeStatus] = useState<boolean>(true);
   const [developerMode, setDeveloperMode] = useState<boolean>(false);
   const [sendActivityLogs, setSendActivityLogs] = useState<boolean>(false);
   const [roomOrderByHome, setRoomOrderByHome] = useState<Record<string, string[]>>({});
@@ -2414,8 +2414,8 @@ const Dashboard = () => {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>();
-  // A deep link inside the Homes tab: which home, and which of its sections.
-  const [settingsInitialHome, setSettingsInitialHome] = useState<{ homeId: string; section: HomeSettingsSectionId } | null>(null);
+  // A deep link inside the Homes tab: which home to open.
+  const [settingsInitialHome, setSettingsInitialHome] = useState<{ homeId: string } | null>(null);
 
   // Open Settings to a specific tab if ?settings= is in the URL
   useEffect(() => {
@@ -2868,6 +2868,7 @@ const Dashboard = () => {
         }
         if (typeof display.autoBackgrounds === 'boolean') setAutoBackgrounds(display.autoBackgrounds);
         if (typeof display.fullWidth === 'boolean') setFullWidth(display.fullWidth);
+        if (typeof display.showHomeStatus === 'boolean') setShowHomeStatus(display.showHomeStatus);
         // Global settings (shared across all devices)
         if (Array.isArray(parsed.homeOrder)) setHomeOrder(parsed.homeOrder);
         if (parsed.roomOrderByHome && typeof parsed.roomOrderByHome === 'object') setRoomOrderByHome(parsed.roomOrderByHome);
@@ -3043,7 +3044,7 @@ const Dashboard = () => {
     const currentDeviceSettings = {
       compactMode, tabBarMode, hideInfoDevices, hideAccessoryCounts, layoutMode,
       groupByRoom, iconStyle, fontSize, autoBackgrounds,
-      fullWidth, pinnedTabs, lastView,
+      fullWidth, showHomeStatus, pinnedTabs, lastView,
     };
 
     // Current global state
@@ -3088,7 +3089,7 @@ const Dashboard = () => {
       }
       return false;
     }
-  }, [compactMode, tabBarMode, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, iconStyle, fontSize, autoBackgrounds, fullWidth, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, sendActivityLogs, lastView, settingsData, updateSettingsMutation]);
+  }, [compactMode, tabBarMode, hideInfoDevices, hideAccessoryCounts, layoutMode, groupByRoom, iconStyle, fontSize, autoBackgrounds, fullWidth, showHomeStatus, homeOrder, roomOrderByHome, itemOrder, collectionItemOrder, pinnedTabs, visibility, includedAccessoryIds, includedServiceGroupIds, developerMode, sendActivityLogs, lastView, settingsData, updateSettingsMutation]);
 
   // Keep saveSettingsRef in sync so debouncedSaveLastView (defined early) can call it
   saveSettingsRef.current = saveSettings;
@@ -5112,6 +5113,12 @@ const Dashboard = () => {
     saveSettings({ autoBackgrounds: value }, 'autoBackgrounds');
   }, [saveSettings]);
 
+  // Toggle the status readings under a home's name (optimistic)
+  const toggleShowHomeStatus = useCallback((value: boolean) => {
+    setShowHomeStatus(value);
+    saveSettings({ showHomeStatus: value }, 'showHomeStatus');
+  }, [saveSettings]);
+
   // Toggle full width (optimistic, browser-only)
   const toggleFullWidth = useCallback((value: boolean) => {
     setFullWidth(value);
@@ -5687,7 +5694,9 @@ const Dashboard = () => {
       .catch(() => toast.error('Could not save that arrangement'));
   }, [updateHomeLayout]);
 
-  const showStatus = isSummarySectionVisible(homeLayout, 'status');
+  // An app-wide display preference now. A home's old `hiddenSummarySections:
+  // ['status']` is left in its blob and no longer read.
+  const showStatus = showHomeStatus;
 
   const runHomeAction = useRunHomeAction({
     homeId: selectedHomeId,
@@ -7466,7 +7475,7 @@ const Dashboard = () => {
   // whole-home heading; a breadcrumb has enough in it already.
   const headingStatusDot = (
     <span className="ml-2 inline-flex items-center align-middle">
-      <StatusBadge variant="inline" inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId, section: 'reliability' }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
+      <StatusBadge variant="inline" inkIsLight={headerInkLight} haloStrong={headerHaloStrong} accountType={accountType} homeName={statusHomeName} homeId={statusHomeId} onOpenReliability={statusHomeId ? () => { setSettingsInitialHome({ homeId: statusHomeId }); setSettingsInitialTab('homes'); setSettingsOpen(true); } : undefined} onOpenRelaySettings={!isCommunity && isRelayCapable() ? () => { setSettingsInitialTab('self-hosted-relay'); setSettingsOpen(true); } : undefined} />
     </span>
   );
   // Between crumbs: a slash on the desktop line, a small chevron on the
@@ -8318,7 +8327,6 @@ const Dashboard = () => {
               onOpenChange={(open) => { setSettingsOpen(open); if (!open) { setCloudCheckoutJustCompleted(false); setSettingsInitialTab(undefined); setSettingsInitialHome(null); updateUrlParams({ settings: null }); } }}
               initialTab={settingsInitialTab}
               initialHomeId={settingsInitialHome?.homeId ?? null}
-              initialHomeSection={settingsInitialHome?.section ?? null}
               accountType={accountType}
               usedAccessorySlots={usedAccessorySlots}
               accessoryLimit={accessoryLimit}
@@ -8345,6 +8353,8 @@ const Dashboard = () => {
               toggleHideAccessoryCounts={toggleHideAccessoryCounts}
               groupByRoom={groupByRoom}
               toggleGroupByRoom={toggleGroupByRoom}
+              showHomeStatus={showHomeStatus}
+              toggleShowHomeStatus={toggleShowHomeStatus}
               layoutMode={layoutMode}
               changeLayoutMode={changeLayoutMode}
               fullWidth={fullWidth}
