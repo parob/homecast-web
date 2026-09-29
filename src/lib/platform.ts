@@ -7,6 +7,19 @@ export const checkIsInMacApp = (): boolean => {
   return false;
 };
 
+/** Inside a mobile native app WebView (iOS or Android), or an iOS home-screen PWA. */
+export const checkIsInMobileApp = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const w = window as Window & { isHomecastIOSApp?: boolean; isHomecastAndroidApp?: boolean; navigator: Navigator & { standalone?: boolean } };
+  // iOS native app
+  if (w.isHomecastIOSApp) return true;
+  // iOS standalone mode (home screen PWA)
+  if (w.navigator?.standalone && /iPhone|iPad|iPod/.test(navigator.userAgent)) return true;
+  // Android native app (Tauri)
+  if (w.isHomecastAndroidApp) return true;
+  return false;
+};
+
 export const isNativePurchaseAvailable = (): boolean => {
   if (typeof window === 'undefined') return false;
   return !!(window as any).isHomecastNativePurchaseAvailable;
