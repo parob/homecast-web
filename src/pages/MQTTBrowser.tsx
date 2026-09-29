@@ -90,6 +90,10 @@ export default function MQTTBrowser() {
     const p = searchParams.get('groupByRoom');
     return p === '1' ? true : p === '0' ? false : true;
   });
+  // Nest each group's accessories under the group's row. Off, a group is one
+  // more topic and its members sit in their own rooms — which is where they
+  // actually are, since a group can span rooms.
+  const [groupByGroup, setGroupByGroup] = useState(() => searchParams.get('groupByGroup') !== '0');
   // Sections default to collapsed; the user opens the ones they care about.
   const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
   const [openRooms, setOpenRooms] = useState<Set<string>>(new Set());  // keyed `${homeSlug}/${roomSlug}`
@@ -601,26 +605,26 @@ export default function MQTTBrowser() {
     return () => clearInterval(interval);
   }, [connected]);
 
-  // With both groupings off the pane is a plain MQTT topic list: every topic
+  // With every grouping off the pane is a plain MQTT topic list: every topic
   // its own row, fully qualified, nothing nested.
-  const flatList = !groupByHome && !groupByRoom;
+  const flatList = !groupByHome && !groupByRoom && !groupByGroup;
 
-  // Filter topics by search text. Group members are excluded while grouping —
-  // they render nested under their group node — but in the plain list a member
-  // is a topic like any other.
+  // Filter topics by search text. While groups nest, members are excluded here
+  // — they render under their group node. With group nesting off a member is a
+  // topic like any other.
   const filteredTopics = useMemo(() => {
     return Object.entries(messages)
       .filter(([topic]) => {
         if (filter && !topic.toLowerCase().includes(filter.toLowerCase())) return false;
-        if (!flatList && memberTopicSet.has(topic)) return false;
+        if (groupByGroup && memberTopicSet.has(topic)) return false;
         return true;
       })
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [messages, filter, memberTopicSet, flatList]);
+  }, [messages, filter, memberTopicSet, groupByGroup]);
 
   const topicTree = useMemo(
-    () => buildTopicTree(filteredTopics, groupMembers, slugToTopic, messages, { groupByHome, groupByRoom }),
-    [filteredTopics, groupMembers, slugToTopic, messages, groupByHome, groupByRoom],
+    () => buildTopicTree(filteredTopics, groupMembers, slugToTopic, messages, { groupByHome, groupByRoom, groupByGroup }),
+    [filteredTopics, groupMembers, slugToTopic, messages, groupByHome, groupByRoom, groupByGroup],
   );
 
   const onToggleHome = useCallback((slug: string) => {
@@ -788,6 +792,10 @@ export default function MQTTBrowser() {
                 <button onClick={() => { const next = !groupByRoom; setGroupByRoom(next); setOpenRooms(new Set()); updateUrlParams({ groupByRoom: next ? '1' : '0' }); }}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Rooms
+                </button>
+                <button onClick={() => { const next = !groupByGroup; setGroupByGroup(next); setOpenGroups(new Set()); updateUrlParams({ groupByGroup: next ? '1' : '0' }); }}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByGroup ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
+                  Groups
                 </button>
               </div>
             )}
