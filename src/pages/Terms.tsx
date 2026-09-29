@@ -74,7 +74,7 @@ const Terms = () => {
                 </p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1 ml-4 mb-3">
                   <li><strong>Standard</strong> — unlimited HomeKit accessories, push notifications, MQTT broker. Billed monthly. App Store: $10.99/month (or local equivalent). Web (Stripe): $8/month.</li>
-                  <li><strong>Cloud</strong> — everything in Standard, plus a managed cloud relay we host for you on dedicated Apple hardware (no Mac required at home). Billed monthly. App Store: $21.99/month (or local equivalent). Web (Stripe): $16/month.</li>
+                  <li><strong>Cloud</strong> — everything in Standard, plus a managed cloud relay we host for you on dedicated Apple hardware (no Mac required at home). Billed monthly. App Store: $21.99/month (or local equivalent). Web (Stripe): $20/month.</li>
                 </ul>
 
                 <h3 className="text-base font-semibold mt-4 mb-2">6.1 Auto-renewal</h3>
