@@ -79,6 +79,12 @@ const Pricing = () => {
                 With Cloud, we run the relay for you on real Apple hardware (Apple's HomeKit framework requires macOS).
                 The difference in price reflects the cost of that dedicated hardware and maintenance.
               </FAQItem>
+              <FAQItem question="How many homes does the Cloud plan include?">
+                The number of homes on our cloud relays is limited and subject to fair use. Homes
+                you run on your own Mac aren't limited. If you need more cloud relay homes, email{' '}
+                <a href="mailto:rob@homecast.cloud" className="underline underline-offset-2">rob@homecast.cloud</a>{' '}
+                and we'll add them when there's room.
+              </FAQItem>
               <FAQItem question="Do I need a Mac for the Cloud plan?">
                 No Mac required. With Cloud, we run the Homecast Relay for you. You just invite our
                 service to your Apple Home and we handle the rest. You will need an Apple Home Hub (Apple TV or

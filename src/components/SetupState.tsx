@@ -13,7 +13,7 @@ import type { SetupPath } from '@/components/OnboardingOverlay';
 import { isRelayCapable, isRelayEnabled } from '@/native/homekit-bridge';
 import { serverConnection } from '@/server/connection';
 import { buildDiagnosticsBundle, buildRelayOfflineSnapshot } from '@/lib/relay-diagnostics';
-import { CLOUD_SIGNUPS_PAUSED, CLOUD_RELAY_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
+import { CLOUD_SIGNUPS_PAUSED, CLOUD_RELAY_SIGNUPS_PAUSED, CLOUD_PLAN_HOMES_SHORT } from '@/lib/cloud-relay-copy';
 import { HomeConnectionSummary } from '@/components/layout/status/HomeConnectionSummary';
 
 function openExternalUrl(url: string) {
@@ -477,7 +477,7 @@ function GetStarted({ isDarkBackground, onSetupCloud, onSetupMac, cloudSignupsAv
                   We run the relay for you. Always on, no Mac needed. Requires an Apple Home Hub.
                 </p>
                 <p className={`text-xs mt-1.5 ml-11 font-medium ${isDarkBackground ? 'text-blue-400' : 'text-blue-500'}`}>
-                  {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories` : CLOUD_SIGNUPS_PAUSED}
+                  {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories · ${CLOUD_PLAN_HOMES_SHORT}` : CLOUD_SIGNUPS_PAUSED}
                 </p>
               </div>
               {cloudSignupsAvailable && <ArrowRight className={`h-4 w-4 shrink-0 ml-3 ${isDarkBackground ? 'text-white/30' : 'text-muted-foreground/50'}`} />}

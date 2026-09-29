@@ -409,8 +409,8 @@ const HowItWorks = () => {
                 <p>
                   Yes! A single Homecast relay handles all the HomeKit homes your Apple ID has access to.
                   If you have a primary residence and a vacation home, one relay covers both—no need for
-                  separate instances. On the Cloud plan, where we run the relay, one home is included
-                  for now while relay space is limited.
+                  separate instances. On the Cloud plan, the number of homes on our cloud relays is
+                  limited and subject to fair use; homes on your own Mac aren't.
                 </p>
               </FAQItem>
 
