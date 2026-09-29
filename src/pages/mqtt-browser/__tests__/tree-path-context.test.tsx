@@ -28,10 +28,10 @@ const slugToTopic = new Map(Object.keys(messages).map(t => [t.split('/').pop()!,
 function rowText(groupByHome: boolean, groupByRoom: boolean, groupByGroup = true): string[] {
   cleanup();
   const flat = !groupByHome && !groupByRoom && !groupByGroup;
-  // What MQTTBrowser hands the pane: members nest under their group while
-  // grouping, and are ordinary topics in the plain list.
+  // What MQTTBrowser hands the pane: with groups on, members nest under their
+  // group; with groups off, the groups are gone and members are ordinary rows.
   const all = Object.entries(messages).sort(([a], [b]) => a.localeCompare(b));
-  const topics = groupByGroup ? all.filter(([t]) => t !== MEMBER_ELSEWHERE) : all;
+  const topics = groupByGroup ? all.filter(([t]) => t !== MEMBER_ELSEWHERE) : all.filter(([t]) => t !== GROUP);
   const tree = buildTopicTree(topics, groupMembers, slugToTopic, messages, { groupByHome, groupByRoom, groupByGroup });
   render(
     <TreePane
@@ -83,13 +83,12 @@ describe('MQTT tree: rows name what their headers do not', () => {
     expect(rows).toContain(`${HOME}/home-mode-80d9`);
   });
 
-  it('no grouping: a plain topic list, fully qualified and in topic order', () => {
+  it('no grouping: a plain list of the accessories, fully qualified and in topic order', () => {
     const rows = rowText(false, false, false);
     expect(rows).toEqual([
       `homecast/${HOME}/hall-77aa/hall-lamp-3c4d`,
       `homecast/${HOME}/home-mode-80d9`,
       `homecast/${HOME}/living-a751/living-room-lamp-1a2b`,
-      `homecast/${HOME}/living-a751/living-room-lights-9f00`,
     ]);
   });
 
@@ -100,11 +99,12 @@ describe('MQTT tree: rows name what their headers do not', () => {
     expect(rows.some(r => r.startsWith('homecast/'))).toBe(false);
   });
 
-  it('groups off: a member sits in its own room, and the group is one more row in its room', () => {
+  it('groups off: the groups are gone, and a member sits in its own room', () => {
     const rows = rowText(true, true, false);
     // The hall lamp is in the hall, under the hall header — not under the living-room group.
     expect(rows).toContain('hall-lamp-3c4d');
-    expect(rows).toContain('living-room-lights-9f00');
     expect(document.body.textContent).toContain('hall-77aa');
+    expect(rows.some(r => r.includes('living-room-lights-9f00'))).toBe(false);
+    expect(document.body.textContent).not.toMatch(/group/i);
   });
 });
