@@ -4,14 +4,15 @@ import { Link, Navigate, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { AuthShell, AuthCard, AuthTitle, AuthDescription, AuthLoading, isWebsite } from '@/components/auth/AuthShell';
+import { signupPlanDestination } from '@/lib/signup-plan';
 import { Label } from '@/components/ui/label';
 import { Home, Loader2, Shield, Wifi } from 'lucide-react';
 import { useMutation } from '@apollo/client/react';
 import { RESEND_VERIFICATION_EMAIL } from '@/lib/graphql/mutations';
 
 import { config, isCommunity, getCommunityMode, getRelayAddress } from '@/lib/config';
-import { HomecastMark } from '@/components/HomecastMark';
 
 // Read through a getter rather than snapshotted at import: the relay's
 // address can change while the app is running.
@@ -245,27 +246,21 @@ const Login = () => {
   }, [isAuthenticated, isOAuthFlow, oauthParams, token]);
 
   if (authLoading || !communityChecked) {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-primary/10" />
-        <Loader2 className="relative z-10 h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <AuthLoading />;
   }
 
   // Redirect to portal if authenticated
   if (isAuthenticated && !isOAuthFlow) {
-    const destination = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/portal';
+    // A plan picked on the Pricing page before signing up continues to its
+    // checkout, unless something asked to come back somewhere specific.
+    const destination = redirectTo && redirectTo.startsWith('/')
+      ? redirectTo
+      : (!isCommunity && signupPlanDestination()) || '/portal';
     // mqtt_sync hand-off needs a full reload so AuthContext.checkAuth re-runs
     // and bounces the user back to mqtt.* — client-side Navigate skips it.
     if (destination.includes('mqtt_sync=1')) {
       window.location.replace(destination);
-      return (
-        <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-primary/10" />
-          <Loader2 className="relative z-10 h-8 w-8 animate-spin text-primary" />
-        </div>
-      );
+      return <AuthLoading />;
     }
     return <Navigate to={destination} replace />;
   }
@@ -299,40 +294,23 @@ const Login = () => {
     setResending(false);
   };
 
+  const signupLink = redirectTo ? `/signup?redirect=${encodeURIComponent(redirectTo)}` : '/signup';
+  const showSignupAside = !isCommunity && !isOAuthFlow && isWebsite();
+
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center px-4 overflow-hidden">
-      {/* Animated gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-primary/10" />
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-primary/30 to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-amber-500/20 to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-        <div className="absolute top-1/4 right-1/4 w-1/2 h-1/2 bg-gradient-to-bl from-primary/20 to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDuration: '12s', animationDelay: '4s' }} />
-      </div>
+    <AuthShell aside={showSignupAside ? <>New to Homecast? <Link to={signupLink} className="font-medium text-primary hover:underline">Sign up</Link></> : undefined}>
+      <AuthCard>
 
-      {/* Logo */}
-      <div className="relative z-10 mb-8 flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/25">
-          <HomecastMark className="h-6 w-6 text-primary-foreground" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-2xl font-bold" style={{ lineHeight: 1.2 }}>Homecast</span>
-          {isCommunity && (
-            <span className="text-xs text-muted-foreground font-medium">Community Edition</span>
-          )}
-        </div>
-      </div>
-
-      <Card className="relative z-10 w-full max-w-md border-white/20 bg-background/80 backdrop-blur-xl shadow-2xl">
         {/* --- Community: Setup flow (first launch) --- */}
         {isCommunity && showSetup ? (
           <>
-            <CardHeader className="text-center">
-              <CardTitle className="text-2xl">{connectMode ? 'Connect to Relay' : 'Get Started'}</CardTitle>
-              <CardDescription>
+            <CardHeader className="space-y-2">
+              <AuthTitle>{connectMode ? 'Connect to Relay' : 'Get Started'}</AuthTitle>
+              <AuthDescription>
                 {connectMode
                   ? 'Enter the address of your Homecast relay'
                   : 'Control your Apple Home devices from anywhere'}
-              </CardDescription>
+              </AuthDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {connectMode ? (
@@ -354,7 +332,7 @@ const Login = () => {
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center">
+                <p className="text-sm text-muted-foreground">
                   Set up this Mac as a relay, or connect to an existing one on your network.
                 </p>
               )}
@@ -397,16 +375,16 @@ const Login = () => {
         /* --- Community: Relay not ready --- */
         ) : isCommunity && relayNotReady ? (
           <>
-            <CardHeader className="text-center">
-              <CardTitle className="text-xl">Relay not ready</CardTitle>
-              <CardDescription className="mt-2">
+            <CardHeader className="space-y-2">
+              <AuthTitle>Relay not ready</AuthTitle>
+              <AuthDescription>
                 {(getRelayAddress() || config.apiUrl) && (
                   <span className="font-mono text-foreground block mb-1">{getRelayAddress() || config.apiUrl}</span>
                 )}
                 {getRelayAddress()
                   ? 'Could not connect. Make sure the relay is running.'
                   : 'The Homecast relay hasn\'t been set up yet. Open the Homecast app on the relay Mac first.'}
-              </CardDescription>
+              </AuthDescription>
             </CardHeader>
             <CardContent className="space-y-3 pb-3">
               <Button className="w-full" onClick={() => setRetryNonce(n => n + 1)}>
@@ -466,15 +444,15 @@ const Login = () => {
         /* --- Community: still asking the relay what it wants --- */
         ) : isCommunity && !relayKnown ? (
           <>
-            <CardHeader className="text-center">
-              <CardTitle className="text-xl">Connecting…</CardTitle>
-              <CardDescription className="mt-2">
+            <CardHeader className="space-y-2">
+              <AuthTitle>Connecting…</AuthTitle>
+              <AuthDescription>
                 {/* The address is the diagnostic: if it names this device
                     rather than the relay, the app is talking to itself. */}
                 <span className="font-mono text-foreground block mb-1">
                   {getRelayAddress() || config.apiUrl}
                 </span>
-              </CardDescription>
+              </AuthDescription>
             </CardHeader>
             <CardContent className="flex justify-center pb-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -483,15 +461,15 @@ const Login = () => {
 
         ) : isCommunity ? (
           <>
-            <CardHeader className="text-center">
-              <CardTitle className="text-2xl">{needsOwner ? 'Create your account' : 'Sign In'}</CardTitle>
-              <CardDescription>
+            <CardHeader className="space-y-2">
+              <AuthTitle>{needsOwner ? 'Create your account' : 'Sign In'}</AuthTitle>
+              <AuthDescription>
                 {needsOwner
                   ? 'This relay has authentication on but no accounts yet. Pick a username and password — this account will own the relay.'
                   : getRelayAddress()
                     ? <>Connected to <span className="font-mono text-foreground">{getRelayAddress()}</span></>
                     : 'Authentication is enabled on this relay'}
-              </CardDescription>
+              </AuthDescription>
             </CardHeader>
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
@@ -585,16 +563,21 @@ const Login = () => {
         ) : (
           <>
             {isOAuthFlow ? (
-              <CardHeader className="text-center">
-                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+              <CardHeader className="space-y-2">
+                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                   <Shield className="h-5 w-5 text-primary" />
                 </div>
-                <CardTitle className="text-2xl">Sign in to continue</CardTitle>
-                <CardDescription>An application is requesting access to your Homecast account</CardDescription>
+                <AuthTitle>Sign in to continue</AuthTitle>
+                <AuthDescription>An application is requesting access to your Homecast account</AuthDescription>
               </CardHeader>
-            ) : null}
+            ) : (
+              <CardHeader className="space-y-2">
+                <AuthTitle>Welcome back</AuthTitle>
+                <AuthDescription>Sign in to your Homecast account.</AuthDescription>
+              </CardHeader>
+            )}
             <form onSubmit={handleSubmit}>
-              <CardContent className={`space-y-4 ${!isOAuthFlow ? 'pt-6' : ''}`}>
+              <CardContent className="space-y-4">
                 {error && (
                   <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive space-y-2">
                     <p>{error}</p>
@@ -648,12 +631,14 @@ const Login = () => {
                   {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Sign In
                 </Button>
-                <p className="text-sm text-muted-foreground">
-                  Don't have an account?{' '}
-                  <Link to={redirectTo ? `/signup?redirect=${encodeURIComponent(redirectTo)}` : '/signup'} className="text-primary hover:underline">
-                    Sign up
-                  </Link>
-                </p>
+                {!showSignupAside && (
+                  <p className="text-sm text-muted-foreground">
+                    Don't have an account?{' '}
+                    <Link to={signupLink} className="text-primary hover:underline">
+                      Sign up
+                    </Link>
+                  </p>
+                )}
                 {isInNativeApp && (
                   <div className="w-full border-t pt-3">
                     <Button variant="outline" size="sm" className="w-full" type="button" onClick={switchMode}>
@@ -665,8 +650,8 @@ const Login = () => {
             </form>
           </>
         )}
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthShell>
   );
 };
 
