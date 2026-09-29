@@ -71,9 +71,10 @@ describe('virtual accessories in the MQTT browser', () => {
   });
 
   it('publishes a widget change back under the key the bridge accepts', () => {
-    expect(mqttPublishFor('virtual_mode', 'virtual_mode', 'Away')).toEqual({ key: 'mode', value: 'Away' });
-    expect(mqttPublishFor('virtual_count', 'virtual_count', 7)).toEqual({ key: 'count', value: 7 });
-    expect(mqttPublishFor('virtual_text', 'virtual_text', 'hi')).toEqual({ key: 'text', value: 'hi' });
+    const acc = (payload: string) => mqttToAccessory('homecast/home-1111/helper-abcd', payload, true)!.accessory;
+    expect(mqttPublishFor(acc('{"mode": "Home"}'), 'virtual_mode', 'Away')).toEqual({ key: 'mode', value: 'Away' });
+    expect(mqttPublishFor(acc('{"count": 3}'), 'virtual_count', 7)).toEqual({ key: 'count', value: 7 });
+    expect(mqttPublishFor(acc('{"text": ""}'), 'virtual_text', 'hi')).toEqual({ key: 'text', value: 'hi' });
   });
 
   it('leaves a boolean helper looking like the switch it is', () => {
@@ -87,5 +88,12 @@ describe('virtual accessories in the MQTT browser', () => {
     expect(inferServiceType({ current_temp: 20.5 })).toBe('temperature_sensor');
     expect(inferServiceType({ locked: 1 })).toBe('lock');
     expect(inferServiceType({ active: 1, speed: 30 })).toBe('fan');
+  });
+
+  it('keeps a virtual helper virtual even when /info names another service', () => {
+    const out = mqttToAccessory('homecast/home-1111/helper-abcd', '{"mode": "Home"}', true,
+      { keys: { mode: { service: 'other', writable: true } } });
+    expect(out!.type).toBe('virtual_mode');
+    expect(out!.accessory.services[0].serviceType).toBe('virtual_mode');
   });
 });

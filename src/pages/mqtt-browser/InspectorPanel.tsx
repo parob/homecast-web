@@ -3,13 +3,15 @@ import { homeRelayStatus } from './home-relay-status';
 import { Send, X } from 'lucide-react';
 import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
 import { PropertyEditor, TopicPath, TypeBadge } from './helpers';
-import { mqttToAccessory, mqttPublishFor } from './widget-adapter';
+import { mqttToAccessory, mqttPublishFor, type DeviceInfo } from './widget-adapter';
 import type { TopicMessage, MqttRowType } from './topic-tree';
 
 interface InspectorPanelProps {
   topic: string;
   message: TopicMessage | undefined;
   effectivePayload: string;
+  /** The retained `/info` for this topic, when the bridge published one. */
+  info?: DeviceInfo | null;
   rowType: MqttRowType;
   home?: { id: string; name: string };
   managed?: boolean;
@@ -30,7 +32,7 @@ interface InspectorPanelProps {
 // property editor for unknown types) plus the JSON payload editor that
 // publishes to <topic>/set.
 export function InspectorPanel({
-  topic, message, effectivePayload, rowType, home, managed,
+  topic, message, effectivePayload, info, rowType, home, managed,
   rawMode, onRawModeChange, publishValue, onPublishValueChange,
   onPublishToSet, onPublishProp, onClose, variant,
 }: InspectorPanelProps) {
@@ -38,21 +40,21 @@ export function InspectorPanel({
   const relay = homeRelayStatus(home?.name ?? 'This home', serving, managed);
   const unavailable = !!serving && serving.state !== 'served';
   const renderControls = () => {
-    const adapted = mqttToAccessory(topic, effectivePayload, !unavailable);
+    const adapted = mqttToAccessory(topic, effectivePayload, !unavailable, info);
     if (!adapted) {
       return <PropertyEditor payload={effectivePayload} onPublish={(k, v) => onPublishProp(topic, k, v)} />;
     }
-    const { accessory, type } = adapted;
+    const { accessory } = adapted;
     return (
       <AccessoryWidget
         accessory={accessory}
         onToggle={(_id, characteristicType, currentValue) => {
-          const out = mqttPublishFor(type, characteristicType, !currentValue);
+          const out = mqttPublishFor(accessory, characteristicType, !currentValue);
           if (!out) return;
           onPublishProp(topic, out.key, out.value);
         }}
         onSlider={(_id, characteristicType, value) => {
-          const out = mqttPublishFor(type, characteristicType, value);
+          const out = mqttPublishFor(accessory, characteristicType, value);
           if (!out) return;
           onPublishProp(topic, out.key, out.value);
         }}
@@ -61,7 +63,7 @@ export function InspectorPanel({
         // widget called an undefined handler and the press did nothing at all —
         // every string-valued control in the browser was inert.
         onSetValue={(_id, characteristicType, value) => {
-          const out = mqttPublishFor(type, characteristicType, value);
+          const out = mqttPublishFor(accessory, characteristicType, value);
           if (!out) return;
           onPublishProp(topic, out.key, out.value);
         }}

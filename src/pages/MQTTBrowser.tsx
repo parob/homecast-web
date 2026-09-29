@@ -13,6 +13,7 @@ import { ConnectDialog } from './mqtt-browser/ConnectDialog';
 import { HomeInfoDialog } from './mqtt-browser/HomeInfoDialog';
 import { TreePane } from './mqtt-browser/TreePane';
 import { InspectorPanel } from './mqtt-browser/InspectorPanel';
+import { parseDeviceInfo, type DeviceInfo } from './mqtt-browser/widget-adapter';
 import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
 import {
   buildSlugToTopicMap, buildMemberTopicSet, buildTopicTree, findGroupForTopic,
@@ -66,6 +67,7 @@ export default function MQTTBrowser() {
   const [rawMode, setRawMode] = useState(() => searchParams.get('view') === 'json');
   const [publishValues, setPublishValues] = useState<Record<string, string>>({});
   const [availability, setAvailability] = useState<Record<string, string>>({});  // baseTopic → "online"|"offline"
+  const [deviceInfo, setDeviceInfo] = useState<Record<string, DeviceInfo>>({});  // baseTopic → retained /info
   const [groupMembers, setGroupMembers] = useState<Record<string, string[]>>({});  // groupTopic → [accessory slugs]
   const [publishHistory, setPublishHistory] = useState<Array<{ topic: string; payload: string; timestamp: number }>>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -324,13 +326,16 @@ export default function MQTTBrowser() {
       'homecast/beach-house-1111/kitchen-aaaa/lamp-a1b2':       mk({ on: true,  brightness: 72, color_temp: 350, hue: 45, saturation: 80 }, 3),
       'homecast/beach-house-1111/kitchen-aaaa/fan-9c8d':        mk({ active: 1, speed: 30 }, 12),
       'homecast/beach-house-1111/kitchen-aaaa/outlet-77b1':     mk({ on: false }, 60),
-      'homecast/beach-house-1111/kitchen-aaaa/sensor-44f1':     mk({ current_temp: 22.5, relative_humidity: 45, battery_level: 88 }, 8),
+      'homecast/beach-house-1111/kitchen-aaaa/sensor-44f1':     mk({ current_temp: 22.5, relative_humidity: 45, battery: 88 }, 8),
       'homecast/beach-house-1111/kitchen-aaaa/lights-group':    mk({ on: true, brightness: 40 }, 4),
       // --- Beach House / bedroom ---
       'homecast/beach-house-1111/bedroom-bbbb/lamp-77a2':       mk({ on: false, brightness: 0, color_temp: 270 }, 600),
-      'homecast/beach-house-1111/bedroom-bbbb/thermo-22a3':     mk({ active: 1, current_temp: 19.5, heat_target: 21, cool_target: 24, hvac_mode: 'heat', relative_humidity: 48 }, 30),
+      // An air conditioner is a heater/cooler with a fan speed — the payload
+      // alone reads like a fan, which is what its /info below is for.
+      'homecast/beach-house-1111/bedroom-bbbb/air-conditioner-22a3': mk({ active: 1, current_temp: 20, heat_target: 17, cool_target: 17, hvac_mode: 2, hvac_state: 3, speed: 100, swing_mode: 0 }, 30),
+      'homecast/beach-house-1111/bedroom-bbbb/blinds-4216':     mk({ battery: 10, low_battery: 1, position: 0, target: 0, position_state: 2, obstruction: false }, 45),
       'homecast/beach-house-1111/bedroom-bbbb/lock-9911':       mk({ locked: 1 }, 3600),
-      'homecast/beach-house-1111/bedroom-bbbb/motion-12cd':     mk({ motion: false, battery_level: 72 }, 90),
+      'homecast/beach-house-1111/bedroom-bbbb/motion-12cd':     mk({ motion: false, battery: 72 }, 90),
       // --- County Hall (offline relay) ---
       'homecast/county-hall-2222/lounge-cccc/lamp-ff00':        mk({ on: true, brightness: 100 }, 5000),
       'homecast/county-hall-2222/lounge-cccc/speaker-3344':     mk({ volume: 35, mute: false }, 5000),
@@ -343,11 +348,35 @@ export default function MQTTBrowser() {
       'homecast/beach-house-1111/kitchen-aaaa/sensor-44f1':     'online',
       'homecast/beach-house-1111/kitchen-aaaa/lights-group':    'online',
       'homecast/beach-house-1111/bedroom-bbbb/lamp-77a2':       'online',
-      'homecast/beach-house-1111/bedroom-bbbb/thermo-22a3':     'online',
+      'homecast/beach-house-1111/bedroom-bbbb/air-conditioner-22a3': 'online',
+      'homecast/beach-house-1111/bedroom-bbbb/blinds-4216':     'online',
       'homecast/beach-house-1111/bedroom-bbbb/lock-9911':       'online',
       'homecast/beach-house-1111/bedroom-bbbb/motion-12cd':     'online',
       'homecast/county-hall-2222/lounge-cccc/lamp-ff00':        'offline',
       'homecast/county-hall-2222/lounge-cccc/speaker-3344':     'offline',
+    });
+    // Shaped exactly like what the bridges publish for these two (captured from
+    // a live relay's accessories.list, 2026-09-29).
+    const hc = (k: object) => ({ service: 'heater_cooler', writable: true, ...k });
+    const wc = (k: object) => ({ service: 'window_covering', writable: false, ...k });
+    setDeviceInfo({
+      'homecast/beach-house-1111/bedroom-bbbb/air-conditioner-22a3': {
+        category: 'Other', manufacturer: 'Powrmatic', model: 'Default-Model',
+        keys: {
+          active: hc({ valid: [0, 1] }), current_temp: hc({ writable: false }),
+          heat_target: hc({ min: 16, max: 31, step: 1 }), cool_target: hc({ min: 16, max: 31, step: 1 }),
+          hvac_mode: hc({ min: 0, max: 2, step: 1, valid: [0, 1, 2] }), hvac_state: hc({ writable: false, valid: [0, 1, 2, 3] }),
+          speed: hc({ min: 0, max: 100, step: 1 }), swing_mode: hc({ valid: [0, 1] }),
+        },
+      },
+      'homecast/beach-house-1111/bedroom-bbbb/blinds-4216': {
+        category: 'Window Covering', manufacturer: 'Eve Systems', model: 'Eve MotionBlinds 20CAA9901',
+        keys: {
+          position: wc({ min: 0, max: 100, step: 1 }), target: wc({ writable: true, min: 0, max: 100, step: 1 }),
+          position_state: wc({}), obstruction: wc({}),
+          battery: { service: 'battery', writable: false, min: 0, max: 100 }, low_battery: { service: 'battery', writable: false },
+        },
+      },
     });
     setGroupMembers({
       'homecast/beach-house-1111/kitchen-aaaa/lights-group': [
@@ -411,6 +440,19 @@ export default function MQTTBrowser() {
           const baseTopic = topic.replace(/\/availability$/, '');
           setAvailability(prev => {
             if (!isTombstone) return { ...prev, [baseTopic]: text };
+            if (!(baseTopic in prev)) return prev;
+            const { [baseTopic]: _gone, ...rest } = prev;
+            return rest;
+          });
+          return;
+        }
+        // What the accessory is — its services, bounds and maker — which the
+        // state payload cannot say. Not a row of its own.
+        if (topic.endsWith('/info')) {
+          const baseTopic = topic.replace(/\/info$/, '');
+          const info = isTombstone ? null : parseDeviceInfo(text);
+          setDeviceInfo(prev => {
+            if (info) return { ...prev, [baseTopic]: info };
             if (!(baseTopic in prev)) return prev;
             const { [baseTopic]: _gone, ...rest } = prev;
             return rest;
@@ -597,6 +639,7 @@ export default function MQTTBrowser() {
       topic={selectedTopic}
       message={selectedMessage}
       effectivePayload={selectedEp}
+      info={deviceInfo[selectedTopic]}
       rowType={rowTypeForTopic(selectedTopic, groupMembers)}
       home={homeForSlug(selectedTopic.split('/')[1] || '')}
       managed={managed}
@@ -802,6 +845,7 @@ export default function MQTTBrowser() {
               selectedTopic={selectedTopic}
               onSelect={selectTopic}
               availability={availability}
+              deviceInfo={deviceInfo}
               groupMembers={groupMembers}
               getEffectivePayload={getEffectivePayloadFor}
             />

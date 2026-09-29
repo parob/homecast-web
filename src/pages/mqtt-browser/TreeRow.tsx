@@ -1,11 +1,13 @@
 import { TopicPath, FmtVal, TypeBadge, AccessoryTypeIcon } from './helpers';
 import type { TopicMessage, MqttRowType } from './topic-tree';
+import type { DeviceInfo } from './widget-adapter';
 
 interface TreeRowProps {
   topic: string;
   message: TopicMessage;
   effectivePayload: string;
   availability?: string; // 'online' | 'offline' | undefined
+  info?: DeviceInfo | null;
   rowType: MqttRowType;
   indentPx: number;
   shortPath?: boolean;
@@ -22,7 +24,7 @@ export function rowKey(topic: string, message: TopicMessage): string {
 // Read-only leaf row: availability dot, type icon + badge, topic path,
 // live value summary and timestamp. Clicking selects the topic for the
 // inspector — rows never expand in place.
-export function TreeRow({ topic, message, effectivePayload, availability, rowType, indentPx, shortPath, selected, onSelect }: TreeRowProps) {
+export function TreeRow({ topic, message, effectivePayload, availability, info, rowType, indentPx, shortPath, selected, onSelect }: TreeRowProps) {
   const isOffline = availability === 'offline';
   const isRecent = Date.now() - message.timestamp < 8000;
   return (
@@ -34,7 +36,7 @@ export function TreeRow({ topic, message, effectivePayload, availability, rowTyp
       style={{ paddingLeft: Math.max(indentPx, 12) }}
     >
       {availability && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOffline ? 'bg-muted-foreground/50' : 'bg-green-500'}`} />}
-      <AccessoryTypeIcon payload={effectivePayload} />
+      <AccessoryTypeIcon payload={effectivePayload} info={info} />
       <TypeBadge type={rowType} />
       <span className="font-mono text-xs text-muted-foreground min-w-0 truncate">
         <TopicPath topic={topic} short={shortPath} />

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { CircleDot } from 'lucide-react';
 import { getAccessoryIcon } from '@/components/AccessoryPicker';
-import { inferServiceType } from './widget-adapter';
+import { inferServiceType, type DeviceInfo } from './widget-adapter';
 import type { MqttRowType } from './topic-tree';
 
 const RANGES: Record<string, { min: number; max: number }> = {
@@ -72,16 +72,20 @@ export function TypeBadge({ type }: { type: MqttRowType }) {
 // Lucide icon for the accessory type derived from the MQTT payload.
 // Reuses the same icon map the Dashboard's AccessoryPicker uses, so the
 // MQTT browser visually matches the rest of the app.
-export function AccessoryTypeIcon({ payload, className }: { payload: string; className?: string }) {
+export function AccessoryTypeIcon({ payload, info, className }: { payload: string; info?: DeviceInfo | null; className?: string }) {
   const Icon = useMemo(() => {
     try {
       const p = JSON.parse(payload);
       if (!p || typeof p !== 'object') return CircleDot;
+      // With /info, the accessory's own services — the app picks its icon from
+      // exactly these, so the row matches the tile.
+      const infoServices = [...new Set(Object.values(info?.keys ?? {}).map(k => k.service).filter((s): s is string => !!s))];
+      if (infoServices.length) return getAccessoryIcon({ services: infoServices.map(serviceType => ({ serviceType })) });
       const serviceType = inferServiceType(p as Record<string, unknown>);
       if (serviceType === 'unknown') return CircleDot;
       return getAccessoryIcon({ services: [{ serviceType }] });
     } catch { return CircleDot; }
-  }, [payload]);
+  }, [payload, info]);
   return <Icon className={className || 'h-3.5 w-3.5 text-muted-foreground shrink-0'} />;
 }
 
