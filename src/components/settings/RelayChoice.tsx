@@ -3,7 +3,7 @@ import { Check, Info, Server } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CloudRelayOption } from '@/lib/graphql/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { availabilityLabel, isFull, recommendationReason, relayHostedIn } from '@/lib/relay-picker';
+import { availabilityLabel, isFull, recommendationReason, relayRegionCode } from '@/lib/relay-picker';
 
 /**
  * Which relay the home will go to, inside the add-home dialog.
@@ -13,7 +13,7 @@ import { availabilityLabel, isFull, recommendationReason, relayHostedIn } from '
  * list with how much space each relay has and whether it's up.
  *
  * Where a relay is sits behind its info button, not in its name: see
- * `relayHostedIn`.
+ * `relayRegionCode`.
  */
 export function RelayChoice({ relays, selectedId, onSelect, regionHint }: {
   relays: CloudRelayOption[];
@@ -108,10 +108,10 @@ export function RelayChoice({ relays, selectedId, onSelect, regionHint }: {
   );
 }
 
-/** Where the relay is, on request. Absent when the server doesn't say. */
+/** The relay's region, on request. Absent when the server doesn't say. */
 function RelayInfo({ relay }: { relay: CloudRelayOption }) {
-  const hostedIn = relayHostedIn(relay);
-  if (!hostedIn) return null;
+  const region = relayRegionCode(relay);
+  if (!region) return null;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -123,11 +123,8 @@ function RelayInfo({ relay }: { relay: CloudRelayOption }) {
           <Info className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" className="z-[10040] w-60 p-3 space-y-1">
-        <p className="text-xs font-medium">{hostedIn}</p>
-        <p className="text-xs text-muted-foreground">
-          Your home connects to it through Apple Home, so it works wherever you are.
-        </p>
+      <PopoverContent side="top" className="z-[10040] w-auto px-3 py-2">
+        <p className="text-xs"><span className="text-muted-foreground">Region</span> <span className="font-medium">{region}</span></p>
       </PopoverContent>
     </Popover>
   );
