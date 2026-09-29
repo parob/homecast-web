@@ -3,9 +3,9 @@
  *
  * parob/homecast-cloud#122 asked for the collapsed log to be a floating button
  * in the bottom-right, on the same alignment as the tab bar, taking no insets.
- * Both halves of that are geometry a browser has to measure: the squash is
- * `DebugDock` sizing a flex column, and the tab bar's lift is a `bottom` it
- * reads from `lib/debug-dock`. jsdom does no layout and would report neither.
+ * Both halves of that are geometry a browser has to measure: whether the
+ * document still scrolls under the dock, and the tab bar's lift is a `bottom`
+ * it reads from `lib/debug-dock`. jsdom does no layout and would report neither.
  *
  * `REQUEST_LOG_LABEL` names the side being captured, so the before and the
  * after can be filed side by side from two checkouts:
@@ -73,11 +73,14 @@ async function geometry(page: Page) {
     // The glass pill itself — the row's parent — not a chip inside it. The
     // outer edge is what the new button is being lined up with.
     const pill = document.querySelector<HTMLElement>('[data-tab-row]')?.parentElement as HTMLElement | null;
-    // The app's own column inside DebugDock — the thing that gets squashed.
+    // The app's own column inside DebugDock, if it has been squashed into one.
     // Anchored on the header's ⋮ because it needs *any* element known to be
     // inside the app shell, and the ☰ this used to use no longer renders in a
-    // browser at all (parob/homecast-web#133).
+    // browser at all (parob/homecast-web#133). A browser is never squashed —
+    // it scrolls the document, which the box would take away (#260) — so here
+    // this is expected to be absent.
     const app = document.querySelector<HTMLElement>('[data-tour="header-menu"]')?.closest('div[style*="translateZ"]') as HTMLElement | null;
+    const scroller = document.scrollingElement as HTMLElement;
     const control = document.querySelector<HTMLElement>('[aria-label="Expand request log"]');
     const r = (el: HTMLElement | null) => {
       if (!el) return null;
@@ -102,8 +105,10 @@ async function geometry(page: Page) {
       barRight: bar ? Math.round(bar.getBoundingClientRect().right) : null,
       tabGutter,
       barBottomStyle: bar?.style.bottom ?? null,
-      // What the app has left of the screen. Full height = not squashed.
-      appHeight: app ? Math.round(app.getBoundingClientRect().height) : null,
+      // Whether the app sits in DebugDock's squash box at all.
+      boxed: !!app,
+      // Whether the document still has somewhere to scroll.
+      docScrolls: scroller.scrollHeight > vh,
       // How far the tab pill sits off the bottom edge — the floor the request
       // asked the new button to share.
       tabFloor: pill ? Math.round(vh - pill.getBoundingClientRect().bottom) : null,
@@ -147,9 +152,11 @@ test.describe('the minimised request log', () => {
     await minimise(page);
     const g = await geometry(page);
 
-    // No insets: the app keeps the whole screen and the tab bar stays on the
-    // bottom edge. Before #122 the dock published 52px and took both.
-    expect(g.appHeight).toBe(g.viewport.height);
+    // No insets: the app is not boxed, the document still scrolls, and the tab
+    // bar stays on the bottom edge. Before #122 the dock published 52px and
+    // took both; before #260 the box left a browser nothing to scroll.
+    expect(g.boxed).toBe(false);
+    expect(g.docScrolls).toBe(true);
     expect(g.barBottomStyle).toBe('0px');
 
     // Bottom-right, on the tab bar's own floor and in its own 16px gutter.
