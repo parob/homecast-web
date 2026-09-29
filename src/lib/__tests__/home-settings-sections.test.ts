@@ -1,14 +1,11 @@
 /**
- * The home sub-section catalog drives two navigations (the desktop sidebar and
- * the mobile push list). A gate that disagrees between them strands a user on a
- * page they can't get back to, so the gates are pinned here rather than left to
- * whichever component renders first.
+ * The home section catalog decides what a home's settings page stacks, and in
+ * what order. The gates are pinned here rather than left to the page.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
   HOME_SETTINGS_SECTION_ORDER,
-  HOME_SETTINGS_SECTION_META,
   visibleHomeSettingsSections,
   type HomeSettingsSectionFlags,
 } from '@/lib/home-settings-sections';
@@ -29,7 +26,6 @@ describe('visibleHomeSettingsSections', () => {
     expect(visibleHomeSettingsSections(flags())).toEqual([
       'home-screen',
       'notifications',
-      'reliability',
       'analytics',
       'cameras',
     ]);
@@ -40,10 +36,9 @@ describe('visibleHomeSettingsSections', () => {
     expect(visibleHomeSettingsSections(flags({ isCommunity: true }))).not.toContain('cameras');
   });
 
-  it('hides Notifications and Reliability in Community mode — neither has a backend', () => {
+  it('hides Notifications in Community mode — push has no backend there', () => {
     const visible = visibleHomeSettingsSections(flags({ isCommunity: true }));
     expect(visible).not.toContain('notifications');
-    expect(visible).not.toContain('reliability');
     expect(visible).toEqual(['home-screen', 'analytics']);
   });
 
@@ -71,20 +66,5 @@ describe('visibleHomeSettingsSections', () => {
     const visible = visibleHomeSettingsSections(flags({ developerMode: true, mqttBridgeAvailable: true }));
     const canonical = HOME_SETTINGS_SECTION_ORDER.filter(id => visible.includes(id));
     expect(visible).toEqual(canonical);
-  });
-});
-
-describe('catalog integrity', () => {
-  it('gives every ordered section a label and description', () => {
-    for (const id of HOME_SETTINGS_SECTION_ORDER) {
-      expect(HOME_SETTINGS_SECTION_META[id]?.label).toBeTruthy();
-      expect(HOME_SETTINGS_SECTION_META[id]?.description).toBeTruthy();
-    }
-  });
-
-  it('orders every section it has metadata for — no unreachable pages', () => {
-    expect(HOME_SETTINGS_SECTION_ORDER.slice().sort()).toEqual(
-      (Object.keys(HOME_SETTINGS_SECTION_META) as typeof HOME_SETTINGS_SECTION_ORDER).slice().sort(),
-    );
   });
 });

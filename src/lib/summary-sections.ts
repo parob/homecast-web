@@ -15,6 +15,11 @@
  * must stay in SUMMARY_SECTION_ORDER for that to hold, because every write is
  * normalised through that array.
  *
+ * **Only `actions` is still switched here.** Apple Home scenes (`scenes`) always
+ * show unless hidden one by one, and Status became an app-wide Display setting
+ * (`showHomeStatus`). Both ids stay in SUMMARY_SECTION_ORDER so a normalising
+ * write does not discard what older builds stored — they are simply not read.
+ *
  * This file is a leaf on purpose: `HomeLayoutData` is declared in two places
  * (`hooks/useEntityLayout.ts` and `lib/graphql/types.ts`) and neither may
  * import the other, so the shared unions cannot live in either.
