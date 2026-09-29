@@ -3,7 +3,7 @@ import {
   allFull,
   availabilityLabel,
   canAddCloudHome,
-  homeLimitMessage,
+  homeLimitTitle,
   initialRelay,
   isRelayTakenError,
   recommendationReason,
@@ -51,8 +51,8 @@ describe('wording', () => {
   });
 
   it('states the limit', () => {
-    expect(homeLimitMessage(1)).toMatch(/one home/);
-    expect(homeLimitMessage(3)).toMatch(/3 homes/);
+    expect(homeLimitTitle(1)).toBe('Your plan includes one home for now');
+    expect(homeLimitTitle(3)).toBe('Your plan includes 3 homes for now');
   });
 });
 
