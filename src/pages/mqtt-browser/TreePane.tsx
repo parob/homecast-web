@@ -3,6 +3,7 @@ import { TypeBadge, AccessoryTypeIcon, FmtVal } from './helpers';
 import { TreeRow, rowKey } from './TreeRow';
 import { rowTypeForTopic } from './topic-tree';
 import type { HomeBucket, RoomBucket, GroupBucket, TopicMessage } from './topic-tree';
+import type { DeviceInfo } from './widget-adapter';
 
 // Shared context threaded through the section components — cheaper than
 // ten individual props at every level.
@@ -17,6 +18,7 @@ interface TreeCtx {
   selectedTopic: string | null;
   onSelect: (topic: string) => void;
   availability: Record<string, string>;
+  deviceInfo: Record<string, DeviceInfo>;
   groupMembers: Record<string, string[]>;
   getEffectivePayload: (topic: string, payload: string) => string;
 }
@@ -37,6 +39,7 @@ function LeafRows({ entries, indentPx, shortPath, ctx }: { entries: Array<[strin
           message={m}
           effectivePayload={ctx.getEffectivePayload(topic, m.payload)}
           availability={ctx.availability[topic]}
+          info={ctx.deviceInfo[topic]}
           rowType={rowTypeForTopic(topic, ctx.groupMembers)}
           indentPx={indentPx}
           shortPath={shortPath}
