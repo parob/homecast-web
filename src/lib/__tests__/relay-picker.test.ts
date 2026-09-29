@@ -6,7 +6,7 @@ import {
   initialRelay,
   isRelayTakenError,
   recommendationReason,
-  relayHostedIn,
+  relayRegionCode,
 } from '@/lib/relay-picker';
 import type { CloudRelayOption } from '@/lib/graphql/types';
 
@@ -51,12 +51,11 @@ describe('wording', () => {
   });
 });
 
-describe('relayHostedIn', () => {
-  it('names the place for the info button, and nothing when the server has none', () => {
-    expect(relayHostedIn(relay('a'))).toBe('Hosted in the United Kingdom');
-    expect(relayHostedIn(relay('a', { region: 'us' }))).toBe('Hosted in the United States');
-    expect(relayHostedIn(relay('a', { region: 'eu' }))).toBe('Hosted in Europe');
-    expect(relayHostedIn(relay('a', { region: null }))).toBeNull();
+describe('relayRegionCode', () => {
+  it('gives the region as a plain code, and nothing when the server has none', () => {
+    expect(relayRegionCode(relay('a'))).toBe('GB');
+    expect(relayRegionCode(relay('a', { region: 'us' }))).toBe('US');
+    expect(relayRegionCode(relay('a', { region: null }))).toBeNull();
   });
 });
 
