@@ -128,7 +128,7 @@ export function buildTopicTree(
   groupMembers: Record<string, string[]>,
   slugToTopic: Map<string, string>,
   messages: Record<string, TopicMessage>,
-  opts: { groupByHome: boolean; groupByRoom: boolean },
+  opts: { groupByHome: boolean; groupByRoom: boolean; groupByGroup?: boolean },
 ): HomeBucket[] {
   const buildGroup = (topic: string, payload: TopicMessage): GroupBucket => {
     const memberTopics: Array<[string, TopicMessage]> = [];
@@ -156,7 +156,9 @@ export function buildTopicTree(
     const isHomecast = p[0] === 'homecast';
     const homeSlug = opts.groupByHome && isHomecast && p.length >= 2 ? p[1] : '';
     const roomSlug = opts.groupByRoom && isHomecast && p.length >= 4 ? p[2] : '';
-    const isGroup = !!groupMembers[topic];
+    // With group nesting off a group is a topic like any other: its own row,
+    // members in their own rooms (the caller stops filtering them out).
+    const isGroup = opts.groupByGroup !== false && !!groupMembers[topic];
 
     const h = ensureHome(homeSlug);
     h.allTopicCount += 1;

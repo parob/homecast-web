@@ -170,7 +170,7 @@ interface TreePaneProps extends TreeCtx {
   tree: HomeBucket[];
   groupByHome: boolean;
   /**
-   * With both groupings off: every topic, one row each, fully qualified and in
+   * With every grouping off: every topic, one row each, fully qualified and in
    * topic order — a plain MQTT topic list. Groups do not nest their members
    * here; a member is a topic like any other.
    */
