@@ -3,7 +3,7 @@ import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useR
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
-import { checkIsInMacApp } from '@/lib/platform';
+import { checkIsInMacApp, checkIsInMobileApp } from '@/lib/platform';
 import { headerControlClass, headerHaloNeedsReinforcing, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
 import { apolloClient } from '@/lib/apollo';
 import { flushSync } from 'react-dom';
@@ -405,19 +405,6 @@ const parseCharacteristicValue = (value: any): any => {
   } catch {
     return value; // Return as-is if not valid JSON
   }
-};
-
-// Detect if running inside a mobile native app WebView (iOS or Android)
-const checkIsInMobileApp = () => {
-  if (typeof window === 'undefined') return false;
-  const w = window as any;
-  // iOS native app
-  if (w.isHomecastIOSApp) return true;
-  // iOS standalone mode (home screen PWA)
-  if (w.navigator?.standalone && /iPhone|iPad|iPod/.test(navigator.userAgent)) return true;
-  // Android native app (Tauri)
-  if (w.isHomecastAndroidApp) return true;
-  return false;
 };
 
 // Detect if running on a touch-primary device (any mobile browser, native app, PWA)
@@ -4205,9 +4192,10 @@ const Dashboard = () => {
   // the heading's own box says when it is gone.
   const phoneBrowser = isMobile && !isInMobileApp && !isInMacApp;
   const { headingRef, headingHidden } = useHeadingVisibility();
-  // The request-log dock stops squashing the app while the native header is
-  // on (see `DebugDock`) and overlays the bottom instead, so the page clears
-  // it itself. Zero whenever the dock is closed.
+  // The request-log dock squashes the app only where the shell scrolls an
+  // inner container (see `DebugDock`). Wherever the document scrolls — a
+  // browser, or under the native header — it overlays the bottom instead, so
+  // the page clears it itself. Zero whenever the dock is closed.
   const debugDockHeight = useDebugDockHeight();
 
   // What the iOS native title menu lists (parob/homecast-cloud#120) — the
@@ -6141,7 +6129,7 @@ const Dashboard = () => {
    * flush with the screen edge. On top of the safe-area inset, like the strips
    * below.
    */
-  const bottomBandHeight = (isPhone && pinnedTabs.length > 0 ? 72 : 16) + (nativeHeaderActive ? debugDockHeight : 0);
+  const bottomBandHeight = (isPhone && pinnedTabs.length > 0 ? 72 : 16) + (shellScrolls ? 0 : debugDockHeight);
 
   /**
    * …and the heights of the two blur strips that float over those bands.
