@@ -36,8 +36,9 @@ import type {
   AvailableCloudRelaysResponse,
   CloudHomeAllowanceResponse,
 } from '@/lib/graphql/types';
-import { allFull, canAddCloudHome, homeLimitMessage, initialRelay, isRelayTakenError } from '@/lib/relay-picker';
+import { allFull, canAddCloudHome, initialRelay, isRelayTakenError } from '@/lib/relay-picker';
 import { RelayChoice } from './RelayChoice';
+import { CloudHomeLimitNotice } from './CloudHomeLimitNotice';
 import { toast } from 'sonner';
 import { useHomes } from '@/hooks/useHomeKitData';
 import { CLOUD_SIGNUPS_PAUSED } from '@/lib/cloud-relay-copy';
@@ -436,7 +437,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
   const { data: relaysData, error: relaysError, refetch: refetchRelays } = useQuery<AvailableCloudRelaysResponse>(AVAILABLE_CLOUD_RELAYS, {
     variables: { region },
     fetchPolicy: 'network-only',
-    skip: !isCloudPlan || isCommunity || !addDialogOpen,
+    skip: !isCloudPlan || isCommunity || !addDialogOpen || !canAdd,
   });
   const relays = relaysError ? null : relaysData?.availableCloudRelays ?? null;
   const [relayId, setRelayId] = useState<string | null>(null);
@@ -550,6 +551,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
                 <p className="text-sm font-medium">Signup for Cloud Relay</p>
                 <p className="text-xs text-muted-foreground">
                   Always-on relay hosted by Homecast, with no Mac needed. Available on the Cloud plan ({pricing.cloud.formatted}/mo).
+                  The number of homes on our cloud relays is limited and subject to fair use.
                 </p>
               </div>
             </div>
@@ -642,7 +644,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
               <SelfHostedHomeCard
                 key={home.id}
                 home={home}
-                onSwitchToCloud={canAdd ? () => { setRegion(guessRegion()); setAppleId(''); setAddDialogOpen(true); } : undefined}
+                onSwitchToCloud={() => { setRegion(guessRegion()); setAppleId(''); setAddDialogOpen(true); }}
                 onClick={() => handleSelectHome(home)}
               />
             ))}
@@ -658,7 +660,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
           </>
         )}
 
-        {!isCommunity && (canAdd ? (
+        {!isCommunity && (
           <Button
             variant="outline"
             size="sm"
@@ -668,11 +670,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
             <Plus className="h-4 w-4 mr-2" />
             Add Home to Cloud Relay
           </Button>
-        ) : allowance && (
-          <p className="text-xs text-muted-foreground text-center py-1">
-            {homeLimitMessage(allowance.cloudHomeLimit)}
-          </p>
-        ))}
+        )}
       </div>
 
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
@@ -683,6 +681,12 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
             </DialogTitle>
             <DialogDescription className="sr-only">Add a home to the cloud relay</DialogDescription>
           </DialogHeader>
+          {!canAdd && allowance ? (
+            <CloudHomeLimitNotice
+              homeNames={enrollments.map(e => e.matchedHomeName || e.homeName)}
+              onClose={() => setAddDialogOpen(false)}
+            />
+          ) : (
           <div className="space-y-4 py-2">
             {relays ? (
               everyRelayFull ? (
@@ -734,6 +738,7 @@ export function HomesSection({ homes: homesProp, prefilledHomeName, autoOpenEnro
               </Button>
             </div>
           </div>
+          )}
         </DialogContent>
       </Dialog>
 

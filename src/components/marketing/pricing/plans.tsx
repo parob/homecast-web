@@ -43,7 +43,7 @@ export function tiers(p: PricingShape): Tier[] {
     { id: 'cloud', name: 'Cloud', price: p.cloud.formatted, per: '/month', option: 2, cloud: true,
       // Cameras are captured by the Cloud Relay's engine window and by nothing
       // else, so they are the one feature a self-hosted plan cannot have.
-      lines: [<><strong>Unlimited</strong> accessories</>, 'Push notifications', 'MQTT broker', 'Camera snapshots & live view', 'No Mac required'],
+      lines: [<><strong>Unlimited</strong> accessories</>, 'Cloud relay homes subject to fair use', 'Push notifications', 'MQTT broker', 'Camera snapshots & live view', 'No Mac required'],
       note: 'Requires an Apple Home Hub (Apple TV or HomePod) on your home network.' },
   ];
 }

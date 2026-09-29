@@ -3,7 +3,6 @@ import {
   allFull,
   availabilityLabel,
   canAddCloudHome,
-  homeLimitMessage,
   initialRelay,
   isRelayTakenError,
   recommendationReason,
@@ -48,11 +47,6 @@ describe('wording', () => {
     expect(recommendationReason(relay('a'), 'gb')).toBe('Closest to you, with plenty of space');
     expect(recommendationReason(relay('a', { availability: 'limited' }), 'gb')).toBe('Closest to you');
     expect(recommendationReason(relay('a', { region: 'us' }), 'gb')).toBe('Most space available right now');
-  });
-
-  it('states the limit', () => {
-    expect(homeLimitMessage(1)).toMatch(/one home/);
-    expect(homeLimitMessage(3)).toMatch(/3 homes/);
   });
 });
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@apollo/client/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CLOUD_PLAN_HOMES, CLOUD_PLAN_HOMES_SHORT } from '@/lib/cloud-relay-copy';
 import { Monitor, Cloud, Users, ArrowLeft, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePricing } from '@/lib/pricing';
 import { purchasePlan } from '@/lib/purchase';
@@ -185,7 +186,7 @@ function IntentStep({ isInMacApp, isInMobileApp, onSelect, onSkip, pricing, clou
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories` : 'Signups paused while we are at capacity'}
+            {cloudSignupsAvailable ? `${pricing.cloud.formatted}/mo · unlimited accessories · ${CLOUD_PLAN_HOMES_SHORT}` : 'Signups paused while we are at capacity'}
           </p>
         )}
       </OptionCard>
@@ -400,6 +401,7 @@ function CloudSetupStep({ onComplete, onBack, pricing, cloudSignupsAvailable = t
       <div className="rounded-lg border border-primary/50 p-3 space-y-2 flex flex-col">
         <h3 className="text-sm font-medium">Cloud</h3>
         <p className="text-xs text-muted-foreground flex-1">Unlimited accessories · always on</p>
+        <p className="text-xs text-muted-foreground">{CLOUD_PLAN_HOMES} Email us if you need more.</p>
         <p className="text-sm font-medium">{pricing.cloud.formatted}/mo</p>
         <p className="text-xs text-amber-600">Requires an Apple Home Hub (Apple TV or HomePod)</p>
         <Button size="sm" className="w-full text-xs" onClick={handleCheckout} disabled={loading}>

@@ -15,3 +15,13 @@ export const CLOUD_SIGNUPS_PAUSED = 'Signups paused while we are at capacity';
 
 /** Prefixed, for the one-line summaries that have to name the relay themselves. */
 export const CLOUD_RELAY_SIGNUPS_PAUSED = `Cloud relay · signups paused while we are at capacity`;
+
+/**
+ * The Cloud plan's home allowance, as customers are told it. Deliberately says
+ * neither the number (the server's CLOUD_MANAGED_MAX_HOMES_PER_USER, and an
+ * admin can change it per customer) nor why relay space is scarce.
+ */
+export const CLOUD_PLAN_HOMES = 'The number of homes on our cloud relays is limited and subject to fair use.';
+
+/** For one-line price summaries. */
+export const CLOUD_PLAN_HOMES_SHORT = 'cloud relay homes subject to fair use';

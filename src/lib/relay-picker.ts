@@ -47,12 +47,6 @@ export function canAddCloudHome(allowance: { cloudHomeLimit: number; cloudHomesU
   return allowance.cloudHomesUsed < allowance.cloudHomeLimit;
 }
 
-export function homeLimitMessage(limit: number): string {
-  return limit === 1
-    ? 'Your plan includes one home on a cloud relay for now.'
-    : `Your plan includes ${limit} homes on cloud relays for now.`;
-}
-
 /** The server's "that relay filled up / isn't available" refusal — worth a refetch. */
 export function isRelayTakenError(error: string | null | undefined): boolean {
   return !!error && /filled up|isn't available/i.test(error);
