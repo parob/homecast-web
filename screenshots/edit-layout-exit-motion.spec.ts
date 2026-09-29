@@ -73,11 +73,23 @@ function motionOf(samples: Sample[]) {
   let overshootPx = 0;
   for (const s of samples) overshootPx = Math.max(overshootPx, (s.top - rest) * dir);
 
+  // A step is measured per frame the sample actually spans. rAF only fires when
+  // a frame is painted, so on a loaded runner one sample can cover two or three
+  // frames, and an ordinary eased close then read as one enormous frame — this
+  // test failed at 136–147px of 293 on CI with nothing wrong, which is two
+  // ordinary frames. The fault it exists for is a room unmounting within ONE
+  // frame; that still lands whole, because its sample spans one frame.
+  const dts = samples.slice(1).map((s, i) => s.t - samples[i].t).sort((a, b) => a - b);
+  const frame = Math.max(1, dts[Math.floor(dts.length / 2)] ?? 16);
   let biggestStep = 0;
+  let biggestStepDt = 0;
   for (let i = 1; i < samples.length; i++) {
-    biggestStep = Math.max(biggestStep, Math.abs(samples[i].top - samples[i - 1].top));
+    const dt = samples[i].t - samples[i - 1].t;
+    const frames = Math.max(1, Math.round(dt / frame));
+    const step = Math.abs(samples[i].top - samples[i - 1].top) / frames;
+    if (step > biggestStep) { biggestStep = Math.round(step * 10) / 10; biggestStepDt = dt; }
   }
-  return { travel: Math.abs(rest - start), overshootPx, biggestStep };
+  return { travel: Math.abs(rest - start), overshootPx, biggestStep, biggestStepDt, frame };
 }
 
 /** Open the home view, scroll to `scrollTo`, enter Edit Layout, tap Done, watch. */
@@ -134,7 +146,7 @@ test.describe('leaving Edit Layout', () => {
     // machine — but nowhere near loosely enough to let that back through.
     expect(
       m.biggestStep,
-      `one frame moved ${m.biggestStep}px of ${Math.round(m.travel)}px`,
+      `one frame moved ${m.biggestStep}px of ${Math.round(m.travel)}px (sample spanned ${m.biggestStepDt}ms, frame ${m.frame}ms)`,
     ).toBeLessThan(m.travel * 0.45);
   });
 });
