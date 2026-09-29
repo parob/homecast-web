@@ -3,8 +3,12 @@
  * split across — the same "Option 1 / Option 2" vocabulary as How it Works.
  */
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Laptop, Cloud, Check, AlertTriangle, Heart } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { Pricing as PricingShape } from '@/lib/pricing';
+import { subscribePath } from '@/lib/signup-plan';
+import { APP_STORE_URL } from '@/components/marketing/landing/features';
 
 export type Opt = 1 | 2;
 
@@ -80,8 +84,40 @@ const Line = ({ children, plain, dark }: { children: ReactNode; plain?: boolean;
     : <li className="flex items-center gap-2 text-sm"><Check className="h-4 w-4 shrink-0 text-green-500" /><span>{children}</span></li>;
 
 /** One plan tile. Community keeps the dark identity it has always had. */
-export function Tile({ tier, className = '', rounded = 'rounded-xl', dense }: {
+/**
+ * What each tile's button does. Signed out, it starts sign-up with that plan
+ * already chosen (checkout follows email verification); signed in, it goes
+ * straight to that plan's checkout. Community is an app, not an account.
+ */
+export function tierAction(id: Tier['id'], signedIn: boolean): { label: string; to?: string; href?: string } {
+  switch (id) {
+    case 'community': return { label: 'Download for Mac', href: APP_STORE_URL };
+    case 'basic': return signedIn ? { label: 'Open Homecast', to: '/portal' } : { label: 'Sign up free', to: '/signup' };
+    case 'standard': return { label: 'Get Standard', to: signedIn ? subscribePath('standard') : '/signup?plan=standard' };
+    case 'cloud': return { label: 'Get Cloud', to: signedIn ? subscribePath('cloud') : '/signup?plan=cloud' };
+  }
+}
+
+function TileAction({ tier, signedIn, dark }: { tier: Tier; signedIn: boolean; dark: boolean }) {
+  const action = tierAction(tier.id, signedIn);
+  const primary = tier.id === 'standard' || tier.id === 'cloud';
+  const className = dark
+    ? 'mt-5 w-full bg-white text-zinc-900 hover:bg-zinc-200'
+    : 'mt-5 w-full';
+  const variant = dark || primary ? 'default' : 'outline';
+  return (
+    <Button asChild variant={variant} className={className}>
+      {action.href
+        ? <a href={action.href} target="_blank" rel="noopener noreferrer">{action.label}</a>
+        : <Link to={action.to!}>{action.label}</Link>}
+    </Button>
+  );
+}
+
+export function Tile({ tier, className = '', rounded = 'rounded-xl', dense, signedIn = false }: {
   tier: Tier;
+  /** Picks where the tile's button goes; see tierAction. */
+  signedIn?: boolean;
   className?: string;
   /** Corner classes — a plain `rounded-none` in className would lose to the default. */
   rounded?: string;
@@ -112,6 +148,7 @@ export function Tile({ tier, className = '', rounded = 'rounded-xl', dense }: {
           )}
         </div>
       )}
+      <TileAction tier={tier} signedIn={signedIn} dark={dark} />
     </div>
   );
 }
