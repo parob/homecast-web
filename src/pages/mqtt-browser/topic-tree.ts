@@ -156,8 +156,8 @@ export function buildTopicTree(
     const isHomecast = p[0] === 'homecast';
     const homeSlug = opts.groupByHome && isHomecast && p.length >= 2 ? p[1] : '';
     const roomSlug = opts.groupByRoom && isHomecast && p.length >= 4 ? p[2] : '';
-    // With group nesting off a group is a topic like any other: its own row,
-    // members in their own rooms (the caller stops filtering them out).
+    // With groups off the caller has already dropped the group topics and kept
+    // their members; anything that slips through is drawn as a plain row.
     const isGroup = opts.groupByGroup !== false && !!groupMembers[topic];
 
     const h = ensureHome(homeSlug);

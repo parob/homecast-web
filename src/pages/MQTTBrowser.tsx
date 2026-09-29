@@ -90,9 +90,9 @@ export default function MQTTBrowser() {
     const p = searchParams.get('groupByRoom');
     return p === '1' ? true : p === '0' ? false : true;
   });
-  // Nest each group's accessories under the group's row. Off, a group is one
-  // more topic and its members sit in their own rooms — which is where they
-  // actually are, since a group can span rooms.
+  // Show service groups, each with its accessories nested under it. Off, the
+  // groups are gone and every accessory sits in its own room — which is where
+  // it actually is, since a group can span rooms.
   const [groupByGroup, setGroupByGroup] = useState(() => searchParams.get('groupByGroup') !== '0');
   // Sections default to collapsed; the user opens the ones they care about.
   const [openHomes, setOpenHomes] = useState<Set<string>>(new Set());
@@ -605,22 +605,22 @@ export default function MQTTBrowser() {
     return () => clearInterval(interval);
   }, [connected]);
 
-  // With every grouping off the pane is a plain MQTT topic list: every topic
-  // its own row, fully qualified, nothing nested.
+  // With every grouping off the pane is a plain MQTT topic list of the
+  // accessories: every topic its own row, fully qualified, nothing nested.
   const flatList = !groupByHome && !groupByRoom && !groupByGroup;
 
-  // Filter topics by search text. While groups nest, members are excluded here
-  // — they render under their group node. With group nesting off a member is a
-  // topic like any other.
+  // Filter topics by search text. With groups on, members are excluded here —
+  // they render under their group node. With groups off, the group topics are
+  // what is excluded, and a member is an accessory like any other.
   const filteredTopics = useMemo(() => {
     return Object.entries(messages)
       .filter(([topic]) => {
         if (filter && !topic.toLowerCase().includes(filter.toLowerCase())) return false;
-        if (groupByGroup && memberTopicSet.has(topic)) return false;
+        if (groupByGroup ? memberTopicSet.has(topic) : !!groupMembers[topic]) return false;
         return true;
       })
       .sort(([a], [b]) => a.localeCompare(b));
-  }, [messages, filter, memberTopicSet, groupByGroup]);
+  }, [messages, filter, memberTopicSet, groupMembers, groupByGroup]);
 
   const topicTree = useMemo(
     () => buildTopicTree(filteredTopics, groupMembers, slugToTopic, messages, { groupByHome, groupByRoom, groupByGroup }),
@@ -793,7 +793,7 @@ export default function MQTTBrowser() {
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByRoom ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Rooms
                 </button>
-                <button onClick={() => { const next = !groupByGroup; setGroupByGroup(next); setOpenGroups(new Set()); updateUrlParams({ groupByGroup: next ? '1' : '0' }); }}
+                <button onClick={() => { const next = !groupByGroup; setGroupByGroup(next); setOpenGroups(new Set()); if (!next && selectedTopic && groupMembers[selectedTopic]) clearSelection(); updateUrlParams({ groupByGroup: next ? '1' : '0' }); }}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${groupByGroup ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-muted hover:text-foreground'}`}>
                   Groups
                 </button>
