@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { TypeBadge, AccessoryTypeIcon, FmtVal } from './helpers';
+import { TypeBadge, AccessoryTypeIcon, FmtVal, TopicPath, type PathContext } from './helpers';
 import { TreeRow, rowKey } from './TreeRow';
 import { rowTypeForTopic } from './topic-tree';
 import type { HomeBucket, RoomBucket, GroupBucket, TopicMessage } from './topic-tree';
@@ -29,7 +29,7 @@ const fmtCounts = (parts: Array<[number, string]>) =>
 
 const SELECTED_ROW = 'bg-primary/10 shadow-[inset_2px_0_0_0_hsl(var(--primary))]';
 
-function LeafRows({ entries, indentPx, shortPath, ctx }: { entries: Array<[string, TopicMessage]>; indentPx: number; shortPath?: boolean; ctx: TreeCtx }) {
+function LeafRows({ entries, indentPx, known, full, ctx }: { entries: Array<[string, TopicMessage]>; indentPx: number; known: PathContext; full?: boolean; ctx: TreeCtx }) {
   return (
     <>
       {entries.map(([topic, m]) => (
@@ -42,7 +42,8 @@ function LeafRows({ entries, indentPx, shortPath, ctx }: { entries: Array<[strin
           info={ctx.deviceInfo[topic]}
           rowType={rowTypeForTopic(topic, ctx.groupMembers)}
           indentPx={indentPx}
-          shortPath={shortPath}
+          known={known}
+          full={full}
           selected={ctx.selectedTopic === topic}
           onSelect={ctx.onSelect}
         />
@@ -54,8 +55,7 @@ function LeafRows({ entries, indentPx, shortPath, ctx }: { entries: Array<[strin
 // Group node: the chevron toggles member visibility, clicking anywhere else
 // on the header selects the group for the inspector. Members stay visible
 // while other topics are inspected — tree state and selection are decoupled.
-function GroupNode({ g, headerDepth, ctx }: { g: GroupBucket; headerDepth: number; ctx: TreeCtx }) {
-  const groupSlug = g.topic.split('/').pop() || g.topic;
+function GroupNode({ g, headerDepth, known, ctx }: { g: GroupBucket; headerDepth: number; known: PathContext; ctx: TreeCtx }) {
   const ep = ctx.getEffectivePayload(g.topic, g.payload.payload);
   const headerPadLeft = 12 + headerDepth * 16;
   const isOpen = ctx.openGroups.has(g.topic);
@@ -81,7 +81,7 @@ function GroupNode({ g, headerDepth, ctx }: { g: GroupBucket; headerDepth: numbe
             </button>
             <AccessoryTypeIcon payload={ep} />
             <TypeBadge type="group" />
-            <span className="font-mono truncate">{groupSlug}</span>
+            <span className="font-mono truncate"><TopicPath topic={g.topic} known={known} /></span>
           </span>
           <span className="flex items-center gap-2 min-w-0">
             <span className="font-mono text-[11px] font-normal text-right truncate min-w-0"><FmtVal payload={ep} /></span>
@@ -91,18 +91,19 @@ function GroupNode({ g, headerDepth, ctx }: { g: GroupBucket; headerDepth: numbe
       </div>
       {isOpen && (
         <div className="divide-y border-l-2 border-border/50" style={{ marginLeft: headerPadLeft + 5 }}>
-          <LeafRows entries={g.memberTopics} indentPx={12} shortPath ctx={ctx} />
+          <LeafRows entries={g.memberTopics} indentPx={12} known={known} ctx={ctx} />
         </div>
       )}
     </div>
   );
 }
 
-function RoomSection({ r, homeSlug, headerDepth, ctx }: { r: RoomBucket; homeSlug: string; headerDepth: number; ctx: TreeCtx }) {
+function RoomSection({ r, homeSlug, headerDepth, homeKnown, ctx }: { r: RoomBucket; homeSlug: string; headerDepth: number; homeKnown: PathContext; ctx: TreeCtx }) {
+  const known: PathContext = { ...homeKnown, room: r.slug || undefined };
   const body = (innerDepth: number) => (
     <>
-      {r.groups.map(g => <GroupNode key={g.topic} g={g} headerDepth={innerDepth} ctx={ctx} />)}
-      <LeafRows entries={r.plain} indentPx={innerDepth * 16 + 20} shortPath ctx={ctx} />
+      {r.groups.map(g => <GroupNode key={g.topic} g={g} headerDepth={innerDepth} known={known} ctx={ctx} />)}
+      <LeafRows entries={r.plain} indentPx={innerDepth * 16 + 20} known={known} ctx={ctx} />
     </>
   );
   if (!r.slug) return <div className="divide-y">{body(headerDepth)}</div>;
@@ -129,12 +130,14 @@ function RoomSection({ r, homeSlug, headerDepth, ctx }: { r: RoomBucket; homeSlu
 }
 
 function HomeBody({ h, rowDepth, ctx }: { h: HomeBucket; rowDepth: number; ctx: TreeCtx }) {
+  // Only a home header names the home; at depth 0 there is none.
+  const known: PathContext = rowDepth > 0 && h.slug ? { home: h.slug } : {};
   return (
     <>
       {/* Groups first, then loose accessories, then rooms */}
-      {h.groups.map(g => <GroupNode key={g.topic} g={g} headerDepth={rowDepth} ctx={ctx} />)}
-      <LeafRows entries={h.plain} indentPx={rowDepth * 16 + (rowDepth > 0 ? 20 : 0)} shortPath={rowDepth > 0} ctx={ctx} />
-      {ctx.groupByRoom && h.rooms.map(r => <RoomSection key={r.slug || '_noroom'} r={r} homeSlug={h.slug} headerDepth={rowDepth} ctx={ctx} />)}
+      {h.groups.map(g => <GroupNode key={g.topic} g={g} headerDepth={rowDepth} known={known} ctx={ctx} />)}
+      <LeafRows entries={h.plain} indentPx={rowDepth * 16 + (rowDepth > 0 ? 20 : 0)} known={known} ctx={ctx} />
+      {ctx.groupByRoom && h.rooms.map(r => <RoomSection key={r.slug || '_noroom'} r={r} homeSlug={h.slug} headerDepth={rowDepth} homeKnown={known} ctx={ctx} />)}
     </>
   );
 }
@@ -166,9 +169,22 @@ function HomeSection({ h, ctx }: { h: HomeBucket; ctx: TreeCtx }) {
 interface TreePaneProps extends TreeCtx {
   tree: HomeBucket[];
   groupByHome: boolean;
+  /**
+   * With both groupings off: every topic, one row each, fully qualified and in
+   * topic order — a plain MQTT topic list. Groups do not nest their members
+   * here; a member is a topic like any other.
+   */
+  flatTopics?: Array<[string, TopicMessage]>;
 }
 
-export function TreePane({ tree, groupByHome, ...ctx }: TreePaneProps) {
+export function TreePane({ tree, groupByHome, flatTopics, ...ctx }: TreePaneProps) {
+  if (flatTopics) {
+    return (
+      <div className="border rounded-lg overflow-hidden divide-y min-w-0">
+        <LeafRows entries={flatTopics} indentPx={12} known={{}} full ctx={ctx} />
+      </div>
+    );
+  }
   return (
     <div className="border rounded-lg overflow-hidden divide-y min-w-0">
       {tree.map(h => {
