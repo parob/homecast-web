@@ -6,6 +6,7 @@
  * ranking. It only decides what to preselect and how to word it.
  */
 import type { CloudRelayAvailability, CloudRelayOption } from '@/lib/graphql/types';
+import { regionLabel } from '@/lib/regions';
 
 const AVAILABILITY_LABELS: Record<CloudRelayAvailability, string> = {
   plenty: 'Plenty of space',
@@ -31,6 +32,19 @@ export function allFull(relays: CloudRelayOption[]): boolean {
  */
 export function initialRelay(relays: CloudRelayOption[]): CloudRelayOption | null {
   return relays.find(r => r.recommended) ?? relays.find(r => !isFull(r)) ?? null;
+}
+
+/**
+ * Where a relay is, for its info button — never its name. A customer in the US
+ * offered only "United Kingdom 1" reads it as "not for me", though the relay
+ * reaches their home through Apple either way; so the place is there for
+ * anyone who asks, not the first thing they read. Null when the server has no
+ * region for it, and the button is then left out.
+ */
+export function relayHostedIn(r: CloudRelayOption): string | null {
+  const place = regionLabel(r.region);
+  if (!place) return null;
+  return `Hosted in ${/^United /.test(place) ? 'the ' : ''}${place}`;
 }
 
 /** One line on why the recommended relay was recommended. */
