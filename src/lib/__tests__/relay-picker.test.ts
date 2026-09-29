@@ -6,6 +6,7 @@ import {
   initialRelay,
   isRelayTakenError,
   recommendationReason,
+  relayHostedIn,
 } from '@/lib/relay-picker';
 import type { CloudRelayOption } from '@/lib/graphql/types';
 
@@ -47,6 +48,15 @@ describe('wording', () => {
     expect(recommendationReason(relay('a'), 'gb')).toBe('Closest to you, with plenty of space');
     expect(recommendationReason(relay('a', { availability: 'limited' }), 'gb')).toBe('Closest to you');
     expect(recommendationReason(relay('a', { region: 'us' }), 'gb')).toBe('Most space available right now');
+  });
+});
+
+describe('relayHostedIn', () => {
+  it('names the place for the info button, and nothing when the server has none', () => {
+    expect(relayHostedIn(relay('a'))).toBe('Hosted in the United Kingdom');
+    expect(relayHostedIn(relay('a', { region: 'us' }))).toBe('Hosted in the United States');
+    expect(relayHostedIn(relay('a', { region: 'eu' }))).toBe('Hosted in Europe');
+    expect(relayHostedIn(relay('a', { region: null }))).toBeNull();
   });
 });
 
