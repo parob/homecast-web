@@ -68,6 +68,16 @@ export const RESET_PASSWORD = gql`
   }
 `;
 
+export const DELETE_MY_ACCOUNT = gql`
+  mutation DeleteMyAccount($password: String!) {
+    deleteMyAccount(password: $password) {
+      success
+      error
+      message
+    }
+  }
+`;
+
 export const REMOVE_SESSION = gql`
   mutation RemoveSession($deviceId: String!) {
     removeSession(deviceId: $deviceId)

@@ -269,6 +269,7 @@ import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
 import { CollectionList, CollectionDetail } from '@/components/collections';
 import { ShareDialog } from '@/components/shared/ShareDialog';
 import { SettingsDialog, type SettingsTab } from '@/components/settings/SettingsDialog';
+import { DeleteAccountSection } from '@/components/settings/DeleteAccountSection';
 import { CreateRoomGroupDialog } from '@/components/room-groups';
 import { EditRoomGroupDialog } from '@/components/room-groups/EditRoomGroupDialog';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -6961,6 +6962,12 @@ const Dashboard = () => {
             <Button variant="outline" size="sm" onClick={logout}>
               Log Out
             </Button>
+          </div>
+          {/* A waitlisted account can't reach Settings, and it is still an
+              account created in the app — App Store guideline 5.1.1(v) says it
+              must be deletable from here (homecast-cloud#214). */}
+          <div className="pt-2">
+            <DeleteAccountSection logout={logout} variant="button" />
           </div>
         </div>
       </div>
