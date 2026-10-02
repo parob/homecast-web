@@ -79,3 +79,31 @@ describe('DeleteAccountView', () => {
     expect(screen.getByTestId('cloud-relay-note').textContent).toMatch(/Apple Home/);
   });
 });
+
+describe('DeleteAccountView on the waitlist screen', () => {
+  // 104 of 117 production accounts were waitlisted on 2026-10-02, and the
+  // waitlist screen has no Settings — so this button is their only route.
+  it('is a bare button that opens the same confirmation', async () => {
+    const onDelete = vi.fn().mockResolvedValue({ success: true });
+    const onDeleted = vi.fn();
+    render(
+      <DeleteAccountView
+        variant="button"
+        accountType="waitlist"
+        subscriptionSource={null}
+        onDelete={onDelete}
+        onDeleted={onDeleted}
+        onManageAppleSubscription={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/permanently delete your account and all its data/i)).toBeNull();
+    const open = screen.getAllByRole('button', { name: /delete account/i });
+    expect(open).toHaveLength(1);
+    fireEvent.click(open[0]);
+    fireEvent.change(screen.getByLabelText(/enter your password/i), { target: { value: 'pw' } });
+    const buttons = screen.getAllByRole('button', { name: /delete account/i });
+    fireEvent.click(buttons[buttons.length - 1]);
+    await waitFor(() => expect(onDeleted).toHaveBeenCalled());
+    expect(onDelete).toHaveBeenCalledWith('pw');
+  });
+});

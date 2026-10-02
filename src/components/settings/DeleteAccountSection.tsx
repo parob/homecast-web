@@ -32,6 +32,9 @@ export interface DeleteAccountViewProps {
   onDelete: (password: string) => Promise<DeleteAccountResult>;
   onDeleted: () => void;
   onManageAppleSubscription: () => void;
+  /** 'row' sits in Settings → Account; 'button' is a bare button, for the
+   *  waitlist screen, which has no Settings to put a row in. */
+  variant?: 'row' | 'button';
 }
 
 export function DeleteAccountView({
@@ -40,6 +43,7 @@ export function DeleteAccountView({
   onDelete,
   onDeleted,
   onManageAppleSubscription,
+  variant = 'row',
 }: DeleteAccountViewProps) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState('');
@@ -73,21 +77,27 @@ export function DeleteAccountView({
     setError(result.error || 'Your account could not be deleted. Please try again.');
   };
 
+  const trigger = (
+    <Button
+      variant="outline"
+      size="sm"
+      className="text-destructive border-destructive/50 hover:bg-destructive hover:text-destructive-foreground"
+      onClick={() => reset(true)}
+    >
+      <Trash2 className="h-4 w-4 mr-1.5" />
+      {variant === 'button' ? 'Delete Account' : 'Delete'}
+    </Button>
+  );
+
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm font-medium">Delete Account</p>
-        <p className="text-xs text-muted-foreground">Permanently delete your account and all its data</p>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="text-destructive border-destructive/50 hover:bg-destructive hover:text-destructive-foreground"
-        onClick={() => reset(true)}
-      >
-        <Trash2 className="h-4 w-4 mr-1.5" />
-        Delete
-      </Button>
+    <div className={variant === 'row' ? 'flex items-center justify-between' : 'contents'}>
+      {variant === 'row' && (
+        <div>
+          <p className="text-sm font-medium">Delete Account</p>
+          <p className="text-xs text-muted-foreground">Permanently delete your account and all its data</p>
+        </div>
+      )}
+      {trigger}
 
       <Dialog open={open} onOpenChange={reset}>
         <DialogContent className="sm:max-w-md">
@@ -155,7 +165,7 @@ export function DeleteAccountView({
   );
 }
 
-export function DeleteAccountSection({ logout }: { logout: () => void }) {
+export function DeleteAccountSection({ logout, variant }: { logout: () => void; variant?: 'row' | 'button' }) {
   const { user } = useAuth();
   const { data } = useQuery<{ account?: { accountType?: string; subscriptionSource?: string | null } }>(GET_ACCOUNT);
   const [deleteMyAccount] = useMutation<{ deleteMyAccount: DeleteAccountResult }>(DELETE_MY_ACCOUNT);
@@ -175,6 +185,7 @@ export function DeleteAccountSection({ logout }: { logout: () => void }) {
       }}
       onDeleted={logout}
       onManageAppleSubscription={openManageSubscriptions}
+      variant={variant}
     />
   );
 }
