@@ -18,7 +18,7 @@ import { Loader2 } from 'lucide-react';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { HomecastMark } from '@/components/HomecastMark';
 import { isCommunity } from '@/lib/config';
-import { isInNativeAppShell } from '@/lib/platform';
+import { isInNativeAppShell, MAC_APP_TITLEBAR_INSET_PX } from '@/lib/platform';
 import { cn } from '@/lib/utils';
 
 const AuthShowcase = lazy(() => import('./AuthShowcase'));
@@ -51,8 +51,15 @@ export function AuthShell({ children, aside }: {
   aside?: ReactNode;
 }) {
   const website = isWebsite();
+  // The native Mac app runs the page up under its transparent title bar, so the
+  // logo would sit on the traffic lights. Drop the header below them. Only the
+  // native shell's own flag: a browser on a Mac, or a Safari "Add to Dock" web
+  // app (which checkIsInMacApp also counts), has a title bar of its own.
+  const nativeMac = typeof window !== 'undefined'
+    && !!(window as unknown as { isHomecastMacApp?: boolean }).isHomecastMacApp;
+  const macInset = nativeMac ? { paddingTop: MAC_APP_TITLEBAR_INSET_PX } : undefined;
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-background" style={macInset}>
       <header className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6">
         <Logo linked={website} />
         {aside && <div className="text-sm text-muted-foreground">{aside}</div>}

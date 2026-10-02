@@ -51,6 +51,7 @@ import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
 import { trackWrite, accessoryKey, groupKey } from '@/lib/pending-writes';
 import { setActivityLoggingFlags } from '@/lib/activity-logging';
+import { setRequestPanelEnabled } from '@/lib/request-log';
 import { TEXT_SCALE_BASE_PX, TEXT_SCALES } from '@/lib/text-scale';
 import { HomecastError } from '@/server/websocket';
 import { describeWriteFailure } from '@/lib/describe-error';
@@ -2874,6 +2875,12 @@ const Dashboard = () => {
         if (Array.isArray(parsed.homeOrder)) setHomeOrder(parsed.homeOrder);
         if (parsed.roomOrderByHome && typeof parsed.roomOrderByHome === 'object') setRoomOrderByHome(parsed.roomOrderByHome);
         if (typeof parsed.developerMode === 'boolean') setDeveloperMode(parsed.developerMode);
+        // The request log is a developer tool, but its switch is per device
+        // (localStorage) and outlives the setting that offered it. Close it
+        // here, once the real value is known — not off `developerMode`'s
+        // initial `false`, which would shut it before every launch it exists
+        // to capture.
+        if (parsed.developerMode !== true) setRequestPanelEnabled(false);
         if (typeof parsed.sendActivityLogs === 'boolean') setSendActivityLogs(parsed.sendActivityLogs);
 
         // Load unified item order (or migrate from legacy deviceOrder/groupOrder)
@@ -5036,6 +5043,7 @@ const Dashboard = () => {
 
   const toggleDeveloperMode = useCallback((value: boolean) => {
     setDeveloperMode(value);
+    if (!value) setRequestPanelEnabled(false);
     saveSettings({ developerMode: value }, 'developerMode');
   }, [saveSettings]);
 
