@@ -45,6 +45,7 @@ const MarketingFooter = () => {
               <li><Link to="/delete-account" className="hover:text-foreground transition-colors">Delete Account</Link></li>
             </ul>
             <h3 className="font-semibold mb-4 mt-8">Contact</h3>
+            <Link to="/support" className="block mb-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Support</Link>
             <a href="mailto:rob@homecast.cloud" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <Mail className="h-4 w-4" />
               rob@homecast.cloud

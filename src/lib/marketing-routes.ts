@@ -16,6 +16,9 @@
  * route the product has — it is what Apple 5.1.1(v) and Google's data-deletion
  * URL point at. It stays reachable everywhere.
  *
+ * `/support` is absent for the same reason: it is what the App Store and Play
+ * "Support URL" point at, and a link to it from inside an app must land on it.
+ *
  * `/features` is absent too: it is an alias that only ever redirects, so it has
  * no page of its own to suppress a badge on or to collapse.
  */
