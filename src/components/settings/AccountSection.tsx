@@ -22,6 +22,7 @@ import { config, isCommunity, isClientMode, getRelayAddress } from '@/lib/config
 import { appVersionLabel } from '@/lib/app-version';
 import { toast } from 'sonner';
 import HomeKit, { isRelayCapable } from '@/native/homekit-bridge';
+import { DeleteAccountSection } from './DeleteAccountSection';
 
 interface CommunityUser {
   id: string;
@@ -544,6 +545,9 @@ export function AccountSection({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        {/* Community accounts live on the relay Mac and are managed under
+            Users above; this is the cloud account, held by our server. */}
+        {!isCommunity && <DeleteAccountSection logout={logout} />}
       </div>
 
       {/* Version */}

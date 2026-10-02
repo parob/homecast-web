@@ -17,45 +17,47 @@ const DeleteAccount = () => {
 
             <div className="space-y-8">
               <div>
-                <h2 className="text-xl font-semibold mb-3">Before You Request Deletion</h2>
+                <h2 className="text-xl font-semibold mb-3">Delete Your Account in the App</h2>
                 <p className="text-muted-foreground leading-relaxed mb-4">
-                  If you have an active subscription, please cancel it first:
+                  You can delete your account yourself, at any time, from the Homecast app or{' '}
+                  <a href="https://homecast.cloud" className="text-foreground hover:text-primary transition-colors underline">homecast.cloud</a>:
                 </p>
-                <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4 mb-4">
+                <ol className="list-decimal list-inside text-muted-foreground space-y-2 ml-4">
+                  <li>Sign in and open <strong className="text-foreground">Settings → Account</strong></li>
+                  <li>Choose <strong className="text-foreground">Delete Account</strong></li>
+                  <li>Enter your password to confirm. Your account and its data are deleted immediately.</li>
+                </ol>
+              </div>
+
+              <div>
+                <h2 className="text-xl font-semibold mb-3">Subscriptions</h2>
+                <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
+                  <li>
+                    <strong className="text-foreground">Web subscription (Stripe):</strong>{' '}
+                    cancelled automatically when you delete your account. You won't be charged again.
+                  </li>
                   <li>
                     <strong className="text-foreground">App Store subscription:</strong>{' '}
-                    cancel from{' '}
+                    only you can cancel it, from{' '}
                     <a href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-primary transition-colors underline">
                       apps.apple.com/account/subscriptions
                     </a>{' '}
-                    or System Settings → Subscriptions on your Apple device. Apple continues
-                    billing your Apple ID until you cancel there — deleting your Homecast
-                    account does not stop Apple's charges.
-                  </li>
-                  <li>
-                    <strong className="text-foreground">Web subscription:</strong>{' '}
-                    open Settings → Plan → Manage Subscription inside the Homecast app
-                    or web portal, then cancel via Stripe.
+                    or System Settings → Subscriptions on your Apple device. Deleting your Homecast
+                    account does not stop Apple's charges, so cancel there first.
                   </li>
                 </ul>
               </div>
 
               <div>
-                <h2 className="text-xl font-semibold mb-3">How to Request Deletion</h2>
-                <p className="text-muted-foreground leading-relaxed mb-4">
-                  Once any active subscription is cancelled, follow these steps:
+                <h2 className="text-xl font-semibold mb-3">Can't Sign In?</h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  Reset your password from the sign-in screen, or email{' '}
+                  <a href="mailto:privacy@parob.com?subject=Delete%20my%20account" className="text-foreground hover:text-primary transition-colors underline">
+                    privacy@parob.com
+                  </a>{' '}
+                  from the address registered to your account with "Delete my account" in the subject.
+                  We'll process it within 3 business days.
                 </p>
-                <ol className="list-decimal list-inside text-muted-foreground space-y-3 ml-4">
-                  <li>
-                    Send an email to{' '}
-                    <a href="mailto:privacy@parob.com?subject=Delete%20my%20account" className="text-foreground hover:text-primary transition-colors underline">
-                      privacy@parob.com
-                    </a>{' '}
-                    from the email address registered to your account
-                  </li>
-                  <li>Include <strong className="text-foreground">"Delete my account"</strong> in the subject line</li>
-                  <li>We will confirm receipt and process your request within 3 business days</li>
-                </ol>
               </div>
 
               <div>
@@ -85,8 +87,8 @@ const DeleteAccount = () => {
               <div>
                 <h2 className="text-xl font-semibold mb-3">Timeline</h2>
                 <p className="text-muted-foreground leading-relaxed">
-                  Your personal data will be deleted within 30 days of your request being confirmed.
-                  You will receive an email once the deletion is complete.
+                  Deleting your account in the app removes it and its data immediately. A request
+                  sent by email is completed within 30 days, and we'll email you once it's done.
                 </p>
               </div>
 
