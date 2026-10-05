@@ -159,6 +159,20 @@ describe('StickyNoteNode', () => {
     expect(screen.getByDisplayValue('Remember the milk')).toBeTruthy();
   });
 
+  it('fills the size React Flow gives the node, not just its minimum', () => {
+    // React Flow puts a saved or resized note's width/height on the node
+    // wrapper; the note's own box has to stretch to it, or the text is cut
+    // to one line.
+    const { container } = render(
+      <ReactFlowProvider>
+        <StickyNoteNode {...noteProps} data={{ config: { text: 'Line one\nLine two' } } as never} />
+      </ReactFlowProvider>,
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain('w-full');
+    expect(root.className).toContain('h-full');
+  });
+
   it('renders with no text set', () => {
     expect(() => render(
       <ReactFlowProvider>
