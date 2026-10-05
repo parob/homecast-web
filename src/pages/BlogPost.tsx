@@ -1,17 +1,18 @@
 import { useEffect, useMemo } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen } from 'lucide-react';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
 import { Button } from '@/components/ui/button';
-import { useDocumentMeta } from '@/hooks/useDocumentMeta';
-import { POSTS, findPost, imageSizes, renderPostBody } from '@/lib/blog/posts';
+import { useBlogMeta } from '@/hooks/useBlogMeta';
+import { POSTS, findPost, renderPostBody } from '@/lib/blog/posts';
+import { BLOG_REDIRECTS } from '@/lib/blog/redirects';
 import { relatedPosts } from '@/lib/blog/parse';
-import { BLOG_CLASSES, postPageTitle } from '@/lib/blog/prerender';
+import { BLOG_CLASSES, postPageMeta, postPath } from '@/lib/blog/prerender';
 import { PostCard, PostKicker } from '@/components/blog/PostCard';
+import { BlogComments } from '@/components/blog/BlogComments';
 
 const NotFoundPost = () => {
-  useDocumentMeta('Post not found — Homecast');
   return (
     <section className={BLOG_CLASSES.articleSection}>
       <div className={BLOG_CLASSES.articleColumn}>
@@ -25,17 +26,33 @@ const NotFoundPost = () => {
 
 const BlogPost = () => {
   const { slug } = useParams();
-  const { hash } = useLocation();
+  const { hash, search } = useLocation();
+  const redirectSlug = slug && Object.prototype.hasOwnProperty.call(BLOG_REDIRECTS, slug)
+    ? BLOG_REDIRECTS[slug] : undefined;
   const post = findPost(slug);
   const html = useMemo(() => (post ? renderPostBody(post) : ''), [post]);
-  useDocumentMeta(post ? postPageTitle(post) : 'Blog — Homecast', post?.description);
+  useBlogMeta(post ? postPageMeta(post) : {
+    title: 'Post not found — Homecast',
+    description: 'This blog post could not be found.',
+    type: 'website',
+    noindex: !redirectSlug,
+  });
 
   // Arriving on a new post starts at the top, or at the section a link named.
   useEffect(() => {
     const target = hash && document.getElementById(decodeURIComponent(hash.slice(1)));
-    if (target) target.scrollIntoView();
+    if (target) {
+      // A section link can point at a disclosure or something inside it.
+      // Reveal its ancestors before scrolling so it remains reachable.
+      for (let element: HTMLElement | null = target; element; element = element.parentElement) {
+        if (element instanceof HTMLDetailsElement) element.open = true;
+      }
+      target.scrollIntoView();
+    }
     else window.scrollTo(0, 0);
   }, [slug, hash]);
+
+  if (redirectSlug) return <Navigate to={{ pathname: postPath(redirectSlug), search, hash }} replace />;
 
   if (!post) {
     return (
@@ -47,7 +64,6 @@ const BlogPost = () => {
     );
   }
 
-  const cover = post.cover ? imageSizes[post.cover] : undefined;
   const related = relatedPosts(post, POSTS);
 
   return (
@@ -62,43 +78,21 @@ const BlogPost = () => {
             >
               <ArrowLeft className="h-4 w-4" /> Blog
             </Link>
-            <PostKicker post={post} className="mb-4" />
             <h1 className={BLOG_CLASSES.title}>{post.title}</h1>
-            <p className={BLOG_CLASSES.standfirst}>{post.description}</p>
+            <PostKicker post={post} className="mb-2" />
             <p className={BLOG_CLASSES.byline}>By {post.author}</p>
-            {post.cover && (
-              <img
-                src={post.cover}
-                alt={post.coverAlt ?? ''}
-                width={cover?.width}
-                height={cover?.height}
-                className={BLOG_CLASSES.cover}
-              />
-            )}
             <div className={BLOG_CLASSES.body} dangerouslySetInnerHTML={{ __html: html }} />
-
-            <aside className="mt-14 rounded-2xl border border-border bg-muted/40 p-6 sm:p-8">
-              <h2 className="text-lg font-semibold mb-2">Try it on your own Apple Home</h2>
-              <p className="text-muted-foreground mb-5">
-                Homecast connects Apple Home to Android, the web, Home Assistant, AI assistants and your own code.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Button asChild><Link to="/pricing">See plans</Link></Button>
-                <Button variant="outline" asChild>
-                  <a href="https://docs.homecast.cloud"><BookOpen className="h-4 w-4 mr-1.5" />Read the docs</a>
-                </Button>
-              </div>
-            </aside>
+            <BlogComments key={post.slug} slug={post.slug} />
           </div>
         </article>
 
         {related.length > 0 && (
-          <section className="w-full border-t border-border px-6 py-16">
-            <div className="mx-auto max-w-6xl">
-              <h2 className="text-2xl font-bold tracking-tight mb-8">Keep reading</h2>
-              <div className="grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-                {related.map((p) => <PostCard key={p.slug} post={p} />)}
-              </div>
+          <section className="w-full px-6 pb-16">
+            <div className={BLOG_CLASSES.articleColumn}>
+              <h2 className="text-lg font-semibold tracking-tight mb-4">More from the blog</h2>
+              <ul className={BLOG_CLASSES.postList}>
+                {related.map((p) => <li key={p.slug}><PostCard post={p} /></li>)}
+              </ul>
             </div>
           </section>
         )}

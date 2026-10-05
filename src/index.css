@@ -896,28 +896,40 @@ html.ios-app .selectable {
   ignore --text-scale and drift from the rest of the marketing pages.
 */
 @layer components {
-  .blog-body { @apply text-base sm:text-lg leading-relaxed text-foreground/90; }
-  .blog-body > * + * { @apply mt-5; }
-  .blog-body h2 { @apply mt-12 mb-1 text-2xl font-bold tracking-tight text-foreground scroll-mt-24; }
-  .blog-body h3 { @apply mt-9 mb-1 text-xl font-semibold text-foreground scroll-mt-24; }
-  .blog-body h4 { @apply mt-7 text-base font-semibold text-foreground; }
+  .blog-body { @apply text-base leading-[1.7] text-foreground/90; overflow-wrap: anywhere; }
+  .blog-body > * + *, .blog-body details > * + * { @apply mt-4; }
+  .blog-body h2 { @apply mt-8 mb-1 text-xl font-semibold tracking-tight text-foreground scroll-mt-24; }
+  .blog-body h3 { @apply mt-6 mb-1 text-lg font-semibold text-foreground scroll-mt-24; }
+  .blog-body h4 { @apply mt-5 text-base font-semibold text-foreground; }
   .blog-body a { @apply text-primary underline underline-offset-2 decoration-primary/40 hover:decoration-primary; }
   .blog-body strong { @apply font-semibold text-foreground; }
-  .blog-body ul { @apply list-disc pl-6 space-y-2; }
-  .blog-body ol { @apply list-decimal pl-6 space-y-2; }
+  .blog-body ul { @apply list-disc pl-5 space-y-1; }
+  .blog-body ol { @apply list-decimal pl-5 space-y-1; }
   .blog-body li > ul, .blog-body li > ol { @apply mt-2; }
-  .blog-body blockquote { @apply rounded-xl border-l-4 border-primary/60 bg-muted/50 px-5 py-4 text-foreground/80; }
+  .blog-body blockquote { @apply border-l-2 border-border pl-5 py-1 text-foreground/80; }
   .blog-body blockquote > * + * { @apply mt-3; }
   /* The theme replaces Tailwind's font families, so there is no font-mono. */
   .blog-body code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
   .blog-body :not(pre) > code { @apply rounded-md bg-muted px-1.5 py-0.5 text-[0.85em]; }
-  .blog-body pre { @apply overflow-x-auto rounded-xl border border-border bg-muted/60 p-4 text-sm leading-relaxed; }
-  .blog-body figure { @apply my-8; }
-  .blog-body figure img { @apply mx-auto h-auto max-w-full rounded-xl border border-border bg-muted; }
-  .blog-body figcaption { @apply mt-3 text-center text-sm text-muted-foreground; }
-  .blog-body hr { @apply my-10 border-border; }
+  .blog-body pre { @apply overflow-x-auto rounded-md border border-border bg-muted/60 p-3 text-[13px] leading-relaxed; }
+  .blog-body figure { @apply my-6; }
+  .blog-body figure img { @apply mx-auto h-auto w-auto max-h-80 max-w-full rounded-md border border-border bg-muted; }
+  .blog-body figcaption { @apply mt-2 text-xs leading-relaxed text-muted-foreground; }
+  .blog-body hr { @apply my-7 border-border; }
+  .blog-body details { @apply rounded-md border border-border px-4 scroll-mt-24; }
+  .blog-body summary { @apply cursor-pointer py-3 text-sm font-medium text-foreground; }
+  .blog-body summary::marker { @apply text-muted-foreground; }
+  .blog-body summary:hover { @apply text-primary; }
+  .blog-body summary:focus-visible { @apply rounded-sm outline outline-2 outline-primary outline-offset-4; }
+  .blog-body details[open] { @apply pb-4; }
+  .blog-body details[open] > summary + * { @apply mt-1; }
+  .blog-body details > :last-child { @apply mb-0; }
+  .blog-body .blog-actions { @apply my-5 flex flex-wrap gap-2; }
+  .blog-body .blog-actions a { @apply inline-flex min-h-11 items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground no-underline hover:bg-muted; }
+  .blog-body .blog-actions .blog-action-primary { @apply border-primary bg-primary text-primary-foreground hover:bg-primary/90; }
+  .blog-body .blog-actions a:focus-visible { @apply outline outline-2 outline-primary outline-offset-2; }
   .blog-body .blog-table { @apply overflow-x-auto; }
   .blog-body table { @apply w-full border-collapse text-sm sm:text-base; }
-  .blog-body th { @apply border-b border-border px-3 py-2 text-left font-semibold text-foreground; }
+  .blog-body th { @apply whitespace-nowrap border-b border-border px-3 py-2 text-left font-semibold text-foreground; }
   .blog-body td { @apply border-b border-border/60 px-3 py-2 align-top; }
 }

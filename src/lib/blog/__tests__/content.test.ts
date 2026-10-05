@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { BLOG_REDIRECTS } from '../redirects';
 import { parsePost, referencedImages, slugFromPath } from '../parse';
 
 const root = path.resolve(__dirname, '../../../..');
@@ -17,6 +18,13 @@ const slugs = new Set(posts.map((p) => p.slug));
 describe('blog content', () => {
   it('has posts', () => {
     expect(posts.length).toBeGreaterThan(0);
+  });
+
+  it('keeps retired URLs out of the index and points them at existing posts', () => {
+    for (const [oldSlug, target] of Object.entries(BLOG_REDIRECTS)) {
+      expect(slugs.has(oldSlug)).toBe(false);
+      expect(slugs.has(target)).toBe(true);
+    }
   });
 
   it('features at most one post', () => {
@@ -54,7 +62,7 @@ describe('blog content', () => {
     });
 
     it('links only to posts that exist', () => {
-      for (const [, target] of post.body.matchAll(/\]\(\/blog\/([a-z0-9-]+)/g)) {
+      for (const [, target] of post.body.matchAll(/\]\(\/blog\/([a-z0-9-]+)\/?(?:#[^)]*)?\)/g)) {
         expect(slugs.has(target), `/blog/${target} does not exist`).toBe(true);
       }
     });

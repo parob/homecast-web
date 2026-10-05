@@ -1,3 +1,4 @@
+import { BLOG_REDIRECTS } from './src/lib/blog/redirects';
 import { defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -7,7 +8,7 @@ import { componentTagger } from "lovable-tagger";
 import { parsePost, renderMarkdown, slugFromPath, sortPosts, type ImageSizes } from "./src/lib/blog/parse";
 import { imageSize } from "./src/lib/blog/image-size";
 import {
-  BLOG_INDEX_META, postPageTitle, postPath, renderIndexPage, renderPostPage, renderRss, renderSitemap,
+  BLOG_INDEX_META, postPageMeta, renderIndexPage, renderPostPage, renderPostRedirect, renderRss, renderSitemap,
   withPageHead, withRootContent,
 } from "./src/lib/blog/prerender";
 import { MARKETING_PATHS } from "./src/lib/marketing-routes";
@@ -144,19 +145,15 @@ function blogPlugin(): Plugin {
 
         for (const post of posts) {
           const html = withRootContent(
-            withPageHead(template, {
-              title: postPageTitle(post),
-              description: post.description,
-              path: postPath(post.slug),
-              image: post.cover,
-              imageAlt: post.coverAlt,
-              type: 'article',
-              publishedTime: post.date,
-              author: post.author,
-            }),
-            renderPostPage(post, renderMarkdown(post.body, sizes), post.cover ? sizes[post.cover] : undefined),
+            withPageHead(template, postPageMeta(post)),
+            renderPostPage(post, renderMarkdown(post.body, sizes), posts),
           );
           this.emitFile({ type: 'asset', fileName: `blog/${post.slug}/index.html`, source: html });
+        }
+
+        for (const [oldSlug, newSlug] of Object.entries(BLOG_REDIRECTS)) {
+          if (!posts.some((post) => post.slug === newSlug)) throw new Error(`Missing redirect target: ${newSlug}`);
+          this.emitFile({ type: 'asset', fileName: `blog/${oldSlug}/index.html`, source: renderPostRedirect(newSlug) });
         }
 
         this.emitFile({

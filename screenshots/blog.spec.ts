@@ -143,8 +143,8 @@ const trainLight = {
     ],
     stickyNotes: [
       { id: 'note-when', position: { x: -330, y: 10 }, width: 290, height: 170, text: '1 · WHEN\n\nEvery minute, but only on weekday mornings from 7 to 9. Outside that window nothing is fetched and the lamp is left alone.' },
-      { id: 'note-ask', position: { x: -330, y: 255 }, width: 290, height: 125, text: '2 · ASK TFL\n\nJourneys from Sevenoaks to Blackfriars, with live times for every leg.' },
-      { id: 'note-decide', position: { x: -330, y: 400 }, width: 290, height: 135, text: '3 · DECIDE\n\nMinutes to spare after a 7-minute walk: green to go, amber to wait, red if the train is late.' },
+      { id: 'note-ask', position: { x: -330, y: 255 }, width: 290, height: 125, text: '2 · ASK TFL\n\nTfL journey times from Sevenoaks to Blackfriars, including changes.' },
+      { id: 'note-decide', position: { x: -330, y: 400 }, width: 290, height: 135, text: '3 · DECIDE\n\nKeep 2 min on the platform. Green: walk (7 min). Purple: walk quickly (5 min). Amber: wait. Red: check trains.' },
       { id: 'note-show', position: { x: 680, y: 640 }, width: 260, height: 130, text: '4 · SHOW IT\n\nTurn the lamp on, then set its colour and brightness from the Code node.' },
     ],
   },
