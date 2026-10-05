@@ -12,6 +12,8 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   testIgnore: [
     '**/capture.spec.ts',
+    // Writes the blog posts' images (its own config and port, run by hand).
+    '**/blog.spec.ts',
     '**/header-control-chrome.spec.ts',
     '**/issue-181-status.spec.ts',
     '**/report-sheet.spec.ts',

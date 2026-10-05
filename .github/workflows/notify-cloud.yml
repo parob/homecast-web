@@ -29,9 +29,17 @@ jobs:
       - name: Build
         run: npm run build
 
+  # Four shards in parallel. Run as one job the suite took 17-23 minutes
+  # against a 25-minute limit, so every deploy waited on it and a slow runner
+  # cancelled it outright. A quarter each finishes in a few minutes, and the
+  # notify job still waits for all four.
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,12 +55,12 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: screenshots
       - name: Browser regressions (desktop and phone)
-        run: npx playwright test --config playwright.ci.config.ts
+        run: npx playwright test --config playwright.ci.config.ts --shard=${{ matrix.shard }}/4
         working-directory: screenshots
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: browser-failures
+          name: browser-failures-${{ matrix.shard }}
           path: screenshots/test-results/
           retention-days: 7
 
