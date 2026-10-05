@@ -5,9 +5,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Home, Loader2, Shield, Check, X, ExternalLink, Eye, Zap } from 'lucide-react';
+import { Home, Loader2, Shield, Check, X, ExternalLink, Eye, Zap, Laptop } from 'lucide-react';
 import { GET_CACHED_HOMES } from '@/lib/graphql/queries';
 import { WELL_KNOWN_CLIENTS } from '@/lib/oauth-clients';
+import { clientIdHost, isLoopbackRedirect, isSafeNavigation } from '@/lib/oauth-client-identity';
 
 import { config } from '@/lib/config';
 import { HomecastMark } from '@/components/HomecastMark';
@@ -29,10 +30,11 @@ interface OAuthParams {
   client_uri?: string;
 }
 
-function getClientBranding(redirectUri: string, paramClientName?: string, paramLogoUri?: string) {
-  // Try well-known clients first (based on redirect_uri domain)
+function getClientBranding(redirectUri: string, paramClientName?: string, paramLogoUri?: string, idHost?: string | null) {
+  // Try well-known clients first: by the host a URL client_id was fetched
+  // from when there is one (the server checked it), else the redirect domain.
   try {
-    const domain = new URL(redirectUri).hostname;
+    const domain = idHost || new URL(redirectUri).hostname;
     const wellKnown = WELL_KNOWN_CLIENTS[domain];
     if (wellKnown) {
       return {
@@ -118,7 +120,7 @@ const OAuthConsent = () => {
           resource: params.get('resource') || '',
         });
 
-        setClientBranding(getClientBranding(redirectUri, paramClientName, paramLogoUri));
+        setClientBranding(getClientBranding(redirectUri, paramClientName, paramLogoUri, clientIdHost(params.get('client_id'))));
       } catch (e) {
         setError('Invalid OAuth parameters');
       }
@@ -177,7 +179,7 @@ const OAuthConsent = () => {
 
       const data = await response.json();
 
-      if (response.ok && data.redirect_uri) {
+      if (response.ok && data.redirect_uri && isSafeNavigation(data.redirect_uri)) {
         // Show success state immediately
         setIsSuccess(true);
         setSuccessRedirectUri(data.redirect_uri);
@@ -212,7 +214,7 @@ const OAuthConsent = () => {
 
       const data = await response.json();
 
-      if (data.redirect_uri) {
+      if (data.redirect_uri && isSafeNavigation(data.redirect_uri)) {
         // Redirect to the OAuth client with the error
         window.location.href = data.redirect_uri;
       } else {
@@ -243,6 +245,11 @@ const OAuthConsent = () => {
   // Count enabled homes by role
   const enabledHomes = homePermissions.filter(hp => hp.enabled);
   const controlHomes = enabledHomes.filter(hp => hp.role === 'control');
+
+  // Who is asking, by the address their details came from (URL client_ids
+  // only; null for a registered client, which keeps the page as it was).
+  const idHost = clientIdHost(oauthParams.client_id);
+  const returnsToThisComputer = isLoopbackRedirect(oauthParams.redirect_uri);
 
   // Extract domain from redirect URI for display
   let redirectDomain = '';
@@ -320,7 +327,16 @@ const OAuthConsent = () => {
               : 'Authorize Application'}
           </CardTitle>
           <CardDescription>
-            <span className="font-medium text-foreground">{clientBranding.name || 'This application'}</span> is requesting access to your Homecast account
+            <span className="font-medium text-foreground">{clientBranding.name || idHost || 'This application'}</span>
+            {idHost && clientBranding.name && (
+              <>
+                {' '}
+                <span className="whitespace-nowrap" title="The address this app's details were published at">
+                  ({idHost})
+                </span>
+              </>
+            )}{' '}
+            is requesting access to your Homecast account
           </CardDescription>
         </CardHeader>
 
@@ -430,6 +446,15 @@ const OAuthConsent = () => {
           {enabledHomes.length === 0 && homes.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
               Select at least one home to authorize access.
+            </div>
+          )}
+
+          {returnsToThisComputer && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              <Laptop className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>
+                This returns to an app on this computer. Only continue if you just started signing in from it.
+              </span>
             </div>
           )}
 
