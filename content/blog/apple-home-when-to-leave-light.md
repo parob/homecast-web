@@ -39,7 +39,7 @@ The HTTP Request runs on your relay as an ordinary web request, so it can only t
 
 Start with the weather. It's simpler, and it teaches the whole pattern.
 
-Open **Automations** from the menu at the top right of the dashboard, choose **Create**, pick **Homecast** as the kind of automation, and add these nodes in order.
+Open **Automations** from the menu at the top right of the dashboard, choose **Create**, pick **Homecast** as the kind of automation, and add these nodes in order. Clicking a node in the list on the left drops it on the canvas; to connect two, drag from the dot at the bottom of one to the dot at the top of the next. An IF has two dots underneath — green for true, red for false.
 
 **1. Schedule.** Choose **At a specific time**, set it to 07:30, and pick Monday to Friday.
 
@@ -82,6 +82,8 @@ return { rain: worst.chance >= RAINY, chance: worst.chance, at: worst.at };
 - **Set Device** three times on your lamp: **Power State** on, **Hue** 240 (blue) and **Saturation** 100. Each Set Device node changes one thing, and without the saturation a lamp last used on white stays white.
 
 That's it. Save it, then open it again, select the **Schedule** node and press **Run Test** to try it without waiting for 7:30. The **Executions** tab shows each step's input and output, which is the quickest way to check the Code node is reading the forecast.
+
+![The umbrella light in the automation editor, with a sticky note beside each stage: when it runs, reading the forecast, only if it's wet, and the warning](/blog/apple-home-when-to-leave-light/editor-umbrella-light.webp "The umbrella light in the editor. Sticky Notes (under Annotations in the node list) are worth the ten seconds: you'll thank yourself in March.")
 
 ## Part 2: the train light
 
@@ -128,7 +130,7 @@ and use the `id` from the answer. Open the journey URL in a browser and you'll s
 now().weekday >= 1 and now().weekday <= 5 and now().hour >= 7 and now().hour < 9
 ```
 
-That's weekdays, 7am to 9am. Everything below goes on the true branch.
+That's weekdays, 7am to 9am. Everything below hangs off the IF's green (true) dot.
 
 **3. HTTP Request.** **GET** your journey URL from above.
 
@@ -207,7 +209,7 @@ The `summary` is there for you, not the light — it reads like *"Leave in 9 min
 
 **6. One more small automation** to switch the lamp off at 9:00 on weekdays, so it isn't still amber when you get home.
 
-![The train light in the automation editor: a schedule, a commute-hours check, the journey planner, the Code node, and four Set Device nodes](/blog/apple-home-when-to-leave-light/flow.svg "The whole train light. The first two nodes decide whether to look at all.")
+![The train light in the automation editor: schedule, commute-hours check, journey planner and Code node down the left, four Set Device nodes on the right, and a sticky note explaining each stage](/blog/apple-home-when-to-leave-light/editor-train-light.webp "The whole train light, as it looks in the editor.")
 
 ### Tuning it
 
