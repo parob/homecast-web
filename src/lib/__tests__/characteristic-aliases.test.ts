@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { canonicalCharacteristic, SIMPLE_TO_CHAR } from '../characteristic-aliases';
+import { canonicalCharacteristic, nativeStateTree, SIMPLE_TO_CHAR } from '../characteristic-aliases';
 
 describe('canonicalCharacteristic', () => {
   it('resolves a short alias to the name events carry', () => {
@@ -71,5 +71,19 @@ describe('the canonical vocabulary is snake_case', () => {
     const keys = [...source.slice(start, end).matchAll(/"([a-zA-Z0-9_]+)":/g)].map(m => m[1]);
     expect(keys.length).toBeGreaterThan(100);
     expect(keys.filter(k => /[A-Z]/.test(k))).toEqual([]);
+  });
+});
+
+describe('nativeStateTree', () => {
+  // Mac builds up to 1.2.6 resolve `target_temperature` but not `target_temp`,
+  // so a thermostat setpoint from REST/MCP/Home Assistant failed on the relay.
+  it('renames target_temp to the name every native build resolves', () => {
+    expect(nativeStateTree({ r: { a: { target_temp: 21, on: true } } }))
+      .toEqual({ r: { a: { target_temperature: 21, on: true } } });
+  });
+
+  it('leaves names native has always known alone, values included', () => {
+    const state = { r: { a: { hvac_mode: 'heat', heat_target: 20, target: 50, speed: 30 } } };
+    expect(nativeStateTree(state)).toEqual(state);
   });
 });

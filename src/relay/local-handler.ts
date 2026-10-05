@@ -13,7 +13,7 @@ import {
   emitLocalRelayActivity, hasLocalActivityListeners, activityNow,
 } from '../server/local-activity';
 import { describeError } from '../lib/describe-error';
-import { canonicalCharacteristic } from '../lib/characteristic-aliases';
+import { canonicalCharacteristic, nativeStateTree } from '../lib/characteristic-aliases';
 import { bumpTelemetry } from '../server/local-telemetry';
 
 /** Distinguishes requests started within the same millisecond. */
@@ -858,7 +858,7 @@ async function executeHomeKitActionInner(
       const virtualWrites = applyVirtualStateWrites(state, homeId);
       const hasHomeKitWork = Object.keys(virtualWrites.remaining).length > 0;
       const result = hasHomeKitWork
-        ? await HomeKit.setState(virtualWrites.remaining, homeId)
+        ? await HomeKit.setState(nativeStateTree(virtualWrites.remaining), homeId)
         : { ok: 0, failed: [] as string[], changes: [] as Array<{ accessoryId: string; characteristicType: string; value: unknown }> };
       console.log('[state.set] result:', JSON.stringify(result));
       const changes = [...(result.changes ?? []), ...virtualWrites.changes];

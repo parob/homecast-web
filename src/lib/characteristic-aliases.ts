@@ -75,3 +75,43 @@ export function canonicalCharacteristic(characteristicType: string): string {
   const snake = snakeCaseProp(characteristicType);
   return SIMPLE_TO_CHAR[snake] ?? snake;
 }
+
+/**
+ * Simple names `state.set` accepts that the Mac app's native `setState` cannot
+ * resolve in builds up to and including Mac 1.2.6 (build 80):
+ * `CharacteristicMapper.simpleNameMap` only gained them in homecast#77, after
+ * that release. The full characteristic name has always resolved, so rename on
+ * the way in. Values need no conversion.
+ *
+ * Without this a thermostat setpoint written over REST, MCP or Home Assistant
+ * reached the relay and failed there as "characteristic not found".
+ */
+const NATIVE_STATE_RENAMES: Record<string, string> = {
+  target_temp: 'target_temperature',
+};
+
+type StateTree = Record<string, Record<string, Record<string, unknown>>>;
+
+/** A `state.set` tree with every property spelled so any native build resolves it. */
+export function nativeStateTree(state: StateTree): StateTree {
+  const out: StateTree = {};
+  for (const [room, accessories] of Object.entries(state)) {
+    if (!accessories || typeof accessories !== 'object') {
+      out[room] = accessories;
+      continue;
+    }
+    out[room] = {};
+    for (const [accessory, props] of Object.entries(accessories)) {
+      if (!props || typeof props !== 'object') {
+        out[room][accessory] = props;
+        continue;
+      }
+      const renamed: Record<string, unknown> = {};
+      for (const [prop, value] of Object.entries(props)) {
+        renamed[NATIVE_STATE_RENAMES[prop] ?? prop] = value;
+      }
+      out[room][accessory] = renamed;
+    }
+  }
+  return out;
+}

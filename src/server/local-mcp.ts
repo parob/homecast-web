@@ -151,9 +151,11 @@ const TOOLS = [
     description:
       'Set accessory state using a flat list of updates. Each update has home/room/accessory path and settings. ' +
       'Settable properties by type: light (on, brightness, hue, saturation, color_temp), ' +
-      'climate (active, heat_target, cool_target, hvac_mode), switch/outlet (on), ' +
-      'lock (lock_target), alarm (alarm_target), fan (on, speed), speaker (volume, mute), ' +
-      'blind (target), valve (active). Virtual accessories take the characteristic get_state ' +
+      'climate (active, heat_target, cool_target, hvac_mode, speed, swing_mode; a thermostat takes ' +
+      'target_temp and heating_cooling_target 0 off/1 heat/2 cool/3 auto), switch/outlet (on), ' +
+      'lock (lock_target), alarm (alarm_target), fan (on, active, speed), speaker (volume, mute), ' +
+      'blind (target), valve (active). Where get_state lists `_options` for a property, only those ' +
+      'values are accepted by that accessory. Virtual accessories take the characteristic get_state ' +
       'reports for them: virtual_mode, virtual_count (sets the count), virtual_number, virtual_text, ' +
       'virtual_datetime, virtual_timer ("active" starts it, anything else cancels); a virtual ' +
       'switch uses on. Returns {updated, failed, changes, errors, message}.',
@@ -183,6 +185,9 @@ const TOOLS = [
               speed: { type: 'integer', description: '0-100' },
               volume: { type: 'integer', description: '0-100' },
               mute: { type: 'boolean' },
+              target_temp: { type: 'number', description: 'Thermostat setpoint' },
+              heating_cooling_target: { type: 'integer', description: 'Thermostat mode: 0 off, 1 heat, 2 cool, 3 auto' },
+              swing_mode: { type: 'integer', description: '0 off, 1 on' },
               virtual_mode: { type: 'string', description: 'Virtual accessory: the option to select' },
               virtual_count: { type: 'integer', description: 'Virtual accessory: sets the count' },
               virtual_number: { type: 'number', description: 'Virtual accessory: the value' },

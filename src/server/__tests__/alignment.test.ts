@@ -91,7 +91,7 @@ import {
 
 import { HomeKit } from '@/native/homekit-bridge';
 import { handleMCP } from '@/server/local-mcp';
-import { handleREST } from '@/server/local-rest';
+import { handleREST, simplifyAccessory, SET_STATE_PROPERTIES } from '@/server/local-rest';
 
 // ===================================================================
 // 1. ErrorCode — must match the Cloud Edition's error codes
@@ -810,6 +810,116 @@ describe('characteristic naming at the relay boundary', () => {
       accessoryId: 'ACC-1', characteristicType: 'brightness', value: 42,
     });
     expect(HomeKit.setCharacteristic).toHaveBeenCalledWith('ACC-1', 'brightness', 42);
+  });
+});
+
+describe('get_state and set_state speak one vocabulary', () => {
+  // get_state passed the relay's own names through, so it advertised
+  // `_settable: ["target_position"]` while set_state only took `target`.
+  // Mirrors homecast-cloud tests/test_rest_state_vocabulary.py; payload shapes
+  // are from live accessories.list answers.
+  const char = (characteristicType: string, value: unknown, isWritable = false, validValues?: number[]) =>
+    ({ characteristicType, value, isWritable, ...(validValues ? { validValues } : {}) });
+
+  const airConditioner = {
+    services: [{ serviceType: 'heater_cooler', characteristics: [
+      char('active', 0, true), char('current_temperature', 22),
+      char('current_heater_cooler_state', 3), char('target_heater_cooler_state', 2, true, [0, 1, 2]),
+      char('heating_threshold', 26, true), char('cooling_threshold', 26, true),
+      char('rotation_speed', 34, true), char('swing_mode', 1, true, [0, 1]),
+    ] }],
+  };
+  const radiator = {
+    services: [{ serviceType: 'heater_cooler', characteristics: [
+      char('active', 1, true), char('current_temperature', 20.4),
+      char('current_heater_cooler_state', 2), char('target_heater_cooler_state', 1, true, [1]),
+      char('heating_threshold', 21, true),
+    ] }],
+  };
+  const thermostat = {
+    services: [{ serviceType: 'thermostat', characteristics: [
+      char('current_temperature', 19.5), char('target_temperature', 20, true),
+      char('heating_cooling_current', 1), char('heating_cooling_target', 1, true, [0, 1, 3]),
+    ] }],
+  };
+  const blind = {
+    services: [
+      { serviceType: 'window_covering', characteristics: [
+        char('current_position', 40), char('target_position', 40, true), char('position_state', 2),
+      ] },
+      { serviceType: 'battery', characteristics: [
+        char('name', 'Battery'), char('battery_level', 87), char('charging_state', 2), char('status_low_battery', 0),
+      ] },
+    ],
+  };
+  const fan = {
+    services: [{ serviceType: 'fanv2', characteristics: [char('active', 1, true), char('rotation_speed', 60, true)] }],
+  };
+
+  it('reports a heater-cooler under the names set_state takes', () => {
+    const r = simplifyAccessory(airConditioner);
+    expect(r.hvac_mode).toBe('cool');
+    expect(r.hvac_state).toBe('cooling');
+    expect(r.speed).toBe(34);
+    expect(r).not.toHaveProperty('target_heater_cooler_state');
+    expect(r).not.toHaveProperty('rotation_speed');
+    expect(r._options.hvac_mode).toEqual(['auto', 'heat', 'cool']);
+  });
+
+  it('says a radiator can only heat', () => {
+    expect(simplifyAccessory(radiator)._options).toEqual({ hvac_mode: ['heat'] });
+  });
+
+  it('reports a thermostat setpoint and mode', () => {
+    const r = simplifyAccessory(thermostat);
+    expect(r.target_temp).toBe(20);
+    expect(r.heating_cooling_target).toBe(1);
+    expect(r._options.heating_cooling_target).toEqual([0, 1, 3]);
+  });
+
+  it('reports a blind as target, with its battery', () => {
+    const r = simplifyAccessory(blind);
+    expect(r.target).toBe(40);
+    expect(r.current_position).toBe(40);
+    expect(r._settable).toEqual(['target']);
+    expect(r.battery).toBe(87);
+    expect(r.low_battery).toBe(false);
+    expect(r).not.toHaveProperty('name');
+  });
+
+  it('reports a Fanv2 speed as speed', () => {
+    const r = simplifyAccessory(fan);
+    expect(r.speed).toBe(60);
+    expect(r._settable.sort()).toEqual(['active', 'speed']);
+  });
+
+  it('every settable property is one set_state accepts', () => {
+    const offered = new Set<string>();
+    for (const acc of [airConditioner, radiator, thermostat, blind, fan]) {
+      for (const k of simplifyAccessory(acc)._settable ?? []) offered.add(k);
+    }
+    expect([...offered].filter((k) => !SET_STATE_PROPERTIES.has(k))).toEqual([]);
+  });
+
+  it('the MCP set_state schema and the REST/MCP handler accept the same properties', async () => {
+    const response = JSON.parse(await handleMCP(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/list' })));
+    const setState = response.result.tools.find((t: any) => t.name === 'set_state');
+    const schemaProps = Object.keys(setState.inputSchema.properties.updates.items.properties)
+      .filter((k) => !['home', 'room', 'accessory'].includes(k));
+    expect(new Set(schemaProps)).toEqual(new Set(SET_STATE_PROPERTIES));
+  });
+
+  it('a thermostat setpoint reaches native under a name every build resolves', async () => {
+    (HomeKit.setState as any).mockClear();
+    (HomeKit.setState as any).mockResolvedValueOnce({ ok: 1, failed: [], changes: [] });
+    await executeHomeKitAction('state.set', {
+      homeId: 'HOME-1',
+      state: { hallway_ab12: { thermostat_cd34: { target_temp: 21.5, heating_cooling_target: 1 } } },
+    });
+    expect(HomeKit.setState).toHaveBeenCalledWith(
+      { hallway_ab12: { thermostat_cd34: { target_temperature: 21.5, heating_cooling_target: 1 } } },
+      'HOME-1',
+    );
   });
 });
 
