@@ -1,0 +1,133 @@
+{
+  "journeys": [
+    {
+      "startDateTime": "2026-10-05T13:47:00",
+      "arrivalDateTime": "2026-10-05T14:26:00",
+      "duration": 39,
+      "legs": [
+        {
+          "departureTime": "2026-10-05T13:47:00",
+          "scheduledDepartureTime": "2026-10-05T13:47:00",
+          "arrivalTime": "2026-10-05T14:11:00",
+          "scheduledArrivalTime": "2026-10-05T14:11:00",
+          "isDisrupted": false,
+          "departurePoint": {
+            "commonName": "Sevenoaks Rail Station"
+          },
+          "arrivalPoint": {
+            "commonName": "London Bridge Rail Station"
+          },
+          "routeOptions": [
+            {
+              "name": "Southeastern"
+            }
+          ]
+        },
+        {
+          "departureTime": "2026-10-05T14:21:00",
+          "scheduledDepartureTime": "2026-10-05T14:21:00",
+          "arrivalTime": "2026-10-05T14:26:00",
+          "scheduledArrivalTime": "2026-10-05T14:26:00",
+          "isDisrupted": false,
+          "departurePoint": {
+            "commonName": "London Bridge Rail Station"
+          },
+          "arrivalPoint": {
+            "commonName": "London Blackfriars Rail Station"
+          },
+          "routeOptions": [
+            {
+              "name": "Thameslink"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "startDateTime": "2026-10-05T14:02:00",
+      "arrivalDateTime": "2026-10-05T14:41:00",
+      "duration": 39,
+      "legs": [
+        {
+          "departureTime": "2026-10-05T14:02:00",
+          "scheduledDepartureTime": "2026-10-05T13:59:00",
+          "arrivalTime": "2026-10-05T14:25:00",
+          "scheduledArrivalTime": "2026-10-05T14:23:00",
+          "isDisrupted": false,
+          "departurePoint": {
+            "commonName": "Sevenoaks Rail Station"
+          },
+          "arrivalPoint": {
+            "commonName": "London Bridge Rail Station"
+          },
+          "routeOptions": [
+            {
+              "name": "Southeastern"
+            }
+          ]
+        },
+        {
+          "departureTime": "2026-10-05T14:36:00",
+          "scheduledDepartureTime": "2026-10-05T14:36:00",
+          "arrivalTime": "2026-10-05T14:41:00",
+          "scheduledArrivalTime": "2026-10-05T14:41:00",
+          "isDisrupted": false,
+          "departurePoint": {
+            "commonName": "London Bridge Rail Station"
+          },
+          "arrivalPoint": {
+            "commonName": "London Blackfriars Rail Station"
+          },
+          "routeOptions": [
+            {
+              "name": "Thameslink"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "startDateTime": "2026-10-05T14:17:00",
+      "arrivalDateTime": "2026-10-05T14:56:00",
+      "duration": 39,
+      "legs": [
+        {
+          "departureTime": "2026-10-05T14:17:00",
+          "scheduledDepartureTime": "2026-10-05T14:17:00",
+          "arrivalTime": "2026-10-05T14:41:00",
+          "scheduledArrivalTime": "2026-10-05T14:41:00",
+          "isDisrupted": false,
+          "departurePoint": {
+            "commonName": "Sevenoaks Rail Station"
+          },
+          "arrivalPoint": {
+            "commonName": "London Bridge Rail Station"
+          },
+          "routeOptions": [
+            {
+              "name": "Southeastern"
+            }
+          ]
+        },
+        {
+          "departureTime": "2026-10-05T14:51:00",
+          "scheduledDepartureTime": "2026-10-05T14:51:00",
+          "arrivalTime": "2026-10-05T14:56:00",
+          "scheduledArrivalTime": "2026-10-05T14:56:00",
+          "isDisrupted": false,
+          "departurePoint": {
+            "commonName": "London Bridge Rail Station"
+          },
+          "arrivalPoint": {
+            "commonName": "London Blackfriars Rail Station"
+          },
+          "routeOptions": [
+            {
+              "name": "Thameslink"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

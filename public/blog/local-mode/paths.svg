@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">The usual route and the Local Mode route</title>
+<desc id="d">Usually the app reaches Apple Home through Homecast and your relay. In Local Mode, when the relay is offline, the iPhone talks to Apple Home directly.</desc>
+<defs>
+<linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1067f4"/><stop offset="1" stop-color="#3b82f6"/></linearGradient>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+<marker id="arrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+<marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1067f4"/></marker>
+</defs>
+<rect width="1600" height="900" fill="#ffffff"/>
+<text x="80" y="120" text-anchor="start" font-size="40" font-weight="700" fill="#0f172a">Usually</text>
+<rect x="80" y="160" width="300" height="190" rx="22" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+<text x="230.0" y="246.9" text-anchor="middle" font-size="44" font-weight="600" fill="#0f172a">This iPhone</text>
+<text x="230.0" y="304.9" text-anchor="middle" font-size="30" fill="#475569">the Homecast app</text>
+<rect x="460" y="160" width="300" height="190" rx="22" fill="url(#brand)" stroke="none" stroke-width="2"/>
+<text x="610.0" y="270.4" text-anchor="middle" font-size="44" font-weight="600" fill="#ffffff">Homecast</text>
+<rect x="840" y="160" width="300" height="190" rx="22" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+<text x="990.0" y="246.9" text-anchor="middle" font-size="44" font-weight="600" fill="#0f172a">Your relay</text>
+<text x="990.0" y="304.9" text-anchor="middle" font-size="30" fill="#475569">a Mac</text>
+<rect x="1220" y="160" width="300" height="190" rx="22" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+<text x="1370.0" y="246.9" text-anchor="middle" font-size="44" font-weight="600" fill="#0f172a">Apple Home</text>
+<text x="1370.0" y="304.9" text-anchor="middle" font-size="30" fill="#475569">your accessories</text>
+<line x1="386" y1="255" x2="452" y2="255" stroke="#475569" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line x1="766" y1="255" x2="832" y2="255" stroke="#475569" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line x1="1146" y1="255" x2="1212" y2="255" stroke="#475569" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<text x="80" y="500" text-anchor="start" font-size="40" font-weight="700" fill="#1067f4">Local Mode</text>
+<rect x="80" y="540" width="300" height="190" rx="22" fill="url(#brand)" stroke="none" stroke-width="2"/>
+<text x="230.0" y="626.9" text-anchor="middle" font-size="44" font-weight="600" fill="#ffffff">This iPhone</text>
+<text x="230.0" y="684.9" text-anchor="middle" font-size="30" fill="#dbeafe">standing in</text>
+<rect x="460" y="540" width="300" height="190" rx="22" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 7"/>
+<text x="610.0" y="650.4" text-anchor="middle" font-size="44" font-weight="600" fill="#94a3b8">Homecast</text>
+<rect x="840" y="540" width="300" height="190" rx="22" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 7"/>
+<text x="990.0" y="626.9" text-anchor="middle" font-size="44" font-weight="600" fill="#94a3b8">Your relay</text>
+<text x="990.0" y="684.9" text-anchor="middle" font-size="30" fill="#94a3b8">offline</text>
+<rect x="1220" y="540" width="300" height="190" rx="22" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+<text x="1370.0" y="626.9" text-anchor="middle" font-size="44" font-weight="600" fill="#0f172a">Apple Home</text>
+<text x="1370.0" y="684.9" text-anchor="middle" font-size="30" fill="#475569">your accessories</text>
+<path d="M230.0,736 C230.0,850 1370.0,850 1370.0,742" fill="none" stroke="#1067f4" stroke-width="5" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+<text x="800.0" y="868" text-anchor="middle" font-size="30" font-weight="400" fill="#475569">directly, while the relay is away</text>
+</svg>

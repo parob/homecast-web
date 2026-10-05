@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MARKETING_PATHS, isMarketingPath } from '../marketing-routes';
+import { MARKETING_PATHS, MARKETING_PREFIXES, isMarketingPath } from '../marketing-routes';
 
 describe('isMarketingPath', () => {
   it('claims every marketing page', () => {
@@ -49,5 +49,19 @@ describe('isMarketingPath', () => {
     // matches "/pricing/" to the /pricing route, so the staging badge shows
     // there today. Changing that should be a deliberate act, not a side effect.
     expect(isMarketingPath('/pricing/')).toBe(false);
+  });
+
+  it('claims the blog and every post in it', () => {
+    for (const prefix of MARKETING_PREFIXES) {
+      expect(isMarketingPath(prefix)).toBe(true);
+      expect(isMarketingPath(`${prefix}/`)).toBe(true);
+      expect(isMarketingPath(`${prefix}/local-mode`)).toBe(true);
+    }
+  });
+
+  it('does not claim a path that merely starts like the blog', () => {
+    // A prefix is a section, not a string match: /blogger is not /blog.
+    expect(isMarketingPath('/blogger')).toBe(false);
+    expect(isMarketingPath('/blog-admin')).toBe(false);
   });
 });
