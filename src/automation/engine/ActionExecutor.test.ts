@@ -524,6 +524,64 @@ describe('ActionExecutor', () => {
   });
 
   // ============================================================
+  // Expression values (the editor's Set Device "Expression" mode)
+  // ============================================================
+
+  describe('set_device with an expression value', () => {
+    const code: Action = { type: 'code', id: 'code1', code: 'return { brightness: 55, quoted: "55" };' };
+
+    it('writes the number a Code node returned, not its text', async () => {
+      const ctx = makeCtx();
+      const set: Action = {
+        type: 'set_characteristic', id: 'set-1', accessoryId: 'acc-1', characteristicType: 'brightness',
+        value: "{{ nodes['code1'].data.brightness }}",
+      };
+
+      await executor.executeSequence([code, set], ctx);
+
+      expect(bridge.setCharacteristic).toHaveBeenCalledWith('acc-1', 'brightness', 55, undefined);
+      expect(ctx.getNodeOutput('set-1')?.value).toBe(55);
+    });
+
+    it('does the same for a service group', async () => {
+      const ctx = makeCtx();
+      const set: Action = {
+        type: 'set_service_group', id: 'set-1', groupId: 'group-1', characteristicType: 'brightness',
+        value: "{{ nodes['code1'].data.brightness }}",
+      };
+
+      await executor.executeSequence([code, set], ctx);
+
+      expect(bridge.setServiceGroup).toHaveBeenCalledWith('group-1', 'brightness', 55, undefined);
+    });
+
+    // The write itself would coerce, but the relay also announces the value to
+    // every app and to MQTT, which would carry the string.
+    it('reads a number rendered as text back as a number', async () => {
+      const ctx = makeCtx();
+      const set: Action = {
+        type: 'set_characteristic', id: 'set-1', accessoryId: 'acc-1', characteristicType: 'brightness',
+        value: "{{ nodes['code1'].data.quoted }}",
+      };
+
+      await executor.executeSequence([code, set], ctx);
+
+      expect(bridge.setCharacteristic).toHaveBeenCalledWith('acc-1', 'brightness', 55, undefined);
+    });
+
+    it('names the expression, not a missing value, when it resolves to nothing', async () => {
+      const ctx = makeCtx();
+      const set: Action = {
+        type: 'set_characteristic', id: 'set-1', accessoryId: 'acc-1', characteristicType: 'brightness',
+        value: "{{ nodes['code1'].data.brightnes }}",
+      };
+
+      await expect(executor.executeSequence([code, set], ctx)).rejects.toThrow(/check the expression/);
+      expect(bridge.setCharacteristic).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
   // Disabled actions
   // ============================================================
 

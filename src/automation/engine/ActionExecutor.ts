@@ -36,6 +36,7 @@ import { NOTIFY_DELIVERY_UNKNOWN, NOTIFY_DELIVERY_PENDING } from '../types/notif
 import { describeError } from '../../lib/describe-error';
 import { ExpressionEngine } from '../expression/ExpressionEngine';
 import type { ExpressionContext } from '../expression/ExpressionEngine';
+import { isTemplate, numberIfRenderedNumeric } from '../expression/template';
 import { WorkerCodeSandbox, type CodeSandbox } from './CodeSandbox';
 import type { VirtualAccessoryManager } from '../state/VirtualAccessoryManager';
 import { assertSafeOutboundUrl } from './ssrfGuard';
@@ -100,12 +101,15 @@ export class StopExecutionError extends Error {
  * produced a native failure whose message said nothing about the real problem.
  * Fail here instead, naming the field the user has to go and fill in.
  */
-function requireValue(value: unknown, characteristicType: string): void {
+function requireValue(value: unknown, characteristicType: string, raw?: unknown): void {
   if (value === undefined || value === null) {
-    throw Object.assign(
-      new Error(`No value set for "${characteristicType}" — open the action and choose one`),
-      { code: 'VALUE_NOT_SET' },
-    );
+    // An expression that came out empty was set — it pointed at nothing (a
+    // typo'd field, a node that didn't run). Telling the user to go and choose
+    // a value would send them looking at the wrong thing.
+    const message = isTemplate(raw)
+      ? `${raw} gave no value for "${characteristicType}" — check the expression`
+      : `No value set for "${characteristicType}" — open the action and choose one`;
+    throw Object.assign(new Error(message), { code: 'VALUE_NOT_SET' });
   }
 }
 
@@ -269,8 +273,8 @@ export class ActionExecutor {
       { accessoryId: action.accessoryId, characteristicType: action.characteristicType, value: action.value }, tags);
 
     try {
-      const resolvedValue = this.resolveTemplateValue(action.value, ctx);
-      requireValue(resolvedValue, action.characteristicType);
+      const resolvedValue = numberIfRenderedNumeric(action.value, this.resolveTemplateValue(action.value, ctx));
+      requireValue(resolvedValue, action.characteristicType, action.value);
       const resolvedAccessoryId = this.resolveTemplateString(action.accessoryId, ctx);
 
       // Record before writing so the resulting state change can be attributed
@@ -297,8 +301,8 @@ export class ActionExecutor {
       { groupId: action.groupId, characteristicType: action.characteristicType, value: action.value }, tags);
 
     try {
-      const resolvedValue = this.resolveTemplateValue(action.value, ctx);
-      requireValue(resolvedValue, action.characteristicType);
+      const resolvedValue = numberIfRenderedNumeric(action.value, this.resolveTemplateValue(action.value, ctx));
+      requireValue(resolvedValue, action.characteristicType, action.value);
       // The automation is scoped to a home; actions created by older versions
       // commonly have no per-action homeId. Use the execution context so the
       // relay announcement carries the home through to cloud MQTT publishing.

@@ -279,6 +279,33 @@ describe('serialization: round-trip', () => {
   });
 });
 
+describe('serialization: a Set Device value written as an expression', () => {
+  const EXPR = "{{ nodes['code1'].data.brightness }}";
+
+  it.each([
+    ['set_characteristic', { accessoryId: 'light-1' }],
+    ['set_service_group', { serviceGroupId: 'group-1' }],
+  ])('keeps the expression text verbatim as a %s', (actionType, target) => {
+    const nodes: Node<FlowNodeData>[] = [
+      makeNode('t1', { category: 'trigger', nodeType: 'device_changed',
+        config: { accessoryId: 'acc-1', characteristicType: 'power_state', to: 1 } }),
+      makeNode('a1', { category: 'action', nodeType: 'set_device',
+        config: { ...target, characteristicType: 'brightness', value: EXPR } }),
+    ];
+
+    const auto = graphToAutomation(nodes, [makeEdge('t1', 'a1')], 'Expr', 'home-1');
+    expect(auto.actions[0].type).toBe(actionType);
+    expect((auto.actions[0] as { value: unknown }).value).toBe(EXPR);
+
+    const action = automationToGraph(auto).nodes.find((n) => n.id === 'a1')!;
+    const data = action.data as FlowNodeData;
+    expect(data.config.value).toBe(EXPR);
+    expect(data.isConfigured).toBe(true);
+    // Not "{{ nodes['code1'].data.brightness }}%".
+    expect(data.subtitle).toMatch(/to an expression$/);
+  });
+});
+
 // ============================================================
 // Node types the engine has always executed but the palette never exposed.
 // A node that serializes one way but not the other saves fine and then comes
