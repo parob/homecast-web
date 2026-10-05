@@ -4,6 +4,13 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { componentTagger } from "lovable-tagger";
+import { parsePost, renderMarkdown, slugFromPath, sortPosts, type ImageSizes } from "./src/lib/blog/parse";
+import { imageSize } from "./src/lib/blog/image-size";
+import {
+  BLOG_INDEX_META, postPageTitle, postPath, renderIndexPage, renderPostPage, renderRss, renderSitemap,
+  withPageHead, withRootContent,
+} from "./src/lib/blog/prerender";
+import { MARKETING_PATHS } from "./src/lib/marketing-routes";
 
 const commitSha = process.env.GITHUB_SHA?.slice(0, 7) || 'dev';
 const deployTime = process.env.DEPLOY_TIME || new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -77,6 +84,97 @@ function serviceWorkerPlugin(sha: string): Plugin {
   };
 }
 
+/**
+ * The blog: image sizes for the browser, and static pages for everyone else.
+ *
+ * `virtual:blog-image-sizes` maps each file under public/blog to its pixel
+ * size, so a figure reserves its space before the image arrives. It is read
+ * from the files on each build rather than committed, so it can't go stale.
+ *
+ * At build it also writes a real document per post (blog/<slug>/index.html),
+ * the index, sitemap.xml and an RSS feed — see src/lib/blog/prerender.ts for
+ * why. order: 'post' for the same reason as serviceWorkerPlugin: it needs the
+ * index.html Vite emits, which only exists once Vite's own hook has run. The
+ * template is read, never modified, so sw.js's stamp is unaffected.
+ */
+function blogPlugin(): Plugin {
+  const VIRTUAL = 'virtual:blog-image-sizes';
+  const publicDir = path.resolve(__dirname, 'public');
+  const contentDir = path.resolve(__dirname, 'content/blog');
+
+  const readImageSizes = (): ImageSizes => {
+    const sizes: ImageSizes = {};
+    const walk = (dir: string) => {
+      if (!fs.existsSync(dir)) return;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.(png|jpe?g|webp|svg)$/i.test(entry.name)) continue;
+        const size = imageSize(fs.readFileSync(full));
+        if (size) sizes['/' + path.relative(publicDir, full).split(path.sep).join('/')] = size;
+      }
+    };
+    walk(path.join(publicDir, 'blog'));
+    return sizes;
+  };
+
+  const readPosts = () => sortPosts(
+    fs.existsSync(contentDir)
+      ? fs.readdirSync(contentDir).filter((f) => f.endsWith('.md'))
+          .map((f) => parsePost(slugFromPath(f), fs.readFileSync(path.join(contentDir, f), 'utf-8')))
+      : [],
+  );
+
+  return {
+    name: 'blog',
+    resolveId(id) {
+      return id === VIRTUAL ? '\0' + VIRTUAL : undefined;
+    },
+    load(id) {
+      return id === '\0' + VIRTUAL ? `export default ${JSON.stringify(readImageSizes())};` : undefined;
+    },
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        const index = bundle['index.html'];
+        if (!index || index.type !== 'asset') return;
+        const template = index.source.toString();
+        const sizes = readImageSizes();
+        const posts = readPosts();
+
+        for (const post of posts) {
+          const html = withRootContent(
+            withPageHead(template, {
+              title: postPageTitle(post),
+              description: post.description,
+              path: postPath(post.slug),
+              image: post.cover,
+              imageAlt: post.coverAlt,
+              type: 'article',
+              publishedTime: post.date,
+              author: post.author,
+            }),
+            renderPostPage(post, renderMarkdown(post.body, sizes), post.cover ? sizes[post.cover] : undefined),
+          );
+          this.emitFile({ type: 'asset', fileName: `blog/${post.slug}/index.html`, source: html });
+        }
+
+        this.emitFile({
+          type: 'asset',
+          fileName: 'blog/index.html',
+          source: withRootContent(withPageHead(template, { ...BLOG_INDEX_META, path: '/blog/' }), renderIndexPage(posts)),
+        });
+        this.emitFile({ type: 'asset', fileName: 'blog/feed.xml', source: renderRss(posts) });
+        this.emitFile({
+          type: 'asset',
+          fileName: 'sitemap.xml',
+          source: renderSitemap([...MARKETING_PATHS, '/support', '/blog/'], posts),
+        });
+      },
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   esbuild: {
@@ -105,6 +203,7 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     versionPlugin(commitSha, deployTime),
     serviceWorkerPlugin(commitSha),
+    blogPlugin(),
   ].filter(Boolean),
   resolve: {
     alias: {

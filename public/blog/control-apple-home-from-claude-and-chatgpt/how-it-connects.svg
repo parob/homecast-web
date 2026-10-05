@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 320" width="820" height="320" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">How an AI assistant reaches your Apple Home</title>
+<desc id="d">Claude or ChatGPT connects to Homecast over MCP after you sign in. Homecast checks the permissions you chose and passes requests to your relay, which talks to Apple Home.</desc>
+<defs>
+<linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1067f4"/><stop offset="1" stop-color="#3b82f6"/></linearGradient>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+<marker id="arrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+<marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1067f4"/></marker>
+</defs>
+<rect width="820" height="320" fill="#ffffff"/>
+<rect x="0" y="60" width="172" height="230" rx="22" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+<text x="86.0" y="142.9" text-anchor="middle" font-size="24" font-weight="600" fill="#0f172a">Claude or</text>
+<text x="86.0" y="171.7" text-anchor="middle" font-size="24" font-weight="600" fill="#0f172a">ChatGPT</text>
+<text x="86.0" y="207.1" text-anchor="middle" font-size="17" fill="#475569">connects</text>
+<text x="86.0" y="229.2" text-anchor="middle" font-size="17" fill="#475569">over MCP</text>
+<rect x="216" y="60" width="172" height="230" rx="22" fill="url(#brand)" stroke="none" stroke-width="2"/>
+<text x="302.0" y="146.2" text-anchor="middle" font-size="24" font-weight="600" fill="#ffffff">Homecast</text>
+<text x="302.0" y="181.7" text-anchor="middle" font-size="17" fill="#dbeafe">checks the</text>
+<text x="302.0" y="203.8" text-anchor="middle" font-size="17" fill="#dbeafe">permissions</text>
+<text x="302.0" y="225.8" text-anchor="middle" font-size="17" fill="#dbeafe">you chose</text>
+<rect x="432" y="60" width="172" height="230" rx="22" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+<text x="518.0" y="157.3" text-anchor="middle" font-size="24" font-weight="600" fill="#0f172a">Your relay</text>
+<text x="518.0" y="192.7" text-anchor="middle" font-size="17" fill="#475569">a Mac — yours</text>
+<text x="518.0" y="214.8" text-anchor="middle" font-size="17" fill="#475569">or ours</text>
+<rect x="648" y="60" width="172" height="230" rx="22" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+<text x="734.0" y="157.3" text-anchor="middle" font-size="24" font-weight="600" fill="#0f172a">Apple Home</text>
+<text x="734.0" y="192.7" text-anchor="middle" font-size="17" fill="#475569">your</text>
+<text x="734.0" y="214.8" text-anchor="middle" font-size="17" fill="#475569">accessories</text>
+<line x1="176" y1="175.0" x2="210" y2="175.0" stroke="#475569" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line x1="392" y1="175.0" x2="426" y2="175.0" stroke="#475569" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line x1="608" y1="175.0" x2="642" y2="175.0" stroke="#475569" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+</svg>

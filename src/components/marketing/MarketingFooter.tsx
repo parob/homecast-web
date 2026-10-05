@@ -26,8 +26,9 @@ const MarketingFooter = () => {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link to="/how-it-works" className="hover:text-foreground transition-colors">How it Works</Link></li>
               <li><Link to="/pricing" className="hover:text-foreground transition-colors">Pricing</Link></li>
+              <li><Link to="/blog/" className="hover:text-foreground transition-colors">Blog</Link></li>
               <li><a href="https://docs.homecast.cloud" className="hover:text-foreground transition-colors">Documentation</a></li>
-              <li><a href="https://docs.homecast.cloud/developers/overview" className="hover:text-foreground transition-colors">API Reference</a></li>
+              <li><a href="https://docs.homecast.cloud/reference/rest" className="hover:text-foreground transition-colors">API Reference</a></li>
               <li><a href="https://github.com/parob/homecast" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">GitHub</a></li>
               {!(typeof window !== 'undefined' && (window as any).isHomecastApp) && (
                 <li><a href="https://github.com/sponsors/parob" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Sponsor</a></li>

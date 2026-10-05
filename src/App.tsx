@@ -40,6 +40,8 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Cookies = lazy(() => import("./pages/Cookies"));
 const DeleteAccount = lazy(() => import("./pages/DeleteAccount"));
 const Support = lazy(() => import("./pages/Support"));
+const Blog = lazy(() => import("./pages/Blog"));
+const BlogPost = lazy(() => import("./pages/BlogPost"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const SharedEntityPage = lazy(() => import("./pages/SharedEntityPage"));
 const MQTTBrowser = lazy(() => import("./pages/MQTTBrowser"));
@@ -175,6 +177,8 @@ const MainRoutes = () => (
               <Route path="/terms" element={marketing(<Terms />)} />
               <Route path="/privacy" element={marketing(<Privacy />)} />
               <Route path="/cookies" element={marketing(<Cookies />)} />
+              <Route path="/blog" element={marketing(<Blog />)} />
+              <Route path="/blog/:slug" element={marketing(<BlogPost />)} />
               <Route path="/delete-account" element={<DeleteAccount />} />
               <Route path="/support" element={<Support />} />
               <Route path="/login" element={<Login />} />

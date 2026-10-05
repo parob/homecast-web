@@ -888,3 +888,36 @@ html.ios-app .selectable {
     transparent 100%
   );
 }
+
+/*
+  Blog post bodies. Markdown arrives as bare HTML (see lib/blog/parse.ts), so
+  it is styled by element here rather than by class. Built from the app's own
+  scaled type sizes instead of @tailwindcss/typography, whose rem sizes would
+  ignore --text-scale and drift from the rest of the marketing pages.
+*/
+@layer components {
+  .blog-body { @apply text-base sm:text-lg leading-relaxed text-foreground/90; }
+  .blog-body > * + * { @apply mt-5; }
+  .blog-body h2 { @apply mt-12 mb-1 text-2xl font-bold tracking-tight text-foreground scroll-mt-24; }
+  .blog-body h3 { @apply mt-9 mb-1 text-xl font-semibold text-foreground scroll-mt-24; }
+  .blog-body h4 { @apply mt-7 text-base font-semibold text-foreground; }
+  .blog-body a { @apply text-primary underline underline-offset-2 decoration-primary/40 hover:decoration-primary; }
+  .blog-body strong { @apply font-semibold text-foreground; }
+  .blog-body ul { @apply list-disc pl-6 space-y-2; }
+  .blog-body ol { @apply list-decimal pl-6 space-y-2; }
+  .blog-body li > ul, .blog-body li > ol { @apply mt-2; }
+  .blog-body blockquote { @apply rounded-xl border-l-4 border-primary/60 bg-muted/50 px-5 py-4 text-foreground/80; }
+  .blog-body blockquote > * + * { @apply mt-3; }
+  /* The theme replaces Tailwind's font families, so there is no font-mono. */
+  .blog-body code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .blog-body :not(pre) > code { @apply rounded-md bg-muted px-1.5 py-0.5 text-[0.85em]; }
+  .blog-body pre { @apply overflow-x-auto rounded-xl border border-border bg-muted/60 p-4 text-sm leading-relaxed; }
+  .blog-body figure { @apply my-8; }
+  .blog-body figure img { @apply mx-auto h-auto max-w-full rounded-xl border border-border bg-muted; }
+  .blog-body figcaption { @apply mt-3 text-center text-sm text-muted-foreground; }
+  .blog-body hr { @apply my-10 border-border; }
+  .blog-body .blog-table { @apply overflow-x-auto; }
+  .blog-body table { @apply w-full border-collapse text-sm sm:text-base; }
+  .blog-body th { @apply border-b border-border px-3 py-2 text-left font-semibold text-foreground; }
+  .blog-body td { @apply border-b border-border/60 px-3 py-2 align-top; }
+}

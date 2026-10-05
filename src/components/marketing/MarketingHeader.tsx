@@ -11,6 +11,7 @@ const navItems = [
   { to: '/', label: 'Home' },
   { to: '/how-it-works', label: 'How it Works' },
   { to: '/pricing', label: 'Pricing' },
+  { to: '/blog/', label: 'Blog' },
   { href: 'https://docs.homecast.cloud', label: 'Docs' },
 ];
 
@@ -19,7 +20,12 @@ const MarketingHeader = () => {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const isActive = (path: string) => location.pathname === path;
+  // A section owns its children (/blog/<slug> lights up Blog); the root is
+  // exact, or Home would light up on every page.
+  const isActive = (path: string) => {
+    const section = path.replace(/\/$/, '');
+    return location.pathname === path || (section !== '' && (location.pathname === section || location.pathname.startsWith(`${section}/`)));
+  };
 
   const authButton = (className: string, onClick?: () => void) =>
     isAuthenticated ? (

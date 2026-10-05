@@ -1,7 +1,7 @@
 /**
  * The website inside the web app.
  *
- * These six paths render the marketing site — the landing page, the legal
+ * These paths render the marketing site — the landing page, the legal
  * copy, MarketingHeader/MarketingFooter — rather than any part of the product.
  * Two places have to agree on that list: the staging badge, which stays off the
  * public site, and the route table, which collapses them to the dashboard
@@ -21,13 +21,20 @@
  *
  * `/features` is absent too: it is an alias that only ever redirects, so it has
  * no page of its own to suppress a badge on or to collapse.
+ *
+ * The blog is a section rather than a page — /blog and every /blog/<slug> —
+ * so it is matched by prefix. A prefix claims the path itself and anything
+ * below it, never a sibling that merely starts with the same letters.
  */
 
 export const MARKETING_PATHS: readonly string[] = [
   '/', '/how-it-works', '/pricing', '/terms', '/privacy', '/cookies',
 ];
 
+export const MARKETING_PREFIXES: readonly string[] = ['/blog'];
+
 /** Is this pathname a page of the website rather than a screen of the app? */
 export function isMarketingPath(pathname: string): boolean {
-  return MARKETING_PATHS.includes(pathname);
+  return MARKETING_PATHS.includes(pathname)
+    || MARKETING_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
