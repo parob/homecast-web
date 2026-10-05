@@ -584,7 +584,7 @@ describe('personalized tool descriptions (tools/list)', () => {
     for (const tool of response.result.tools) byName[tool.name] = tool;
 
     for (const name of ['get_state', 'get_automations']) {
-      expect(byName[name].description).toContain(`This account's homes: ${HOME_SLUG} (rooms: porch, hall)`);
+      expect(byName[name].description).toContain(`This account's homes: ${HOME_SLUG} (rooms: Hall, Porch)`);
     }
     for (const name of ['set_state', 'run_scene', 'create_automation', 'update_automation', 'delete_automation']) {
       expect(byName[name].description).not.toContain("This account's homes");
@@ -600,7 +600,7 @@ describe('personalized tool descriptions (tools/list)', () => {
     })));
     const getState = response.result.tools.find((t: any) => t.name === 'get_state');
     expect(getState.description).toContain(
-      `This account's homes: ${HOME_SLUG} (rooms: porch; HomeKit automations read-only)`
+      `This account's homes: ${HOME_SLUG} (rooms: Porch; HomeKit automations read-only)`
     );
   });
 

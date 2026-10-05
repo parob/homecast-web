@@ -85,7 +85,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         filter_by_home: { type: 'string', description: 'Filter by home name substring' },
-        filter_by_room: { type: 'string', description: 'Filter by room name substring' },
+        filter_by_room: { type: 'string', description: 'Filter by room name or slug substring (e.g. "Living Room", "living_room", "living")' },
         filter_by_type: { type: 'string', description: 'Filter by device type (light, switch, climate, lock, alarm, fan, blind, etc.)' },
         filter_by_name: { type: 'string', description: 'Filter by accessory name substring' },
       },
@@ -99,8 +99,9 @@ const TOOLS = [
       'Use it to answer questions like "what was the temperature last night?", "when did the door open?", ' +
       '"how long was the heating on today?". Returns per-characteristic series — numeric ones as ' +
       '[isoTime, value] pairs with a min/avg/max summary, on/off and mode ones as [isoTime, state] ' +
-      'transitions. History is OPT-IN and off by default: if nothing is recorded, the home owner has to ' +
-      'turn it on in Settings → Homes → the home first — say so rather than retrying. Recording only captures ' +
+      'transitions. History is OPT-IN and off by default. When nothing comes back, _meta.message says why — ' +
+      'history off for the home (the owner turns it on in Settings → Homes → the home → Analytics; say so ' +
+      'rather than retrying), or on but nothing recorded for what you asked. Recording only captures ' +
       'changes, so a flat line costs nothing and gaps mean the value simply held.',
     inputSchema: {
       type: 'object',
@@ -127,9 +128,10 @@ const TOOLS = [
       'you. Filter with accessories/characteristics (names, slugs, or characteristic types like ' +
       'current_temperature, power_state, motion). Large pulls paginate: a truncated series includes ' +
       'continue_from — repeat the call with start=continue_from. Recording is change-based, so gaps mean the ' +
-      'value simply held. History is OPT-IN and off by default: if nothing matches, the home owner has to turn ' +
-      'it on in Settings → Homes → the home first — say so rather than retrying. Use get_history instead for a quick ' +
-      'single-accessory look.',
+      'value simply held. History is OPT-IN and off by default. When nothing matches, _meta.message says ' +
+      'whether history is off for the home (the owner turns it on in Settings → Homes → the home → Analytics; ' +
+      'say so rather than retrying) or your filters matched nothing — it then lists the characteristic types ' +
+      'this home records. Use get_history instead for a quick single-accessory look.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -741,9 +743,14 @@ async function getHomeContextBlock(): Promise<string> {
         let rooms: string[] = [];
         try {
           const roomsResult = await executeHomeKitAction('rooms.list', { homeId: home.id }) as any;
-          rooms = (roomsResult?.rooms || [])
-            .map((r: any) => (r.name || '').toLowerCase())
-            .filter(Boolean);
+          // Display names, as the cloud lists them: filter_by_room matches
+          // "Bathroom 1" as well as bathroom_1_92f6.
+          const seen = new Map<string, string>();
+          for (const r of roomsResult?.rooms || []) {
+            const name = String(r.name || '').trim();
+            if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+          }
+          rooms = [...seen.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, name]) => name);
         } catch {
           // Rooms unavailable — list the home without them
         }

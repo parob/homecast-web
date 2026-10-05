@@ -207,3 +207,74 @@ describe('query_history (MCP bulk access)', () => {
     expect(result._meta.message).toContain('opt-in');
   });
 });
+
+// The cloud's MCP descriptions reach agents camelCased, so they ask for
+// `currentTemperature`; and every empty answer used to say "History is opt-in"
+// — about homes that were recording. Mirrors test_homes_history_tools.py in
+// homecast-cloud.
+describe('history tools: spellings and why nothing came back', () => {
+  const window = () => ({
+    start: new Date(Date.now() - 6 * 3_600_000).toISOString(),
+    end: new Date().toISOString(),
+  });
+
+  it('query_history accepts camelCase and HomeKit-style characteristic names', async () => {
+    for (const spelling of ['currentTemperature', 'Current Temperature', 'current_temperature']) {
+      const result = await handleQueryHistory({ characteristics: [spelling], ...window() });
+      expect(result._meta.series_matched, spelling).toBe(1);
+      expect(result.series[0].characteristic).toBe('current_temperature');
+    }
+  });
+
+  it('get_history accepts camelCase', async () => {
+    const result = await handleGetHistory({ accessory: 'living room', characteristic: 'currentTemperature', hours: 6 });
+    expect(result.error).toBeUndefined();
+    expect(result.series.map((s: any) => s.characteristic)).toEqual(['current_temperature']);
+    expect(result.series[0].values).toHaveLength(3);
+  });
+
+  it('a filter that matches nothing is not reported as history being off', async () => {
+    const result = await handleQueryHistory({ characteristics: ['relativeHumidity'], ...window() });
+    expect(result._meta.series_matched).toBe(0);
+    expect(result._meta.message).not.toContain('History is off');
+    expect(result._meta.message).not.toContain('opt-in');
+    expect(result._meta.message).toContain('relative_humidity');
+    expect(result._meta.message).toContain('current_temperature');
+  });
+
+  it('an unknown accessory says so', async () => {
+    const result = await handleQueryHistory({ accessories: ['garage door'], ...window() });
+    expect(result._meta.message).not.toContain('History is off');
+    expect(result._meta.message).toContain("'garage door'");
+  });
+
+  it('a home with history off says it is off', async () => {
+    await db.closeDB();
+    indexedDB = new IDBFactory();
+    resetHistoryRuntimeForTest();
+    await reloadHistoryConfig();
+    const result = await handleQueryHistory({});
+    expect(result._meta.message.startsWith('History is off for Beach House')).toBe(true);
+    const single = await handleGetHistory({ accessory: 'living room' });
+    expect(single._meta.message.startsWith('History is off for Beach House')).toBe(true);
+  });
+
+  it('a recording home with nothing recorded says it is on', async () => {
+    await db.closeDB();
+    indexedDB = new IDBFactory();
+    resetHistoryRuntimeForTest();
+    await reloadHistoryConfig();
+    await setHistoryHomeConfig(HOME, { enabled: true, rawRetentionDays: 30 });
+    const result = await handleQueryHistory({});
+    expect(result._meta.message).not.toContain('History is off');
+    expect(result._meta.message).toContain('History is on');
+    const single = await handleGetHistory({ accessory: 'living room' });
+    expect(single._meta.message).toContain('History is on');
+  });
+
+  it('a quiet window says the value held', async () => {
+    const result = await handleGetHistory({ accessory: 'living room', hours: 0.25 });
+    expect(result._meta.message).not.toContain('History is off');
+    expect(result._meta.message).toContain('No changes recorded in the last 0.25h');
+  });
+});

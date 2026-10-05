@@ -324,6 +324,25 @@ function simplifyAccessory(accessory: any): Record<string, any> {
   return result;
 }
 
+/**
+ * Does an accessory, group or room answer to what was typed — its slug, its
+ * name, or either with spaces and underscores swapped? Room keys are
+ * `bathroom_1_92f6`, so "Bathroom 1" — the name a person says and the one the
+ * tool description lists — matched nothing when only the slug was tested.
+ * Mirrors `_name_matches` in homecast-cloud's api/homes.py.
+ */
+export function nameMatches(needle: string, key: string, name: string | undefined): boolean {
+  const wanted = needle.trim().toLowerCase();
+  if (!wanted) return true;
+  const base = [key.toLowerCase(), (name ?? '').toLowerCase()];
+  const haystacks = new Set([...base, ...base.map(h => h.replace(/_/g, ' '))]);
+  const underscored = wanted.replace(/ /g, '_');
+  for (const h of haystacks) {
+    if (h.includes(wanted) || h.includes(underscored)) return true;
+  }
+  return false;
+}
+
 async function getState(params: URLSearchParams, authorization?: string): Promise<Record<string, any>> {
   const homeFilter = params.get('home')?.toLowerCase() || null;
   const roomFilter = params.get('room')?.toLowerCase() || null;
@@ -380,9 +399,9 @@ async function getState(params: URLSearchParams, authorization?: string): Promis
       const accKey = uniqueKey(acc.name || 'Unknown', acc.id || '');
       const simplified = simplifyAccessory(acc);
 
-      if (roomFilter && !roomKey.includes(roomFilter)) continue;
+      if (roomFilter && !nameMatches(roomFilter, roomKey, roomName)) continue;
       if (typeFilter && simplified.type !== typeFilter) continue;
-      if (nameFilter && !accKey.includes(nameFilter)) continue;
+      if (nameFilter && !nameMatches(nameFilter, accKey, acc.name)) continue;
 
       if (!homeData[roomKey]) homeData[roomKey] = {};
       simplified.name = `${homeKey}.${roomKey}.${accKey}`;
@@ -399,12 +418,12 @@ async function getState(params: URLSearchParams, authorization?: string): Promis
       if (!firstMember) continue;
 
       const roomKey = uniqueKey(firstMember.roomName || 'Unknown', firstMember.roomId || '');
-      if (roomFilter && !roomKey.includes(roomFilter)) continue;
+      if (roomFilter && !nameMatches(roomFilter, roomKey, firstMember.roomName)) continue;
 
       const groupState = simplifyAccessory(firstMember);
       groupState.group = true;
       if (typeFilter && groupState.type !== typeFilter) continue;
-      if (nameFilter && !groupKey.includes(nameFilter)) continue;
+      if (nameFilter && !nameMatches(nameFilter, groupKey, group.name)) continue;
 
       groupState.name = `${homeKey}.${roomKey}.${groupKey}`;
 
@@ -573,6 +592,20 @@ export async function handleSetState(updates: Array<Record<string, unknown>>): P
  * AI assistant answering "what was the temperature last night?", not for
  * charting (the GraphQL surface serves the charts).
  */
+/** Mirrors `_history_off_message` in homecast-cloud's api/homes.py. */
+function historyOffMessage(homeName: string | undefined): string {
+  return `History is off for ${homeName || 'this home'}: nothing is being recorded. ` +
+    'It is opt-in — the home owner turns it on in Settings → Homes → the home → ' +
+    'Analytics. Say so rather than retrying.';
+}
+
+const RECORDING_OFF_NOTE = ' Recording is currently off for this home, so nothing newer is being kept.';
+
+async function historyRecording(homeId: string): Promise<boolean> {
+  const { getHistoryHomeConfigs } = await import('./local-history');
+  return !!(await getHistoryHomeConfigs())[homeId.toUpperCase()]?.enabled;
+}
+
 export async function handleGetHistory(args: {
   home?: string;
   accessory: string;
@@ -630,9 +663,17 @@ export async function handleGetHistory(args: {
       import('@/history/policy'),
     ]);
 
+  const recording = await historyRecording(matchedHome.id);
+  const recordedTypes = [...new Set(
+    (await historyDb.getHistorySeries(matchedHome.id))
+      .filter(r => r.accessoryId.toUpperCase() === String(matchedAccessory.id).toUpperCase())
+      .map(r => r.characteristicType),
+  )].sort();
+
   let recordable = getRecordableCharacteristics(matchedAccessory);
+  let canonical: string | null = null;
   if (args.characteristic) {
-    const canonical = canonicalHistoryType(args.characteristic);
+    canonical = canonicalHistoryType(args.characteristic);
     recordable = recordable.filter(c => c.type === canonical);
     if (recordable.length === 0) {
       return { error: `Characteristic "${args.characteristic}" is not recordable on ${matchedAccessory.name}` };
@@ -699,17 +740,33 @@ export async function handleGetHistory(args: {
   const recorded = series.filter(s =>
     ('values' in s && (s as any).values.length > 0) ||
     ('transitions' in s && (s as any).transitions.length > 0));
+  // Say WHY nothing came back. "History is opt-in" for every empty answer sent
+  // agents to tell users to switch on something that was already on.
+  const accessoryName = matchedAccessory.name || args.accessory;
+  let message: string;
+  if (recorded.length > 0) {
+    message = `${recorded.length} of ${series.length} characteristics have recorded history in the last ${hours}h`;
+  } else if (!recording && recordedTypes.length === 0) {
+    message = historyOffMessage(matchedHome.name);
+  } else if (canonical && !recordedTypes.includes(canonical)) {
+    message = `Nothing recorded for "${canonical}" on ${accessoryName}` + (recordedTypes.length > 0
+      ? `; recorded characteristics: ${recordedTypes.join(', ')}.`
+      : ' — no characteristic of this accessory has been recorded yet.');
+  } else if (recordedTypes.length === 0) {
+    message = `History is on for this home, but nothing has been recorded for ${accessoryName} yet: ` +
+      'recording captures changes, so a value that has not changed since recording began has nothing to show.';
+  } else {
+    message = `No changes recorded in the last ${hours}h. Recording captures changes only, ` +
+      'so the value held throughout — widen hours to find the last change.';
+  }
+  if (!recording && recordedTypes.length > 0 && recorded.length === 0) message += RECORDING_OFF_NOTE;
   return {
     home: uniqueKey(matchedHome.name, matchedHome.id),
     accessory: { key: uniqueKey(matchedAccessory.name, matchedAccessory.id), name: matchedAccessory.name, id: matchedAccessory.id },
     from: new Date(fromTs).toISOString(),
     to: new Date(toTs).toISOString(),
     series,
-    _meta: {
-      message: recorded.length > 0
-        ? `${recorded.length} of ${series.length} characteristics have recorded history in the last ${hours}h`
-        : 'No recorded history in this range. History is opt-in: the home owner enables it in Settings → Homes → the home.',
-    },
+    _meta: { message },
   };
 }
 
@@ -775,6 +832,8 @@ export async function handleQueryHistory(args: {
   const accessoryFilters = (args.accessories ?? []).map(a => a.toLowerCase()).filter(Boolean);
   const charFilters = (args.characteristics ?? []).map(c => canonicalHistoryType(c));
   let rows = await historyDb.getHistorySeries(home.id);
+  const recording = await historyRecording(home.id);
+  const homeHasSeries = rows.length > 0;
   if (accessoryFilters.length > 0) {
     rows = rows.filter(row => {
       const info = accessoryInfo.get(row.accessoryId.toUpperCase());
@@ -783,6 +842,9 @@ export async function handleQueryHistory(args: {
         (info && (info.key.includes(f) || info.name.toLowerCase().includes(f))));
     });
   }
+  // What these accessories DO record — the hint a model needs to correct a
+  // characteristic filter that matched nothing.
+  const recordedTypes = [...new Set(rows.map(row => row.characteristicType))].sort();
   if (charFilters.length > 0) {
     rows = rows.filter(row => charFilters.includes(row.characteristicType));
   }
@@ -885,6 +947,26 @@ export async function handleQueryHistory(args: {
     }
   }
 
+  let message: string;
+  if (seriesMatched > 0) {
+    message = `${series.length} of ${seriesMatched} matched series over ${((endTs - startTs) / 86_400_000).toFixed(1)} days`;
+  } else if (!homeHasSeries && !recording) {
+    message = historyOffMessage(home.name);
+  } else if (!homeHasSeries) {
+    message = 'History is on for this home, but nothing has been recorded yet: ' +
+      'recording captures changes, and none have happened since it began.';
+  } else {
+    message = 'No recorded series match these filters.';
+    if (accessoryFilters.length > 0 && recordedTypes.length === 0) {
+      message += ` No recorded accessory matches ${(args.accessories ?? []).map(a => `'${a}'`).join(', ')}.`;
+    } else if (charFilters.length > 0) {
+      const shown = recordedTypes.slice(0, 40).join(', ') + (recordedTypes.length > 40 ? ', …' : '');
+      message += ` Characteristics were read as: ${[...new Set(charFilters)].sort().join(', ')}.` +
+        ` Recorded${accessoryFilters.length > 0 ? ' for those accessories' : ''}: ${shown}.`;
+    }
+    if (!recording) message += RECORDING_OFF_NOTE;
+  }
+
   return {
     home: uniqueKey(home.name, home.id),
     from: iso(startTs),
@@ -895,9 +977,7 @@ export async function handleQueryHistory(args: {
       series_matched: seriesMatched,
       points_returned: pointsReturned,
       ...(truncated.length > 0 ? { truncated } : {}),
-      message: seriesMatched > 0
-        ? `${series.length} of ${seriesMatched} matched series over ${((endTs - startTs) / 86_400_000).toFixed(1)} days`
-        : 'No recorded series match. History is opt-in: the home owner enables it in Settings → Homes → the home.',
+      message,
     },
   };
 }
