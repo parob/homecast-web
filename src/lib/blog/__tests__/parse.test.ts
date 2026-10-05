@@ -34,7 +34,7 @@ describe('parseFrontmatter', () => {
 describe('parsePost', () => {
   it('builds a post with computed reading time', () => {
     const p = parsePost('ha', post(FULL));
-    expect(p).toMatchObject({ slug: 'ha', category: 'guide', author: 'Rob Parker', generatedPhotos: false, featured: false });
+    expect(p).toMatchObject({ slug: 'ha', category: 'guide', author: 'Rob Parker', featured: false });
     expect(p.readingMinutes).toBe(1);
   });
 
@@ -48,15 +48,15 @@ describe('parsePost', () => {
     expect(() => parsePost('x', post(FULL.replace('2026-10-05', '5 Oct 2026')))).toThrow(/YYYY-MM-DD/);
   });
 
-  it('reads the generated-photos flag', () => {
-    expect(parsePost('x', post(`${FULL}\ngeneratedPhotos: true`)).generatedPhotos).toBe(true);
+  it('reads the featured flag', () => {
+    expect(parsePost('x', post(`${FULL}\nfeatured: true`)).featured).toBe(true);
   });
 });
 
 describe('ordering', () => {
   const meta = (slug: string, date: string, extra: Partial<BlogPostMeta> = {}): BlogPostMeta => ({
     slug, title: slug, description: '', date, category: 'news', author: 'a', tags: [],
-    generatedPhotos: false, featured: false, readingMinutes: 1, ...extra,
+    featured: false, readingMinutes: 1, ...extra,
   });
 
   it('sorts newest first, ties by title', () => {

@@ -31,8 +31,6 @@ export interface BlogPostMeta {
   tags: string[];
   cover?: string;
   coverAlt?: string;
-  /** The post's photos are AI-generated illustrations; the page says so. */
-  generatedPhotos: boolean;
   /** Leads the blog index. If none is featured, the newest post leads. */
   featured: boolean;
   readingMinutes: number;
@@ -121,7 +119,6 @@ export function parsePost(slug: string, raw: string): BlogPost {
     tags: Array.isArray(tags) ? tags : [tags],
     cover: str('cover'),
     coverAlt: str('coverAlt'),
-    generatedPhotos: str('generatedPhotos') === 'true',
     featured: str('featured') === 'true',
     readingMinutes: readingMinutes(body),
     body,

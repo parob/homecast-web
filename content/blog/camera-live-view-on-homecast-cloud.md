@@ -7,7 +7,6 @@ author: Rob Parker
 tags: [cameras, cloud, android]
 cover: /blog/camera-live-view-on-homecast-cloud/cover.webp
 coverAlt: A video doorbell beside a dark blue front door, with a bay tree in a pot
-generatedPhotos: true
 ---
 
 Cameras have been the most obvious gap in Homecast since the beginning. Your Apple Home doorbell would show up as a doorbell — you'd know someone had pressed it — but you couldn't see who. If you were on Android, or on a laptop, or anywhere that isn't Apple's own Home app, your cameras simply didn't exist.

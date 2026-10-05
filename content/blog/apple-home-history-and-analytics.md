@@ -7,7 +7,6 @@ author: Rob Parker
 tags: [analytics, sensors, apple-home]
 cover: /blog/apple-home-history-and-analytics/cover.webp
 coverAlt: A frosted window on a winter morning, with a small white temperature sensor on the wall beside it
-generatedPhotos: true
 ---
 
 Apple Home is very good at *now*. It'll tell you the bedroom is 17.4 °C, the back door is closed and the porch light is on. For locks, doors and alarms it keeps a 30-day activity log. But it won't tell you whether the bedroom is always that cold at six in the morning, how the house holds its heat overnight, or which of your sensors is about to run out of battery.

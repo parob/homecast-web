@@ -7,7 +7,6 @@ author: Rob Parker
 tags: [open-standards, apple-home, android, mqtt]
 cover: /blog/your-home-shouldnt-care-which-phone-you-own/cover.webp
 coverAlt: A lived-in living room with a speaker on the bookshelf, a lamp, a thermostat on the wall and phones on the coffee table
-generatedPhotos: true
 ---
 
 The light switch by your front door doesn't ask who you are. It doesn't check your phone, your operating system or your account. It works for you, your guests, your kids and the plumber, and it'll still work in thirty years.

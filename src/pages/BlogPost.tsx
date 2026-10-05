@@ -76,9 +76,6 @@ const BlogPost = () => {
               />
             )}
             <div className={BLOG_CLASSES.body} dangerouslySetInnerHTML={{ __html: html }} />
-            {post.generatedPhotos && (
-              <p className="mt-10 text-xs text-muted-foreground">Photos are illustrative and AI-generated.</p>
-            )}
 
             <aside className="mt-14 rounded-2xl border border-border bg-muted/40 p-6 sm:p-8">
               <h2 className="text-lg font-semibold mb-2">Try it on your own Apple Home</h2>

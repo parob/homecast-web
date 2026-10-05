@@ -21,20 +21,21 @@ const walk = Number(code.match(/const WALK = (\d+)/)?.[1]);
 const buffer = Number(code.match(/const BUFFER = (\d+)/)?.[1]);
 const patience = Number(code.match(/const PATIENCE = (\d+)/)?.[1]);
 
-// One train, due at a fixed time; step "now" towards it a quarter-minute at a time.
-const due = Date.parse('2026-10-05T07:22:00Z');
-const board = [{
-  scheduledTimeOfDeparture: '2026-10-05T07:22:00Z',
-  estimatedTimeOfDeparture: '2026-10-05T07:22:00Z',
-  departureStatus: 'OnTime',
-}];
+// One journey, leaving at a fixed time; step "now" towards it a quarter-minute
+// at a time. TfL's planner gives London times with no zone (BST in October).
+const due = Date.parse('2026-10-05T08:17:00+01:00');
+const leg = {
+  departureTime: '2026-10-05T08:17:00', scheduledDepartureTime: '2026-10-05T08:17:00',
+  arrivalTime: '2026-10-05T08:56:00', scheduledArrivalTime: '2026-10-05T08:56:00',
+};
+const plan = { journeys: [{ arrivalDateTime: '2026-10-05T08:56:00', legs: [leg] }] };
 const run = new Function('input', `"use strict";\n${code}`);
 const realNow = Date.now;
 type Point = { spare: number; brightness: number; colour: string };
 const points: Point[] = [];
 for (let spare = 25; spare >= 0; spare -= 0.25) {
   Date.now = () => due - (walk + spare) * 60_000;
-  const r = run({ nodes: { http: { data: { body: board } } } });
+  const r = run({ nodes: { http: { data: { body: plan } } } });
   points.push({ spare, brightness: r.brightness, colour: r.colour });
 }
 Date.now = realNow;

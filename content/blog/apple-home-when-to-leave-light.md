@@ -7,7 +7,6 @@ author: Rob Parker
 tags: [automations, developers, lights]
 cover: /blog/apple-home-when-to-leave-light/cover.webp
 coverAlt: A hallway at dawn with a globe lamp glowing green on a side table, a coat on the hook and an umbrella by the door
-generatedPhotos: true
 featured: true
 ---
 
@@ -94,27 +93,29 @@ It reads like this:
 
 - **Green** means it's a good time to leave. The brighter the green, the closer you are to the ideal moment — at full brightness, walk out of the door.
 - **Amber** means leaving now would just have you standing on the platform. The brighter the amber, the longer the wait.
-- **Red** means something's wrong with your train: it's cancelled, or running ten minutes or more late. Check before you set off.
+- **Red** means something's wrong with your journey: the train you'd catch is running ten minutes or more late, either leaving or getting in. Check before you set off.
 
 On a normal morning it fades from bright amber to dim amber, flips to dim green, brightens to full green — that's your moment — and when that train becomes impossible to catch, it jumps back to amber for the next one.
 
-![Light colour and brightness against minutes to spare, for a 12-minute walk](/blog/apple-home-when-to-leave-light/leave-curve.svg "How the light responds as departure approaches. Settings: 12-minute walk, 2 minutes in hand, happy to wait up to 6.")
+![Light colour and brightness against minutes to spare, for a 7-minute walk](/blog/apple-home-when-to-leave-light/leave-curve.svg "How the light responds as departure approaches. Settings: 7-minute walk, 2 minutes in hand, happy to wait up to 6.")
 
-### Find your station
+### Plan the journey, not the station
 
-Transport for London's API covers more than London: it carries live National Rail departures too, which is how a Sevenoaks commuter gets to use it. Search for your station:
+A departure board shows every train leaving your station, including the ones that don't go where you're going. From Sevenoaks, some Thameslink trains run to London Victoria, which is no use if your office is in Blackfriars — and the quickest way in is often a Southeastern train to London Bridge and one stop on the Thameslink from there.
+
+So instead of a departure board, the light asks Transport for London's **journey planner** — which covers National Rail journeys into London as well as the Tube. Ask it for a journey and it only ever answers with trains that get you there, with live times for each leg:
+
+```
+https://api.tfl.gov.uk/Journey/JourneyResults/910GSVNOAKS/to/910GBLFR?mode=national-rail
+```
+
+Those two codes are Sevenoaks and London Blackfriars. To find yours, search for each station:
 
 ```
 https://api.tfl.gov.uk/StopPoint/Search/Sevenoaks?modes=national-rail
 ```
 
-The `id` in the answer is your station — mine is `910GSVNOAKS`. Then the departure board for your line is:
-
-```
-https://api.tfl.gov.uk/StopPoint/910GSVNOAKS/ArrivalDepartures?lineIds=thameslink
-```
-
-Open that in a browser and you'll see each departure with its scheduled time, its expected time, a status — `OnTime`, `Delayed` or `Cancelled` — and its destination. The same request works for Thameslink, the Elizabeth line and London Overground stations: use the line's id, such as `elizabeth` or `mildmay`. It doesn't cover every operator — at Sevenoaks it has Thameslink but not Southeastern — so try yours in a browser first.
+and use the `id` from the answer. Open the journey URL in a browser and you'll see the next few journeys, each with the time it leaves, the time it gets in, every change in between, and — for each leg — the time it's expected as well as the time it's scheduled.
 
 ### Build it
 
@@ -129,59 +130,66 @@ now().weekday >= 1 and now().weekday <= 5 and now().hour >= 7 and now().hour < 9
 
 That's weekdays, 7am to 9am. Everything below goes on the true branch.
 
-**3. HTTP Request.** **GET** your departure board URL from above.
+**3. HTTP Request.** **GET** your journey URL from above.
 
 **4. Code.** This is the heart of it. Change the four numbers at the top to fit your walk and your patience:
 
 <!-- snippet: train-light -->
 ```js
-const WALK = 12;     // minutes from your front door to the platform
+const WALK = 7;      // minutes from your front door to the platform
 const BUFFER = 2;    // minutes you like in hand when you get there
 const PATIENCE = 6;  // the longest platform wait you don't mind
-const LATE = 10;     // this many minutes late (or cancelled) means red
+const LATE = 10;     // this many minutes late means red
 
-// The departure board, from the HTTP Request node before this one
-const board = Object.values(input.nodes)
+// The journey planner's answer, from the HTTP Request node before this one
+const plan = Object.values(input.nodes)
   .map((node) => node.data && node.data.body)
-  .find((body) => Array.isArray(body) && body.some((d) => d.scheduledTimeOfDeparture)) || [];
+  .find((body) => body && Array.isArray(body.journeys));
+const journeys = plan ? plan.journeys : [];
 
+// TfL's times are London time with no zone on them, so read them as London time
+const london = (t) => {
+  const utc = Date.parse(t + 'Z');
+  const zone = new Date(utc).toLocaleString('en-GB', { timeZone: 'Europe/London', timeZoneName: 'shortOffset' });
+  return utc - Number((zone.match(/GMT([+-]\d+)/) || [0, 0])[1]) * 3600000;
+};
 const now = Date.now();
 const minutesUntil = (ms) => (ms - now) / 60000;
-const clock = (ms) => new Date(ms).toLocaleTimeString('en-GB', {
-  hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London',
-});
+const minutesLate = (actual, planned) => (london(actual) - london(planned || actual)) / 60000;
 
-// Trains that end here have no departure time, so leave them out
-const trains = board.filter((d) => d.scheduledTimeOfDeparture).map((d) => {
-  const due = Date.parse(d.scheduledTimeOfDeparture);
-  const expected = d.estimatedTimeOfDeparture ? Date.parse(d.estimatedTimeOfDeparture) : due;
+const options = journeys.map((j) => {
+  const first = j.legs[0];
+  const last = j.legs[j.legs.length - 1];
   return {
-    due,
-    expected,
-    late: (expected - due) / 60000,
-    cancelled: d.departureStatus === 'Cancelled' || d.departureStatus === 'NotStoppingHere',
+    leaves: (first.scheduledDepartureTime || first.departureTime).slice(11, 16),
+    arrives: j.arrivalDateTime.slice(11, 16),
+    expected: london(first.departureTime),
+    late: Math.max(
+      minutesLate(first.departureTime, first.scheduledDepartureTime),
+      minutesLate(last.arrivalTime, last.scheduledArrivalTime),
+    ),
   };
-}).sort((a, b) => a.due - b.due);
+}).sort((a, b) => a.expected - b.expected);
 
 const red = (summary) => ({ colour: 'red', hue: 0, saturation: 100, brightness: 100, summary });
 const mix = (from, to, f) => Math.round(from + (to - from) * Math.min(1, Math.max(0, f)));
 
-// The train you'd be aiming for: the first one you could still reach on foot
-const train = trains.find((t) => minutesUntil(t.cancelled ? t.due : t.expected) >= WALK);
-if (!train || minutesUntil(train.due) > 90) return red('No trains in the next 90 minutes');
-if (train.cancelled) return red(`The ${clock(train.due)} is cancelled`);
-if (train.late >= LATE) return red(`The ${clock(train.due)} is ${Math.round(train.late)} min late`);
+// The journey you'd be aiming for: the first one you could still reach on foot
+const train = options.find((o) => minutesUntil(o.expected) >= WALK);
+if (!train || minutesUntil(train.expected) > 90) return red('No trains to catch in the next 90 minutes');
+if (train.late >= LATE) return red(`The ${train.leaves} is running ${Math.round(train.late)} min late`);
 
 // Minutes you'd spend on the platform if you walked out of the door right now
 const spare = minutesUntil(train.expected) - WALK;
 const leaveIn = Math.max(0, Math.round(spare - BUFFER));
+const gets = `the ${train.leaves}, in at ${train.arrives}`;
 
 if (spare <= PATIENCE) {
   // Green, brightest when you'd arrive with BUFFER minutes in hand
   return {
     colour: 'green', hue: 120, saturation: 100,
     brightness: spare <= BUFFER ? 100 : mix(100, 30, (spare - BUFFER) / (PATIENCE - BUFFER)),
-    summary: leaveIn === 0 ? `Go now for the ${clock(train.due)}` : `Good time to go — the ${clock(train.due)}`,
+    summary: leaveIn === 0 ? `Go now for ${gets}` : `Good time to go — ${gets}`,
   };
 }
 
@@ -189,23 +197,23 @@ if (spare <= PATIENCE) {
 return {
   colour: 'amber', hue: 35, saturation: 100,
   brightness: mix(30, 100, (spare - PATIENCE) / 15),
-  summary: `Leave in ${leaveIn} min for the ${clock(train.due)}`,
+  summary: `Leave in ${leaveIn} min for ${gets}`,
 };
 ```
 
-The `summary` is there for you, not the light — it reads like *"Leave in 9 min for the 08:22"*, and it's what you'll see in the run history when you're checking it works.
+The `summary` is there for you, not the light — it reads like *"Leave in 9 min for the 08:17, in at 08:56"*, and it's what you'll see in the run history when you're checking it works. The light always aims for the next journey that gets you to Blackfriars, direct or with a change, so when one train is out of reach it simply moves on to the next.
 
 **5. Set Device**, four times, all on your lamp. The first sets **Power State** to on, so the lamp comes on in the morning after it's been switched off. The other three set **Hue**, **Saturation** and **Brightness**: for each, switch the value from **Fixed** to **Expression** and point it at the Code node's matching field, for example `{{ nodes['…'].data.hue }}`. The data list offers the Code node's **Return Value**; replace `result` at the end with `hue`, `saturation` or `brightness`.
 
 **6. One more small automation** to switch the lamp off at 9:00 on weekdays, so it isn't still amber when you get home.
 
-![The train light in the automation editor: a schedule, a commute-hours check, the departure board, the Code node, and four Set Device nodes](/blog/apple-home-when-to-leave-light/flow.svg "The whole train light. The first two nodes decide whether to look at all.")
+![The train light in the automation editor: a schedule, a commute-hours check, the journey planner, the Code node, and four Set Device nodes](/blog/apple-home-when-to-leave-light/flow.svg "The whole train light. The first two nodes decide whether to look at all.")
 
 ### Tuning it
 
 Give it a couple of mornings. If the green arrives too early, raise `WALK`; if you're happy to wait longer on the platform, raise `PATIENCE` and you'll see more green and less amber. `BUFFER` is how cautious you are: two minutes is fine for a predictable walk; with a less reliable one (or children) you might want five.
 
-A few things to know. The light updates once a minute, and TfL's expected times are live but not perfect, so treat a sudden jump to red as *"look at your app"*, not gospel. The 7–9am window is the relay's own clock. And because it runs every minute, a morning fills the automation's run history, which keeps the last hundred runs.
+A few things to know. The light updates once a minute, and TfL's expected times are live but not perfect, so treat a sudden jump to red as *"look at your app"*, not gospel. A cancelled train doesn't turn it red: the planner just stops offering it, and the light moves to the next journey that will get you there. The 7–9am window is the relay's own clock. And because it runs every minute, a morning fills the automation's run history, which keeps the last hundred runs.
 
 ## Make it yours
 

@@ -7,7 +7,6 @@ author: Rob Parker
 tags: [home-assistant, migration, mqtt]
 cover: /blog/moving-to-home-assistant-from-apple-home/cover.webp
 coverAlt: A hallway with a small tablet mounted on the wall beside the light switch, a bench and a plant below it
-generatedPhotos: true
 ---
 
 Most people who move to Home Assistant don't move in a weekend. They move one room at a time, around a family who'd quite like the lights to keep working in the meantime — and around years of Apple Home setup: rooms, scenes, automations, the Siri commands everyone's learned, the accessories that only ever spoke HomeKit.

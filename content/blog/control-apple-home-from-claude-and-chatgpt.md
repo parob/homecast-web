@@ -7,7 +7,6 @@ author: Rob Parker
 tags: [ai, mcp, claude, chatgpt]
 cover: /blog/control-apple-home-from-claude-and-chatgpt/cover.webp
 coverAlt: Someone on a sofa in the evening with a laptop on their knees, a warm lamp beside them and rain on the window
-generatedPhotos: true
 ---
 
 Siri can turn the lights off. What it can't do is answer *"is anything still on in the kitchen?"*, *"which room was coldest this morning?"* or *"make me a scene that dims the living room and turns the hallway down to 20%"*. Those need something that can look at your whole house, think about it, and then act.
@@ -49,10 +48,12 @@ Then run `/mcp` inside Claude Code to sign in.
 
 ## Connect ChatGPT
 
-ChatGPT connects to MCP servers through **developer mode**, which is in beta and on the web only. OpenAI is still changing which plans get what, so check [their current guide](https://developers.openai.com/api/docs/guides/developer-mode) if a step below doesn't match.
+ChatGPT connects to MCP servers through **developer mode**, and this is where I have to be honest: whether you have it depends on your ChatGPT plan, and OpenAI is still changing which plans get it. On my own personal account there's no developer mode switch at all, so I couldn't take these steps myself.
 
-1. Open **Settings → Security and login** and turn on **Developer mode**.
-2. Go to **ChatGPT Plugins**, choose **+**, give it the name *Homecast* and enter `https://api.homecast.cloud/mcp` as the connection URL, with **OAuth** for authentication.
+Where it is available, it's on the web, in beta, and the steps in [OpenAI's guide](https://developers.openai.com/api/docs/guides/developer-mode) are:
+
+1. In **Settings → Security and login**, turn on **Developer mode**.
+2. Under **Plugins**, add a new one: give it the name *Homecast*, enter `https://api.homecast.cloud/mcp` as the connection URL, and choose **OAuth** for authentication.
 3. Sign in with your Homecast account when asked.
 
 In a chat, choose **Developer mode** from the **+** menu and pick Homecast. ChatGPT asks you to confirm before anything that changes your home — that's a feature, not a bug.

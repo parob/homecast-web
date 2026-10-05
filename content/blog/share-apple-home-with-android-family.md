@@ -7,7 +7,6 @@ author: Rob Parker
 tags: [android, sharing, family, notifications]
 cover: /blog/share-apple-home-with-android-family/cover.webp
 coverAlt: Breakfast on a kitchen table, with two phones lying beside the mugs and a child's hand reaching for one
-generatedPhotos: true
 ---
 
 Apple Home works beautifully until someone in the house has an Android phone. Then it doesn't work at all. There's no Apple Home app for Android, no way to invite a Google account, and the usual workaround — "just ask me to turn it off" — gets old the first time you're asked from upstairs.
