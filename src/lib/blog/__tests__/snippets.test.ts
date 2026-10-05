@@ -96,6 +96,16 @@ describe('train-light snippet (WALK 12, BUFFER 2, PATIENCE 6, LATE 10)', () => {
       .toMatchObject({ colour: 'red', summary: `The ${firstClock} is 15 min late` });
   });
 
+  it('ignores trains that end here, and copes with an unsorted board', () => {
+    // The live board mixes in arrival-only entries (trains terminating at the
+    // station, no departure time) and isn't sorted. Both broke an earlier
+    // version of the snippet into "No trains in the next 90 minutes".
+    const arrival = { ...departures[0], scheduledTimeOfDeparture: undefined, estimatedTimeOfDeparture: undefined, departureStatus: undefined };
+    const messy = [arrival, ...[...departures].reverse(), arrival];
+    at(-(12 + 2) * min);
+    expect(runCode('train-light', messy)).toMatchObject({ colour: 'green', summary: `Go now for the ${firstClock}` });
+  });
+
   it('is red with nothing to catch, and never throws on an empty board', () => {
     at(0);
     expect(runCode('train-light', [])).toMatchObject({ colour: 'red', summary: 'No trains in the next 90 minutes' });

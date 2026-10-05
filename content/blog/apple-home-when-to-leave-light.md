@@ -40,7 +40,7 @@ The HTTP Request runs on your relay as an ordinary web request, so it can only t
 
 Start with the weather. It's simpler, and it teaches the whole pattern.
 
-Open **Automations** from the menu in the top right of the dashboard, choose **New automation**, and add these nodes in order.
+Open **Automations** from the menu at the top right of the dashboard, choose **Create**, pick **Homecast** as the kind of automation, and add these nodes in order.
 
 **1. Schedule.** Choose **At a specific time**, set it to 07:30, and pick Monday to Friday.
 
@@ -75,14 +75,14 @@ time.forEach((t, i) => {
 return { rain: worst.chance >= RAINY, chance: worst.chance, at: worst.at };
 ```
 
-**4. IF.** Switch it to **Expression** and check the result. Pick the Code node from the data list and add `.rain` to the end, so it reads something like `nodes['…'].data.rain`.
+**4. IF.** Switch it to **Expression**. Pick the Code node from the data list — it inserts something like `nodes['…'].data.result` — and replace `result` at the end with `rain`, so it reads `nodes['…'].data.rain`.
 
 **5. On the true branch**, add:
 
-- **Notify**, with a message like `Take an umbrella — {{ nodes['…'].data.chance }}% chance of rain around {{ nodes['…'].data.at }}`. Use the data list to insert the Code node's fields.
-- **Set Device** on your lamp: turn it on, then set the hue to blue.
+- **Notify**, with a message like `Take an umbrella — {{ nodes['…'].data.chance }}% chance of rain around {{ nodes['…'].data.at }}`. Copy the `nodes['…']` part from your IF expression, so it points at the same Code node.
+- **Set Device** three times on your lamp: **Power State** on, **Hue** 240 (blue) and **Saturation** 100. Each Set Device node changes one thing, and without the saturation a lamp last used on white stays white.
 
-That's it. Save it, and press **Run** once to see it work. The run shows up in the automation's history with each node's output, which is the quickest way to check the Code node is reading the forecast.
+That's it. Save it, then open it again, select the **Schedule** node and press **Run Test** to try it without waiting for 7:30. The **Executions** tab shows each step's input and output, which is the quickest way to check the Code node is reading the forecast.
 
 ## Part 2: the train light
 
@@ -114,11 +114,11 @@ The `id` in the answer is your station — mine is `910GSVNOAKS`. Then the depar
 https://api.tfl.gov.uk/StopPoint/910GSVNOAKS/ArrivalDepartures?lineIds=thameslink
 ```
 
-Open that in a browser and you'll see each departure with its scheduled time, its expected time, a status — `OnTime`, `Delayed` or `Cancelled` — and its destination. For a Tube, Overground or Elizabeth line station, use the line's id instead (`elizabeth`, `mildmay`, `northern` and so on).
+Open that in a browser and you'll see each departure with its scheduled time, its expected time, a status — `OnTime`, `Delayed` or `Cancelled` — and its destination. The same request works for Thameslink, the Elizabeth line and London Overground stations: use the line's id, such as `elizabeth` or `mildmay`. It doesn't cover every operator — at Sevenoaks it has Thameslink but not Southeastern — so try yours in a browser first.
 
 ### Build it
 
-**1. Schedule.** Choose **Repeating interval** and set it to every 1 minute.
+**1. Schedule.** Choose **Repeating interval** and type `1` into the minutes, for every minute.
 
 **2. IF.** You only care at commute time, so stop here outside it. Switch to **Expression** and use:
 
@@ -151,7 +151,8 @@ const clock = (ms) => new Date(ms).toLocaleTimeString('en-GB', {
   hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London',
 });
 
-const trains = board.map((d) => {
+// Trains that end here have no departure time, so leave them out
+const trains = board.filter((d) => d.scheduledTimeOfDeparture).map((d) => {
   const due = Date.parse(d.scheduledTimeOfDeparture);
   const expected = d.estimatedTimeOfDeparture ? Date.parse(d.estimatedTimeOfDeparture) : due;
   return {
@@ -194,17 +195,17 @@ return {
 
 The `summary` is there for you, not the light — it reads like *"Leave in 9 min for the 08:22"*, and it's what you'll see in the run history when you're checking it works.
 
-**5. Set Device**, three times, all on your lamp: **Hue**, **Saturation** and **Brightness**. For each one, switch the value from **Fixed** to **Expression** and point it at the Code node's matching field, for example `{{ nodes['…'].data.hue }}`. The data list offers the Code node's **Return Value**; replace `result` at the end with `hue`, `saturation` or `brightness`.
+**5. Set Device**, four times, all on your lamp. The first sets **Power State** to on, so the lamp comes on in the morning after it's been switched off. The other three set **Hue**, **Saturation** and **Brightness**: for each, switch the value from **Fixed** to **Expression** and point it at the Code node's matching field, for example `{{ nodes['…'].data.hue }}`. The data list offers the Code node's **Return Value**; replace `result` at the end with `hue`, `saturation` or `brightness`.
 
 **6. One more small automation** to switch the lamp off at 9:00 on weekdays, so it isn't still amber when you get home.
 
-![The train light in the automation editor: a schedule, a commute-hours check, the departure board, the Code node, and three Set Device nodes](/blog/apple-home-when-to-leave-light/flow.svg "The whole train light. The first two nodes decide whether to look at all.")
+![The train light in the automation editor: a schedule, a commute-hours check, the departure board, the Code node, and four Set Device nodes](/blog/apple-home-when-to-leave-light/flow.svg "The whole train light. The first two nodes decide whether to look at all.")
 
 ### Tuning it
 
 Give it a couple of mornings. If the green arrives too early, raise `WALK`; if you're happy to wait longer on the platform, raise `PATIENCE` and you'll see more green and less amber. `BUFFER` is how cautious you are: two minutes is fine for a predictable walk; with a less reliable one (or children) you might want five.
 
-One thing to know: the light updates once a minute, and TfL's expected times are live but not perfect. Treat a sudden jump to red as *"look at your app"*, not gospel.
+A few things to know. The light updates once a minute, and TfL's expected times are live but not perfect, so treat a sudden jump to red as *"look at your app"*, not gospel. The 7–9am window is the relay's own clock. And because it runs every minute, a morning fills the automation's run history, which keeps the last hundred runs.
 
 ## Make it yours
 
@@ -233,4 +234,4 @@ The names are the keys `GET /rest/state` returns for your own home. Give the tok
 
 - **The relay has to be running.** If you host your own on a Mac and it's asleep, nothing happens. On the Cloud plan we run the relay, so there's nothing to keep awake.
 - **Phone notifications need Homecast Cloud.** In the free Community Edition, Notify shows a banner on the Mac rather than your phone.
-- **The HTTP Request node is for open APIs.** It sends plain GET and POST requests, so services that need an API key in a header, or that refuse browser requests, won't work from it today.
+- **The service has to allow it.** The HTTP Request runs on your relay the way a web page would, so it can only reach services that accept requests from a browser. Open-Meteo and TfL do; plenty of others don't.
