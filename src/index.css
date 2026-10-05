@@ -318,8 +318,8 @@ All colors MUST be HSL.
     scroll-behavior: smooth;
     /* Hint to browser for high refresh rate */
     -webkit-overflow-scrolling: touch;
-    /* Prevent page-level elastic overscroll */
-    overscroll-behavior: none;
+    /* Prevent vertical bounce without blocking browser back/forward swipes. */
+    overscroll-behavior-y: none;
   }
 
   body {
