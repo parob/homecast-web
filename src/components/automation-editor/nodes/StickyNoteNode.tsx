@@ -15,8 +15,11 @@ export const StickyNoteNode = memo(function StickyNoteNode({ id, data, selected 
   }, [id, setNodes]);
 
   return (
+    // Fill the node. React Flow sizes the node wrapper from the note's saved
+    // (or resized) width and height; without w-full/h-full this box stayed at
+    // its minimum, so a note showed one line however large it was made.
     <div
-      className="relative"
+      className="relative w-full h-full"
       style={{ minWidth: 140, minHeight: 60 }}
     >
       <NodeResizer
