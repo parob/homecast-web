@@ -17,8 +17,14 @@ import type {
 import { isConditionBlock, durationToMs } from '../types/automation';
 import type { ConditionEvalDetail } from '../types/execution';
 import { calculateSunTimes } from '../state/SunCalculator';
-import { ExpressionEngine } from '../expression/ExpressionEngine';
+import { ExpressionEngine, type ExpressionContext } from '../expression/ExpressionEngine';
 import { fmtWeekdays } from './trace-summaries';
+
+/**
+ * Earlier nodes' outputs, for a condition evaluated mid-run (IF, Choose, Repeat).
+ * Absent for the automation's own conditions, which run before any node has.
+ */
+type NodeOutputs = ExpressionContext['nodes'];
 
 const BLOCK_DESCRIPTIONS: Record<ConditionBlock['operator'], (n: number) => string> = {
   and: (n) => `All of ${n} condition${n === 1 ? '' : 's'}`,
@@ -45,8 +51,8 @@ export class ConditionEvaluator {
   /**
    * Evaluate a condition block. Returns true if the automation should proceed.
    */
-  evaluate(block: ConditionBlock, triggerData: TriggerData, variables?: Record<string, unknown>): boolean {
-    return this.evaluateDetailed(block, triggerData, variables).passed;
+  evaluate(block: ConditionBlock, triggerData: TriggerData, variables?: Record<string, unknown>, nodes?: NodeOutputs): boolean {
+    return this.evaluateDetailed(block, triggerData, variables, nodes).passed;
   }
 
   /**
@@ -64,13 +70,14 @@ export class ConditionEvaluator {
     block: ConditionBlock,
     triggerData: TriggerData,
     variables?: Record<string, unknown>,
+    nodes?: NodeOutputs,
   ): ConditionEvalDetail {
     const count = block.conditions.length;
     if (count === 0) {
       return { passed: true, kind: 'block', operator: block.operator, description: 'No conditions' };
     }
 
-    const children = block.conditions.map((c) => this.evaluateNodeDetailed(c, triggerData, variables));
+    const children = block.conditions.map((c) => this.evaluateNodeDetailed(c, triggerData, variables, nodes));
 
     let passed: boolean;
     switch (block.operator) {
@@ -105,6 +112,7 @@ export class ConditionEvaluator {
     node: Condition | ConditionBlock,
     triggerData: TriggerData,
     variables?: Record<string, unknown>,
+    nodes?: NodeOutputs,
   ): ConditionEvalDetail {
     // If the node has enabled === false, treat as always passing
     if ('enabled' in node && node.enabled === false) {
@@ -118,16 +126,17 @@ export class ConditionEvaluator {
     }
 
     if (isConditionBlock(node)) {
-      return this.evaluateDetailed(node, triggerData, variables);
+      return this.evaluateDetailed(node, triggerData, variables, nodes);
     }
 
-    return this.evaluateLeafDetailed(node, triggerData, variables);
+    return this.evaluateLeafDetailed(node, triggerData, variables, nodes);
   }
 
   private evaluateLeafDetailed(
     condition: Condition,
     triggerData: TriggerData,
     variables?: Record<string, unknown>,
+    nodes?: NodeOutputs,
   ): ConditionEvalDetail {
     switch (condition.type) {
       case 'state':
@@ -139,7 +148,7 @@ export class ConditionEvaluator {
       case 'sun':
         return this.evaluateSun(condition);
       case 'template':
-        return this.evaluateTemplate(condition, triggerData, variables);
+        return this.evaluateTemplate(condition, triggerData, variables, nodes);
       case 'trigger':
         return this.evaluateTrigger(condition, triggerData);
       default:
@@ -313,11 +322,15 @@ export class ConditionEvaluator {
     condition: TemplateCondition,
     triggerData: TriggerData,
     variables?: Record<string, unknown>,
+    nodes?: NodeOutputs,
   ): ConditionEvalDetail {
     const ctx = ExpressionEngine.buildContext(
       this.stateStore,
       triggerData,
       variables ?? {},
+      undefined,
+      undefined,
+      nodes ?? {},
     );
     const base = {
       kind: 'leaf' as const,
