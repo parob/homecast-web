@@ -14,6 +14,7 @@
 // components that reach src/lib/config.ts, which touches `window` at import
 // time and breaks any non-DOM consumer (the serialization tests run in node).
 import { formatCharacteristicType, formatCharacteristicValue } from '@/components/widgets/types';
+import { isTemplate } from '@/automation/expression/template';
 
 export interface EntityNameSource {
   accessories?: { id: string; name: string }[];
@@ -75,6 +76,9 @@ export function characteristicValueLabel(
   value: unknown,
 ): string {
   if (value === undefined || value === null || value === '') return '';
+  // Only known once it runs. Formatting the template text as a reading gave
+  // "{{ nodes['code-1'].data.level }}%", and a temperature "NaN°C".
+  if (isTemplate(value)) return 'an expression';
 
   if (type && ON_OFF_TYPES.has(type)) {
     if (value === 1 || value === true || value === '1' || value === 'true') return 'On';

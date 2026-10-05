@@ -6,6 +6,7 @@ import { ExpressionParser } from './ExpressionParser';
 import type { ASTNode } from './ExpressionParser';
 import { ExpressionEvaluator } from './ExpressionEval';
 import { createFunctionRegistry } from './functions';
+import { isTemplate } from './template';
 import type { ExpressionContext } from './functions';
 import type { StateStore } from '../state/StateStore';
 import type { TriggerData } from '../types/automation';
@@ -62,8 +63,7 @@ export class ExpressionEngine {
    * (not stringified) for type preservation.
    */
   resolveTemplate(value: unknown, ctx: ExpressionContext): unknown {
-    if (typeof value !== 'string') return value;
-    if (!value.includes('{{')) return value;
+    if (!isTemplate(value)) return value;
 
     // Full template: "{{ expr }}" -> return raw value
     const fullMatch = value.match(/^\{\{\s*(.+?)\s*\}\}$/);

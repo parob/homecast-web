@@ -23,6 +23,7 @@ import { resolveEntityName, characteristicLabel, characteristicValueLabel } from
 import { cn } from '@/lib/utils';
 import { getNodeIcon } from '../icons';
 import { CATEGORY_STYLES, NODE_OUTPUT_SCHEMAS, isNodeConfigured, type FlowNodeData } from '../constants';
+import { isTemplate } from '@/automation/expression/template';
 import { NodeInfoPopover } from './NodeInfoPopover';
 import { NotificationIconField } from './NotificationIconField';
 import { DevicePicker, DeviceOrGroupPicker, CharacteristicPicker, ScenePicker } from './EntityPicker';
@@ -803,7 +804,15 @@ function renderConfigForm(
             )}
             {config.characteristicType && (
               <ConfigField label="Value">
-                <SmartValueInput char={setDeviceChar} value={config.value} onChange={(v) => updateConfig('value', v)} characteristicType={config.characteristicType as string} />
+                {/* Keyed so the mode starts over for another node or characteristic. */}
+                <ValueOrExpressionInput
+                  key={`${nodeId}:${config.characteristicType as string}`}
+                  char={setDeviceChar}
+                  value={config.value}
+                  onChange={(v) => updateConfig('value', v)}
+                  characteristicType={config.characteristicType as string}
+                  upstreamFields={nodeId && allNodes && allEdges ? getUpstreamFields(nodeId, allNodes, allEdges, accessories) : []}
+                />
               </ConfigField>
             )}
           </>
@@ -1490,6 +1499,11 @@ function IfConditionRowEditor({ row, accessories, homes, onChange, onRemove }: {
   );
 }
 
+const IF_MODES = [
+  { id: 'simple', label: 'Conditions' },
+  { id: 'expression', label: 'Expression' },
+] as const;
+
 function IfNodeConfig({
   config,
   updateConfig,
@@ -1552,27 +1566,13 @@ function IfNodeConfig({
   const builtinFields = upstreamFields.filter((f) => f.nodeLabel === 'Trigger data' || f.nodeLabel === 'Time');
 
   const modeSwitch = (
-    <div className="flex items-center bg-muted rounded-lg p-0.5 w-fit">
-      {([
-        { id: 'simple', label: 'Conditions' },
-        { id: 'expression', label: 'Expression' },
-      ] as const).map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          className={cn(
-            'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
-            (mode === m.id || (mode === 'custom' && m.id === 'simple'))
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground',
-          )}
-          onClick={() => setBatch({ conditionMode: m.id })}
-          data-testid={`if-mode-${m.id}`}
-        >
-          {m.label}
-        </button>
-      ))}
-    </div>
+    <ModeSwitch
+      options={IF_MODES}
+      // A custom condition has no tab of its own; it sits under Conditions.
+      value={mode === 'custom' ? 'simple' : mode}
+      onChange={(id) => setBatch({ conditionMode: id })}
+      testIdPrefix="if-mode"
+    />
   );
 
   // Custom: a condition this form can't express (written by hand or via MCP).
@@ -1871,6 +1871,107 @@ function SmartValueInput({ char, value, onChange, characteristicType }: {
   // Default: text input with template support
   return (
     <Input value={String(value ?? '')} onChange={(e) => onChange(e.target.value || undefined)} placeholder="Value or {{ expression }}" className="h-8 text-xs" />
+  );
+}
+
+/** Segmented switch for a field that can be written two ways. */
+function ModeSwitch<T extends string>({ options, value, onChange, testIdPrefix }: {
+  options: readonly { id: T; label: string }[];
+  value: T;
+  onChange: (id: T) => void;
+  testIdPrefix: string;
+}) {
+  return (
+    <div className="flex items-center bg-muted rounded-lg p-0.5 w-fit">
+      {options.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          aria-pressed={value === m.id}
+          className={cn(
+            'px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
+            value === m.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground',
+          )}
+          onClick={() => onChange(m.id)}
+          data-testid={`${testIdPrefix}-${m.id}`}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const VALUE_MODES = [
+  { id: 'fixed', label: 'Fixed' },
+  { id: 'expression', label: 'Expression' },
+] as const;
+
+/**
+ * A Set Device value: the fixed control, or an expression resolved when the
+ * action runs — a brightness worked out by a Code node, a colour from an HTTP
+ * response.
+ *
+ * The stored value decides which is shown (a template is an expression), so a
+ * saved automation reopens the way it was written. The local flag only holds
+ * expression mode open while the field is empty or half-typed.
+ */
+function ValueOrExpressionInput({ char, value, onChange, characteristicType, upstreamFields }: {
+  char: { value?: unknown; validValues?: number[]; minValue?: number | null; maxValue?: number | null; stepValue?: number } | undefined;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  characteristicType: string;
+  upstreamFields: UpstreamField[];
+}) {
+  const [expressionChosen, setExpressionChosen] = useState(() => isTemplate(value));
+  const mode = expressionChosen || isTemplate(value) ? 'expression' : 'fixed';
+
+  const switchMode = (next: typeof mode) => {
+    if (next === mode) return;
+    setExpressionChosen(next === 'expression');
+    // Nothing carries across: a slider position is not an expression. Back on
+    // the fixed control, start from the device's own value, as picking the
+    // characteristic does, rather than a control that looks set but isn't.
+    onChange(next === 'expression' ? undefined : defaultValueForCharacteristic(char, characteristicType));
+  };
+
+  return (
+    <div className="space-y-2">
+      <ModeSwitch options={VALUE_MODES} value={mode} onChange={switchMode} testIdPrefix="value-mode" />
+      {mode === 'fixed' ? (
+        <SmartValueInput char={char} value={value} onChange={onChange} characteristicType={characteristicType} />
+      ) : (
+        <>
+          <Input
+            value={value === undefined || value === null ? '' : String(value)}
+            onChange={(e) => onChange(e.target.value || undefined)}
+            placeholder="{{ nodes['…'].data.brightness }}"
+            className="h-8 text-xs font-mono"
+            data-testid="value-expression"
+          />
+          {upstreamFields.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">Input data <span className="font-normal">(click to use)</span></p>
+              <div className="flex flex-wrap gap-1">
+                {upstreamFields.map((f, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="px-2 py-0.5 rounded-full bg-muted text-[10px] font-mono hover:bg-muted-foreground/20 transition-colors truncate max-w-full"
+                    // The whole value, not an insertion: a lone {{ … }} keeps
+                    // its type, so a number arrives at the device as a number.
+                    onClick={() => onChange(`{{ ${f.expression} }}`)}
+                    title={f.expression}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
