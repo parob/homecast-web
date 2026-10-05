@@ -428,7 +428,7 @@ export class ActionExecutor {
     let matched = false;
     for (let i = 0; i < action.choices.length; i++) {
       const choice = action.choices[i];
-      const detail = this.conditionEvaluator.evaluateDetailed(choice.conditions, ctx.triggerData, ctx.variables);
+      const detail = this.conditionEvaluator.evaluateDetailed(choice.conditions, ctx.triggerData, ctx.variables, ctx.getNodeOutputsForExpressions());
       tested.push({ index: i, alias: choice.alias, passed: detail.passed });
       if (detail.passed) {
         matched = true;
@@ -455,7 +455,7 @@ export class ActionExecutor {
   }
 
   private async executeIfThenElse(action: IfThenElseAction, ctx: ExecutionContext, tags?: StepTags): Promise<void> {
-    const detail = this.conditionEvaluator.evaluateDetailed(action.condition, ctx.triggerData, ctx.variables);
+    const detail = this.conditionEvaluator.evaluateDetailed(action.condition, ctx.triggerData, ctx.variables, ctx.getNodeOutputsForExpressions());
     const result = detail.passed;
     const stepIdx = ctx.beginStep('action', action.id, 'if_then_else',
       result ? 'If → Then' : 'If → Else', { conditionResult: result, condition: capLarge(detail) }, tags);
@@ -498,7 +498,7 @@ export class ActionExecutor {
 
       case 'while': {
         while (!ctx.isAborted && action.whileCondition) {
-          lastCondition = this.conditionEvaluator.evaluateDetailed(action.whileCondition, ctx.triggerData, ctx.variables);
+          lastCondition = this.conditionEvaluator.evaluateDetailed(action.whileCondition, ctx.triggerData, ctx.variables, ctx.getNodeOutputsForExpressions());
           if (!lastCondition.passed) break;
           if (++iterations > MAX_LOOP_ITERATIONS) break;
           ctx.repeat = { index: iterations - 1, first: iterations === 1, last: false };
@@ -513,7 +513,7 @@ export class ActionExecutor {
           ctx.repeat = { index: iterations - 1, first: iterations === 1, last: false };
           await this.executeSequence(action.sequence, ctx, iterTags(iterations - 1));
           if (ctx.isAborted || !action.untilCondition) break;
-          lastCondition = this.conditionEvaluator.evaluateDetailed(action.untilCondition, ctx.triggerData, ctx.variables);
+          lastCondition = this.conditionEvaluator.evaluateDetailed(action.untilCondition, ctx.triggerData, ctx.variables, ctx.getNodeOutputsForExpressions());
         } while (lastCondition && !lastCondition.passed);
         break;
       }
