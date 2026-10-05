@@ -25,6 +25,7 @@ vi.mock('@xyflow/react', async (orig) => {
 
 import { ControlFlowEdge, EdgeMarkerDefs } from '../edges/ControlFlowEdge';
 import { StickyNoteNode } from '../nodes/StickyNoteNode';
+import type React from 'react';
 
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
@@ -163,9 +164,13 @@ describe('StickyNoteNode', () => {
     // React Flow puts a saved or resized note's width/height on the node
     // wrapper; the note's own box has to stretch to it, or the text is cut
     // to one line.
+    const props = {
+      ...(noteProps as object),
+      data: { config: { text: 'Line one\nLine two' } },
+    } as unknown as React.ComponentProps<typeof StickyNoteNode>;
     const { container } = render(
       <ReactFlowProvider>
-        <StickyNoteNode {...noteProps} data={{ config: { text: 'Line one\nLine two' } } as never} />
+        <StickyNoteNode {...props} />
       </ReactFlowProvider>,
     );
     const root = container.firstElementChild as HTMLElement;
