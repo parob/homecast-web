@@ -223,6 +223,13 @@ export const CHAR_TO_SIMPLE: Record<string, string> = {
   motion_detected: 'motion', contact_state: 'contact',
   battery_level: 'battery', status_low_battery: 'low_battery',
   volume: 'volume', mute: 'mute',
+  // The names set_state has always accepted for these (`speed`, `target`,
+  // `hvac_mode`), and the ones the automation tools, the MQTT bridge and
+  // CharacteristicMapper use. Unmapped, the relay's own names passed through,
+  // so get_state advertised `_settable: ["target_position"]` while set_state
+  // only took `target` — a blind could be read but not moved.
+  rotation_speed: 'speed', target_position: 'target',
+  target_heater_cooler_state: 'hvac_mode', current_heater_cooler_state: 'hvac_state',
 };
 
 export const UUID_TO_SIMPLE: Record<string, string> = {
@@ -230,7 +237,32 @@ export const UUID_TO_SIMPLE: Record<string, string> = {
   '000000b2-0000-1000-8000-0026bb765291': 'hvac_mode',
 };
 
-const SKIP_SERVICES = new Set(['accessory_information', 'battery', 'label']);
+// `battery` is NOT skipped: battery_level and status_low_battery live on the
+// battery service, so skipping it meant no accessory ever reported `battery`.
+const SKIP_SERVICES = new Set(['accessory_information', 'label']);
+
+/** HomeKit enums that get_state reports as words, and set_state accepts as words. */
+export const ENUM_WORDS: Record<string, Record<number, string>> = {
+  alarm_state: { 0: 'home', 1: 'away', 2: 'night', 3: 'off', 4: 'triggered' },
+  alarm_target: { 0: 'home', 1: 'away', 2: 'night', 3: 'off' },
+  hvac_state: { 0: 'inactive', 1: 'idle', 2: 'heating', 3: 'cooling' },
+  hvac_mode: { 0: 'auto', 1: 'heat', 2: 'cool' },
+};
+
+/**
+ * Every property set_state accepts — the Cloud's `AccessoryUpdate` fields, so
+ * the two editions take the same writes. MCP and REST both read this.
+ */
+export const SET_STATE_PROPERTIES: ReadonlySet<string> = new Set([
+  'on', 'brightness', 'hue', 'saturation', 'color_temp', 'active',
+  'heat_target', 'cool_target', 'hvac_mode', 'lock_target', 'alarm_target',
+  'speed', 'volume', 'mute', 'target',
+  // Climate settings get_state reports in `_settable` that used to be dropped:
+  // a thermostat's setpoint and mode, and an air conditioner's swing.
+  'target_temp', 'heating_cooling_target', 'swing_mode',
+  'virtual_mode', 'virtual_count', 'virtual_number', 'virtual_text',
+  'virtual_datetime', 'virtual_timer',
+]);
 const SKIP_CHARS = new Set(['name', 'manufacturer', 'model', 'serial_number', 'firmware_revision', 'hardware_revision', 'identify']);
 
 // Re-exported so every existing importer (and the parity test) keeps working;
@@ -249,25 +281,12 @@ export function getSimpleName(charType: string): string | null {
 
 export function formatValue(value: any, simpleName: string): any {
   if (value == null) return null;
-  if (simpleName === 'alarm_state') {
-    const states: Record<number, string> = { 0: 'home', 1: 'away', 2: 'night', 3: 'off', 4: 'triggered' };
-    return states[Number(value)] ?? `unknown_${value}`;
-  }
-  if (simpleName === 'alarm_target') {
-    const states: Record<number, string> = { 0: 'home', 1: 'away', 2: 'night', 3: 'off' };
-    return states[Number(value)] ?? `unknown_${value}`;
-  }
-  if (simpleName === 'hvac_state') {
-    const states: Record<number, string> = { 0: 'inactive', 1: 'idle', 2: 'heating', 3: 'cooling' };
-    return states[Number(value)] ?? `unknown_${value}`;
-  }
-  if (simpleName === 'hvac_mode') {
-    const states: Record<number, string> = { 0: 'auto', 1: 'heat', 2: 'cool' };
-    return states[Number(value)] ?? `unknown_${value}`;
+  if (ENUM_WORDS[simpleName]) {
+    return ENUM_WORDS[simpleName][Number(value)] ?? `unknown_${value}`;
   }
   if (simpleName === 'locked') return value === 1 || value === true;
   if (['on', 'active', 'motion', 'mute', 'low_battery'].includes(simpleName)) return Boolean(value);
-  if (['brightness', 'battery', 'volume'].includes(simpleName)) return Math.round(Number(value));
+  if (['brightness', 'battery', 'volume', 'speed', 'target'].includes(simpleName)) return Math.round(Number(value));
   if (simpleName.includes('temp') || ['heat_target', 'cool_target'].includes(simpleName)) {
     return Math.round(Number(value) * 10) / 10;
   }
@@ -303,9 +322,21 @@ export function getDeviceType(accessory: any): string {
   return 'other';
 }
 
-function simplifyAccessory(accessory: any): Record<string, any> {
+/** A characteristic's validValues, in the form get_state reports the value. */
+function validValues(valid: unknown, simpleName: string): unknown[] {
+  if (!Array.isArray(valid) || valid.length === 0) return [];
+  const out: unknown[] = [];
+  for (const v of valid) {
+    const formatted = formatValue(v, simpleName);
+    if (formatted != null && !out.includes(formatted)) out.push(formatted);
+  }
+  return out;
+}
+
+export function simplifyAccessory(accessory: any): Record<string, any> {
   const result: Record<string, any> = { type: getDeviceType(accessory) };
   const settable: string[] = [];
+  const options: Record<string, unknown[]> = {};
 
   for (const service of accessory.services || []) {
     if (SKIP_SERVICES.has((service.serviceType || '').toLowerCase())) continue;
@@ -315,12 +346,20 @@ function simplifyAccessory(accessory: any): Record<string, any> {
       const formatted = formatValue(char.value, simpleName);
       if (formatted != null) {
         result[simpleName] = formatted;
-        if (char.isWritable && !settable.includes(simpleName)) settable.push(simpleName);
+        if (char.isWritable && !settable.includes(simpleName)) {
+          settable.push(simpleName);
+          // The values this accessory actually accepts, where HomeKit says. A
+          // radiator and an air conditioner are both heater-coolers, but only
+          // one of them can cool.
+          const valid = validValues(char.validValues, simpleName);
+          if (valid.length > 0) options[simpleName] = valid;
+        }
       }
     }
   }
 
   if (settable.length > 0) result._settable = settable;
+  if (Object.keys(options).length > 0) result._options = options;
   return result;
 }
 
@@ -531,11 +570,7 @@ export async function handleSetState(updates: Array<Record<string, unknown>>): P
   const changes: string[] = [];
   const errors: string[] = [];
 
-  const settableProps = new Set([
-    'on', 'brightness', 'hue', 'saturation', 'color_temp', 'active',
-    'heat_target', 'cool_target', 'hvac_mode', 'lock_target', 'alarm_target',
-    'speed', 'volume', 'mute', 'target',
-  ]);
+  const settableProps = SET_STATE_PROPERTIES;
 
   for (const [homeKey, homeUpdates] of Object.entries(byHome)) {
     const homeId = homeKeyToId[homeKey];
