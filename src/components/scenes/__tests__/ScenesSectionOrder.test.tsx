@@ -144,13 +144,18 @@ describe('the merged Scenes grid', () => {
     expect(order[order.length - 1]).toBe('Brand New');
   });
 
-  it('drops the scene cards when only that half is switched off', async () => {
+  it('keeps Apple Home scenes when an old per-home switch is still set', async () => {
+    // #264 retired the per-home switch for Apple Home scenes: they show unless
+    // hidden one by one, and an old 'scenes' flag left in the layout is no
+    // longer read. This used to assert the opposite and passed only by
+    // reading the grid before the scenes query had answered — the two
+    // shortcuts paint first — so it failed whenever the query won the race.
     const layout: HomeLayoutData = { visibility: { hiddenSummarySections: ['scenes'] } };
     // A lone light earns two shortcuts: All lights, and Turn everything off.
     renderSection([scene('s1', 'Movie Night')], [light], layout);
 
-    const order = await names(2);
-    expect(order).not.toContain('Movie Night');
+    const order = await names(3);
+    expect(order).toContain('Movie Night');
     expect(order).toContain('All lights');
   });
 
