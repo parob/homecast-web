@@ -41,6 +41,49 @@ describe('history policy fixtures (shared with Python)', () => {
   }
 });
 
+describe('canonicalHistoryType spellings', () => {
+  // The cloud's MCP descriptions reach agents camelCased (graphql-api rewrites
+  // example names), so `currentTemperature` arrives. Lowercasing it first gave
+  // `currenttemperature`, which matched nothing. Mirrors
+  // test_canonical_history_type_accepts_every_spelling in homecast-cloud.
+  const cases: [string, string][] = [
+    ['currentTemperature', 'current_temperature'],
+    ['powerState', 'power_state'],
+    ['relativeHumidity', 'relative_humidity'],
+    ['motionDetected', 'motion_detected'],
+    ['currentTemp', 'current_temperature'],
+    ['lockCurrentState', 'lock_current_state'],
+    ['pm25Density', 'pm2_5_density'],
+    ['pm10Density', 'pm10_density'],
+    ['CurrentTemperature', 'current_temperature'],
+    ['Current Temperature', 'current_temperature'],
+    ['current-temperature', 'current_temperature'],
+    ['HMCharacteristicTypeCurrentTemperature', 'current_temperature'],
+    ['Current Relative Humidity', 'relative_humidity'],
+    ['current_temperature', 'current_temperature'],
+    ['CURRENT_TEMPERATURE', 'current_temperature'],
+    ['on', 'power_state'],
+    ['motion', 'motion_detected'],
+  ];
+  for (const [spelling, expected] of cases) {
+    it(`${spelling} → ${expected}`, () => {
+      expect(canonicalHistoryType(spelling)).toBe(expected);
+      expect(getProfile(spelling)).toBeDefined();
+    });
+  }
+
+  it('never invents a profile', () => {
+    for (const t of ['lockTargetState', 'serialNumber', 'firmwareRevision', 'name']) {
+      expect(getProfile(t)).toBeUndefined();
+    }
+  });
+
+  it('profile keys stay unambiguous without separators', () => {
+    const compact = profiledTypes().map((k) => k.replace(/_/g, ''));
+    expect(new Set(compact).size).toBe(compact.length);
+  });
+});
+
 describe('profiles', () => {
   it('every profile key is already canonical', () => {
     // A profile keyed by an alias would be unreachable: lookups canonicalise

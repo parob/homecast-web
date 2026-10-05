@@ -11,6 +11,7 @@
 //    lowercase.
 
 import { canonicalCharacteristic } from '@/lib/characteristic-aliases';
+import profilesJson from './profiles.json';
 
 /**
  * Variants seen in the wild that the bridge alias table doesn't cover (it
@@ -23,11 +24,48 @@ const HISTORY_TYPE_ALIASES: Record<string, string> = {
   contact_sensor_state: 'contact_state',
 };
 
+const PROFILED = (profilesJson as { profiles: Record<string, unknown> }).profiles;
+const NON_ALNUM = /[^a-z0-9]/g;
+
+/**
+ * Profiled types with the separators taken out. camelCase loses an underscore
+ * that sat next to a digit (pm2_5_density → pm25Density), so the last resort
+ * compares letters and digits only. Profile keys stay unambiguous under that
+ * comparison — pinned in policy.test.ts.
+ */
+const PROFILE_BY_COMPACT = new Map(
+  Object.keys(PROFILED).map((key) => [key.replace(NON_ALNUM, ''), key]),
+);
+
+/**
+ * Any spelling of a characteristic name → the bridge's snake_case.
+ *
+ * Everything the bridge reports is snake_case, so a capital or a space can only
+ * have come from somewhere that rewrote it: the cloud's MCP descriptions arrive
+ * camelCased (`currentTemperature`), and an agent may use HomeKit's own names
+ * (`CurrentTemperature`, "Current Temperature",
+ * `HMCharacteristicTypeCurrentTemperature`). Lowercasing first — as this used
+ * to — erased the humps that say where the words break. Mirrors
+ * `canonical_history_type` in homecast-cloud's history/policy.py.
+ */
+function snakeCaseCharacteristic(name: string): string {
+  return name
+    .trim()
+    .replace(/^HMCharacteristicType/i, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase();
+}
+
 /** The one name a characteristic's history is keyed by. */
 export function canonicalHistoryType(characteristicType: string): string {
-  const lowered = characteristicType.toLowerCase();
-  const canonical = canonicalCharacteristic(lowered);
-  return HISTORY_TYPE_ALIASES[canonical] ?? canonical;
+  const snake = snakeCaseCharacteristic(characteristicType);
+  let canonical = canonicalCharacteristic(snake);
+  canonical = HISTORY_TYPE_ALIASES[canonical] ?? canonical;
+  if (!Object.prototype.hasOwnProperty.call(PROFILED, canonical)) {
+    canonical = PROFILE_BY_COMPACT.get(canonical.replace(NON_ALNUM, '')) ?? canonical;
+  }
+  return canonical;
 }
 
 /** IndexedDB series id. `|` never appears in UUIDs or characteristic names. */
