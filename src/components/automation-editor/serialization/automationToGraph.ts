@@ -15,6 +15,7 @@ import type {
 import { isConditionBlock } from '@/automation/types/automation';
 import { flattenTriggerBranches } from '@/automation/trigger-branches';
 import { conditionBlockToIfConfig, summarizeIfConfig } from './if-condition';
+import { httpAuthToConfig, httpBodyToConfig } from './http-request';
 import { TRIGGER_NODES, ACTION_NODES, LOGIC_NODES, ANNOTATION_NODES, ALL_NODE_DEFINITIONS, isNodeConfigured } from '../constants';
 
 const VERTICAL_GAP = 80;
@@ -443,7 +444,13 @@ function extractActionConfig(action: Action): Record<string, unknown> {
     case 'delay': return { hours: action.duration.hours, minutes: action.duration.minutes, seconds: action.duration.seconds };
     case 'notify': return { message: action.message, title: action.title, icon: action.icon, iconColor: action.iconColor };
     case 'fire_event': return { eventType: action.eventType };
-    case 'fire_webhook': return { url: action.url, method: action.method };
+    case 'fire_webhook': return {
+      url: action.url,
+      method: action.method,
+      headers: action.headers,
+      body: httpBodyToConfig(action.body),
+      ...httpAuthToConfig(action.auth),
+    };
     case 'stop': return { reason: action.reason };
     case 'repeat': return { mode: action.mode, count: action.count };
     case 'wait_for_trigger': return { timeoutSeconds: action.timeout?.seconds, continueOnTimeout: action.continueOnTimeout };

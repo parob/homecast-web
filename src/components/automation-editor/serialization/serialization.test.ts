@@ -5,7 +5,7 @@ import { graphToAutomation } from './graphToAutomation';
 import { automationToGraph } from './automationToGraph';
 import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData } from '../constants';
-import type { Automation } from '@/automation/types/automation';
+import type { Automation, FireWebhookAction } from '@/automation/types/automation';
 
 function makeNode(id: string, data: Partial<FlowNodeData> & { nodeType: string; category: FlowNodeData['category'] }): Node<FlowNodeData> {
   return {
@@ -303,6 +303,73 @@ describe('serialization: a Set Device value written as an expression', () => {
     expect(data.isConfigured).toBe(true);
     // Not "{{ nodes['code1'].data.brightness }}%".
     expect(data.subtitle).toMatch(/to an expression$/);
+  });
+});
+
+// ============================================================
+// HTTP Request: the panel's body and auth used to be dropped on save, so
+// configured credentials were never sent.
+// ============================================================
+
+describe('serialization: HTTP Request keeps its body, headers and auth', () => {
+  function roundTrip(config: Record<string, unknown>) {
+    const nodes: Node<FlowNodeData>[] = [
+      makeNode('t1', { category: 'trigger', nodeType: 'device_changed',
+        config: { accessoryId: 'acc-1', characteristicType: 'power_state', to: 1 } }),
+      makeNode('h1', { category: 'action', nodeType: 'http_request', config: { url: 'https://api.example.com/hook', ...config } }),
+    ];
+    const auto = graphToAutomation(nodes, [makeEdge('t1', 'h1')], 'Test', 'home-1');
+    const action = auto.actions[0] as FireWebhookAction;
+    const back = automationToGraph(auto).nodes.find((n) => n.id === 'h1')!.data.config;
+    return { action, back };
+  }
+
+  it('keeps the body and any headers', () => {
+    const body = '{"level": "{{ trigger.to_value }}"}';
+    const { action, back } = roundTrip({ method: 'POST', body, headers: { 'X-Room': 'kitchen' } });
+
+    expect(action.body).toBe(body);
+    expect(action.headers).toEqual({ 'X-Room': 'kitchen' });
+    expect(back.body).toBe(body);
+    expect(back.headers).toEqual({ 'X-Room': 'kitchen' });
+  });
+
+  it.each([
+    ['bearer', { authMode: 'bearer', authToken: 'tok' }, { type: 'bearer', token: 'tok' }],
+    ['api_key', { authMode: 'api_key', authHeaderName: 'X-Hub-Key', authHeaderValue: 'k' }, { type: 'api_key', header: 'X-Hub-Key', value: 'k' }],
+    ['basic', { authMode: 'basic', authUsername: 'u', authPassword: 'p' }, { type: 'basic', username: 'u', password: 'p' }],
+  ])('keeps %s auth', (_label, fields, auth) => {
+    const { action, back } = roundTrip({ method: 'POST', ...fields });
+
+    expect(action.auth).toEqual(auth);
+    expect(back).toMatchObject(fields);
+  });
+
+  it('saves the API key under the header the panel shows when none was typed', () => {
+    const { action } = roundTrip({ authMode: 'api_key', authHeaderValue: 'k' });
+
+    expect(action.auth).toEqual({ type: 'api_key', header: 'X-API-Key', value: 'k' });
+  });
+
+  it('saves no auth for "None"', () => {
+    expect(roundTrip({ authMode: undefined, authToken: 'stale' }).action.auth).toBeUndefined();
+  });
+
+  it('drops a body the panel hides for GET', () => {
+    expect(roundTrip({ method: 'GET', body: '{"a": 1}' }).action.body).toBeUndefined();
+  });
+
+  it('opens an object body as its JSON text', () => {
+    const auto: Automation = {
+      id: 'a', name: 'A', homeId: 'home-1', enabled: true, mode: 'single',
+      triggers: [], conditions: { operator: 'and', conditions: [] },
+      actions: [{ type: 'fire_webhook', id: 'h1', url: 'https://x.example', body: { a: 1 } }],
+      metadata: { createdAt: '', updatedAt: '', triggerCount: 0 },
+    };
+
+    const config = automationToGraph(auto).nodes.find((n) => n.id === 'h1')!.data.config;
+
+    expect(JSON.parse(config.body as string)).toEqual({ a: 1 });
   });
 });
 

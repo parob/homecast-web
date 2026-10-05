@@ -32,6 +32,7 @@ import {
   summarizeIfConfig, isCompleteRow,
   type IfConditionConfig, type IfConditionRow, type IfRowOperator,
 } from '../serialization/if-condition';
+import { methodTakesBody, DEFAULT_API_KEY_HEADER } from '../serialization/http-request';
 
 // ============================================================
 // Upstream context — what data flows into this node
@@ -897,7 +898,7 @@ function renderConfigForm(
               </Select>
             </ConfigField>
             {/* Body — shown for POST/PUT, collapsed by default */}
-            {((config.method as string) ?? 'POST') !== 'GET' && ((config.method as string) ?? 'POST') !== 'DELETE' && (
+            {methodTakesBody(config.method as string | undefined) && (
               <details open={!!config.body} className="border-t pt-2 mt-3">
                 <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
                   Request body {config.body ? '(set)' : ''}
@@ -910,6 +911,7 @@ function renderConfigForm(
                     className="font-mono text-xs min-h-[80px] resize-y"
                     rows={4}
                   />
+                  <p className="text-[11px] text-muted-foreground leading-snug mt-1">Supports {'{{ templates }}'}, including inside JSON values.</p>
                 </div>
               </details>
             )}
@@ -938,7 +940,7 @@ function renderConfigForm(
                 {config.authMode === 'api_key' && (
                   <>
                     <ConfigField label="Header name">
-                      <Input value={(config.authHeaderName as string) ?? 'X-API-Key'} onChange={(e) => updateConfig('authHeaderName', e.target.value)} className="h-8 text-xs" />
+                      <Input value={(config.authHeaderName as string) ?? DEFAULT_API_KEY_HEADER} onChange={(e) => updateConfig('authHeaderName', e.target.value)} className="h-8 text-xs" />
                     </ConfigField>
                     <ConfigField label="API Key">
                       <Input type="password" value={(config.authHeaderValue as string) ?? ''} onChange={(e) => updateConfig('authHeaderValue', e.target.value)} placeholder="Your API key..." className="h-8 text-xs" />

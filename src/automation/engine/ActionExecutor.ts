@@ -40,6 +40,7 @@ import { isTemplate, numberIfRenderedNumeric } from '../expression/template';
 import { WorkerCodeSandbox, type CodeSandbox } from './CodeSandbox';
 import type { VirtualAccessoryManager } from '../state/VirtualAccessoryManager';
 import { assertSafeOutboundUrl } from './ssrfGuard';
+import { authHeader, hasHeader, redactHeaders } from './http-request';
 
 /** Bridge interface for calling HomeKit operations */
 export interface HomeKitBridge {
@@ -111,6 +112,10 @@ function requireValue(value: unknown, characteristicType: string, raw?: unknown)
       : `No value set for "${characteristicType}" — open the action and choose one`;
     throw Object.assign(new Error(message), { code: 'VALUE_NOT_SET' });
   }
+}
+
+function isJsonText(text: string): boolean {
+  try { JSON.parse(text); return true; } catch { return false; }
 }
 
 export class ActionExecutor {
@@ -837,16 +842,27 @@ export class ActionExecutor {
     try {
       const url = this.resolveTemplateString(action.url, ctx);
       assertSafeOutboundUrl(url);
-      const body = action.body ? JSON.stringify(this.resolveTemplateValue(action.body, ctx)) : undefined;
-      const headers: Record<string, string> = { ...action.headers };
-      if (body && !headers['Content-Type']) {
-        headers['Content-Type'] = 'application/json';
+      const method = action.method ?? 'POST';
+      // fetch refuses a GET with a body outright, failing the whole request.
+      const body = method === 'GET' ? undefined : this.renderRequestBody(action.body, ctx);
+      const headers: Record<string, string> = {};
+      for (const [name, value] of Object.entries(action.headers ?? {})) {
+        headers[name] = this.resolveTemplateString(value, ctx);
+      }
+      // The auth fields may themselves be templates (a token kept in a
+      // variable), so resolve them before building the header.
+      const auth = action.auth
+        ? authHeader(this.expressionEngine.resolveTemplateDeep(action.auth, this.buildExpressionContext(ctx)) as typeof action.auth)
+        : undefined;
+      if (auth) headers[auth.name] = auth.value;
+      if (body && !hasHeader(headers, 'Content-Type')) {
+        headers['Content-Type'] = body.json ? 'application/json' : 'text/plain; charset=utf-8';
       }
 
       const response = await fetch(url, {
-        method: action.method ?? 'POST',
+        method,
         headers,
-        body,
+        body: body?.text,
         redirect: 'error',
         signal: AbortSignal.timeout(30_000),
       });
@@ -873,7 +889,13 @@ export class ActionExecutor {
       ctx.setNodeOutput(action.id, output);
       // Node output keeps the full body for downstream expressions; the trace
       // step gets a size-capped copy so one chatty response can't balloon it.
-      ctx.endStep(stepIdx, 'executed', { ...output, body: capLarge(responseBody) });
+      // What was sent goes in the trace only, credentials blanked: the node
+      // output is for downstream expressions, which have no use for it.
+      ctx.endStep(stepIdx, 'executed', {
+        ...output,
+        body: capLarge(responseBody),
+        requestHeaders: redactHeaders(headers, auth ? [auth.name] : []),
+      });
     } catch (e) {
       ctx.setNodeOutput(action.id, { status: 0, ok: false, error: describeError(e) });
       ctx.endStep(stepIdx, 'error', undefined, describeError(e));
@@ -1053,6 +1075,29 @@ export class ActionExecutor {
   // ============================================================
   // Template resolution (via ExpressionEngine)
   // ============================================================
+
+  /**
+   * An HTTP Request body as sent. Text that parses as JSON has templates
+   * resolved in each string inside it — interpolating into the raw text would
+   * break the JSON the moment a value contained a quote. Anything else is
+   * interpolated and sent as written; a lone template giving a non-string is
+   * sent as JSON.
+   */
+  private renderRequestBody(body: unknown, ctx: ExecutionContext): { text: string; json: boolean } | undefined {
+    if (body === undefined || body === null || body === '') return undefined;
+    const exprCtx = this.buildExpressionContext(ctx);
+    if (typeof body === 'string') {
+      let parsed: unknown;
+      try { parsed = JSON.parse(body); } catch { parsed = undefined; }
+      if (parsed === undefined) {
+        const resolved = this.expressionEngine.resolveTemplate(body, exprCtx);
+        if (typeof resolved !== 'string') return { text: JSON.stringify(resolved), json: true };
+        return { text: resolved, json: isJsonText(resolved) };
+      }
+      body = parsed;
+    }
+    return { text: JSON.stringify(this.expressionEngine.resolveTemplateDeep(body, exprCtx)), json: true };
+  }
 
   private resolveTemplateString(value: string, ctx: ExecutionContext): string {
     const exprCtx = this.buildExpressionContext(ctx);

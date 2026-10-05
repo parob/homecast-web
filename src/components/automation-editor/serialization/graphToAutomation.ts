@@ -5,6 +5,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { FlowNodeData } from '../constants';
 import { isValidNotificationIcon, isNotificationIconColor } from '../notificationIcons';
+import { methodTakesBody, httpConfigToAuth } from './http-request';
 import type {
   Automation,
   AutomationUIState,
@@ -562,13 +563,18 @@ function nodeToActionInner(
     }
 
     case 'http_request':
-    case 'fire_webhook':
+    case 'fire_webhook': {
+      const method = config.method as FireWebhookAction['method'];
       return {
         type: 'fire_webhook',
         id: node.id,
         url: (config.url as string) ?? '',
-        method: config.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | undefined,
+        method,
+        headers: config.headers as Record<string, string> | undefined,
+        body: methodTakesBody(method) ? (config.body as string | undefined) || undefined : undefined,
+        auth: httpConfigToAuth(config),
       } satisfies FireWebhookAction;
+    }
 
     case 'if':
     case 'if_then_else':

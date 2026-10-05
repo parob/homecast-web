@@ -415,12 +415,27 @@ export interface FireEventAction extends BaseAction {
   eventData?: Record<string, unknown>;
 }
 
+/**
+ * Credentials for an HTTP Request, kept as the editor's own fields rather than
+ * a pre-built header so they reopen exactly as typed. The executor turns them
+ * into a header at send time, and keeps them out of the trace.
+ */
+export type HttpAuth =
+  | { type: 'bearer'; token: string }
+  | { type: 'api_key'; header: string; value: string }
+  | { type: 'basic'; username: string; password: string };
+
 export interface FireWebhookAction extends BaseAction {
   type: 'fire_webhook';
   url: string;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   headers?: Record<string, string>;
+  /**
+   * Text, or a JSON value. Text that parses as JSON has templates resolved in
+   * each string inside it; other text is interpolated and sent as written.
+   */
   body?: unknown;
+  auth?: HttpAuth;
 }
 
 export interface ToggleAutomationAction extends BaseAction {

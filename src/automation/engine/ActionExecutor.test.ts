@@ -244,6 +244,99 @@ describe('ActionExecutor', () => {
       expect(output?.error).toContain('Network error');
     });
 
+    describe('request body, headers and auth', () => {
+      function okResponse() {
+        return {
+          status: 200, statusText: 'OK', ok: true,
+          headers: new Headers({ 'content-type': 'text/plain' }),
+          json: vi.fn(), text: vi.fn().mockResolvedValue(''),
+        };
+      }
+      let fetchMock: ReturnType<typeof vi.fn>;
+      beforeEach(() => {
+        fetchMock = vi.fn().mockResolvedValue(okResponse());
+        globalThis.fetch = fetchMock as any;
+      });
+      const sent = () => fetchMock.mock.calls[0][1] as { method: string; headers: Record<string, string>; body?: string };
+      const post = (extra: Partial<Extract<Action, { type: 'fire_webhook' }>>): Action => ({
+        type: 'fire_webhook', id: 'http-1', url: 'https://api.example.com/hook', method: 'POST', ...extra,
+      });
+
+      it.each([
+        ['bearer', { type: 'bearer', token: 's3cret-token' }, 'Authorization', 'Bearer s3cret-token'],
+        ['api_key', { type: 'api_key', header: 'X-Hub-Key', value: 's3cret-token' }, 'X-Hub-Key', 's3cret-token'],
+        // "user:s3cret-token", base64
+        ['basic', { type: 'basic', username: 'user', password: 's3cret-token' }, 'Authorization', 'Basic dXNlcjpzM2NyZXQtdG9rZW4='],
+      ] as const)('sends %s auth as a header, and keeps it out of the trace and output', async (_label, auth, name, value) => {
+        const ctx = makeCtx();
+
+        await executor.executeSequence([post({ auth })], ctx);
+
+        expect(sent().headers[name]).toBe(value);
+        const step = ctx.buildTrace('success').steps.find((st) => st.nodeId === 'http-1')!;
+        expect((step.output as any).requestHeaders[name]).toBe('[redacted]');
+        expect(JSON.stringify(step)).not.toContain('s3cret-token');
+        expect(JSON.stringify(step)).not.toContain('dXNlcjpzM2NyZXQtdG9rZW4=');
+        expect(JSON.stringify(ctx.getNodeOutput('http-1'))).not.toContain('s3cret-token');
+      });
+
+      it('encodes a basic-auth password outside Latin-1 instead of failing', async () => {
+        await executor.executeSequence([post({ auth: { type: 'basic', username: 'ü', password: '🔑' } })], makeCtx());
+
+        const encoded = sent().headers.Authorization.replace('Basic ', '');
+        expect(new TextDecoder().decode(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)))).toBe('ü:🔑');
+      });
+
+      it('resolves templates in header values and auth fields', async () => {
+        const ctx = makeCtx({ token: 'from-variable' });
+
+        await executor.executeSequence([post({
+          headers: { 'X-Room': '{{ variables.token }}-room' },
+          auth: { type: 'bearer', token: '{{ variables.token }}' },
+        })], ctx);
+
+        expect(sent().headers['X-Room']).toBe('from-variable-room');
+        expect(sent().headers.Authorization).toBe('Bearer from-variable');
+      });
+
+      it('sends JSON body text once, not as a quoted string, with templates resolved inside it', async () => {
+        const ctx = makeCtx({ level: 42, name: 'Say "hi"' });
+
+        await executor.executeSequence([post({
+          body: '{"level": "{{ variables.level }}", "name": "{{ variables.name }}", "nested": ["{{ variables.level }}"]}',
+        })], ctx);
+
+        // A lone template keeps its type; a quote in a value can't break the JSON.
+        expect(JSON.parse(sent().body!)).toEqual({ level: 42, name: 'Say "hi"', nested: [42] });
+        expect(sent().headers['Content-Type']).toBe('application/json');
+      });
+
+      it('resolves templates inside an object body', async () => {
+        await executor.executeSequence([post({ body: { level: '{{ variables.level }}' } })], makeCtx({ level: 7 }));
+
+        expect(JSON.parse(sent().body!)).toEqual({ level: 7 });
+      });
+
+      it('interpolates a body that is not JSON and sends it as written', async () => {
+        await executor.executeSequence([post({ body: 'level={{ variables.level }}' })], makeCtx({ level: 7 }));
+
+        expect(sent().body).toBe('level=7');
+        expect(sent().headers['Content-Type']).toBe('text/plain; charset=utf-8');
+      });
+
+      it('keeps a Content-Type the automation set, whatever its case', async () => {
+        await executor.executeSequence([post({ body: '{}', headers: { 'content-type': 'application/vnd.api+json' } })], makeCtx());
+
+        expect(sent().headers).toEqual({ 'content-type': 'application/vnd.api+json' });
+      });
+
+      it('sends no body with GET, which fetch would refuse', async () => {
+        await executor.executeSequence([post({ method: 'GET', body: '{"a": 1}' })], makeCtx());
+
+        expect(sent().body).toBeUndefined();
+      });
+    });
+
     describe('SSRF guard', () => {
       const blockedUrls = [
         'http://127.0.0.1/admin',

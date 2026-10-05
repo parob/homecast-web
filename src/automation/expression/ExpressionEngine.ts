@@ -79,6 +79,22 @@ export class ExpressionEngine {
   }
 
   /**
+   * resolveTemplate applied to every string inside an object or array, so a
+   * JSON body can carry templates in its values: `{"level": "{{ x }}"}`. Each
+   * string keeps resolveTemplate's rule — a lone `{{ expr }}` keeps its type.
+   * Keys are left alone.
+   */
+  resolveTemplateDeep(value: unknown, ctx: ExpressionContext): unknown {
+    if (Array.isArray(value)) return value.map((v) => this.resolveTemplateDeep(v, ctx));
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value).map(([k, v]) => [k, this.resolveTemplateDeep(v, ctx)]),
+      );
+    }
+    return this.resolveTemplate(value, ctx);
+  }
+
+  /**
    * Build an ExpressionContext from engine state.
    */
   static buildContext(
