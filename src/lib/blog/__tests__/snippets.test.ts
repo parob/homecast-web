@@ -35,7 +35,6 @@ const snippets = readSnippets();
 function runCode(name: string, body: unknown): Record<string, unknown> {
   const code = snippets[name];
   if (!code) throw new Error(`no snippet "${name}" in content/blog`);
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const fn = new Function('input', `"use strict";\n${code}`);
   return fn({ nodes: { schedule1: { data: { type: 'time_pattern' } }, http1: { data: { status: 200, ok: true, body } } } });
 }
@@ -53,7 +52,7 @@ const leaves = firstLeg.scheduledDepartureTime.slice(11, 16);
 const arrives = planned.journeys[0].arrivalDateTime.slice(11, 16);
 const clone = (): Plan => JSON.parse(JSON.stringify(planned));
 
-describe('train-light snippet (WALK 7, BUFFER 2, PATIENCE 6, LATE 10)', () => {
+describe('train-light snippet (WALK 7, QUICK_WALK 5, BUFFER 2, PATIENCE 6, LATE 10)', () => {
   it('is full green when you would arrive with exactly BUFFER minutes in hand', () => {
     at(-(7 + 2) * min);
     expect(runCode('train-light', planned)).toMatchObject({
@@ -75,6 +74,43 @@ describe('train-light snippet (WALK 7, BUFFER 2, PATIENCE 6, LATE 10)', () => {
     expect(soon).toMatchObject({ colour: 'amber', hue: 35, summary: `Leave in 8 min for the ${leaves}, in at ${arrives}` });
     expect(later.colour).toBe('amber');
     expect(later.brightness as number).toBeGreaterThan(soon.brightness as number);
+  });
+
+  it.each([9 * min - 1, 8 * min, 7 * min])('shows walk quickly at %i ms before departure, retaining the buffer', (remaining) => {
+    at(-remaining);
+    expect(runCode('train-light', planned)).toMatchObject({
+      colour: 'purple', hue: 280, saturation: 100, brightness: 100,
+      summary: `Walk quickly now for the ${leaves}, in at ${arrives} — allow 5 min walking and at least 2 min on the platform`,
+    });
+  });
+
+  it('skips a train as soon as a quick walk leaves less than two minutes on the platform', () => {
+    at(-7 * min + 1);
+    const next = planned.journeys[1];
+    expect(runCode('train-light', planned).summary)
+      .toContain(`the ${next.legs[0].scheduledDepartureTime.slice(11, 16)}, in at ${next.arrivalDateTime.slice(11, 16)}`);
+    expect(runCode('train-light', { journeys: [planned.journeys[0]] }).colour).toBe('red');
+  });
+
+  it('never recommends waiting past the normal-walk cutoff by rounding up', () => {
+    at(-(7 + 2 + 6.6) * min);
+    expect(runCode('train-light', planned).summary).toContain('Leave in 6 min');
+  });
+
+  it('never recommends either walking pace without the minimum platform wait', () => {
+    for (let remaining = 20; remaining >= 0; remaining -= 0.25) {
+      at(-remaining * min);
+      const result = runCode('train-light', { journeys: [planned.journeys[0]] });
+      if (result.colour === 'green') expect(remaining - 7).toBeGreaterThanOrEqual(2);
+      if (result.colour === 'purple') expect(remaining - 5).toBeGreaterThanOrEqual(2);
+      if (remaining < 7) expect(result.colour).toBe('red');
+    }
+  });
+
+  it('rejects a platform buffer below two minutes', () => {
+    const code = snippets['train-light'].replace('const BUFFER = 2;', 'const BUFFER = 1;');
+    const run = new Function('input', code);
+    expect(() => run({})).toThrow('BUFFER >= 2');
   });
 
   it('moves on to the next journey once this one is out of reach', () => {
@@ -128,7 +164,7 @@ describe('train-light snippet (WALK 7, BUFFER 2, PATIENCE 6, LATE 10)', () => {
       expect(r.brightness as number).toBeGreaterThanOrEqual(30);
       expect(r.brightness as number).toBeLessThanOrEqual(100);
       expect(Number.isInteger(r.brightness)).toBe(true);
-      expect([0, 35, 120]).toContain(r.hue);
+      expect([0, 35, 120, 280]).toContain(r.hue);
     }
   });
 });

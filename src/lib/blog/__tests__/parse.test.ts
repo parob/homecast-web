@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseFrontmatter, parsePost, readingMinutes, relatedPosts, renderMarkdown,
-  slugFromPath, sortPosts, headingId, referencedImages, type BlogPostMeta,
+  slugFromPath, sortPosts, sortIndexPosts, headingId, referencedImages, type BlogPostMeta,
 } from '../parse';
 
 const post = (fm: string, body = 'Hello.') => `---\n${fm}\n---\n${body}`;
@@ -64,6 +64,13 @@ describe('ordering', () => {
     expect(sorted.map((p) => p.slug)).toEqual(['c', 'a', 'b']);
   });
 
+  it('pins the featured post only in index order without mutating the source', () => {
+    const posts = [meta('older', '2026-01-01'), meta('newest', '2026-03-01'), meta('launch', '2026-02-01', { featured: true })];
+    expect(sortIndexPosts(posts).map((p) => p.slug)).toEqual(['launch', 'newest', 'older']);
+    expect(sortPosts(posts).map((p) => p.slug)).toEqual(['newest', 'launch', 'older']);
+    expect(posts.map((p) => p.slug)).toEqual(['older', 'newest', 'launch']);
+  });
+
   it('ranks related posts by shared tags, then category, never itself', () => {
     const me = meta('me', '2026-03-01', { tags: ['mqtt'], category: 'guide' });
     const all = [
@@ -103,7 +110,8 @@ describe('renderMarkdown', () => {
     const html = renderMarkdown('![A lamp](/blog/x/lamp.webp "The hall lamp")', {
       '/blog/x/lamp.webp': { width: 1600, height: 900 },
     });
-    expect(html).toContain('<figure><img src="/blog/x/lamp.webp" alt="A lamp" width="1600" height="900"');
+    expect(html).toContain('<figure><a href="/blog/x/lamp.webp" target="_blank" rel="noopener noreferrer" aria-label="A lamp — open full-size image">');
+    expect(html).toContain('<img src="/blog/x/lamp.webp" alt="A lamp" width="1600" height="900"');
     expect(html).toContain('<figcaption>The hall lamp</figcaption></figure>');
     expect(html).not.toContain('<p><figure>');
   });
@@ -114,6 +122,15 @@ describe('renderMarkdown', () => {
 
   it('escapes code', () => {
     expect(renderMarkdown('```js\nif (a < b) {}\n```')).toContain('a &lt; b');
+  });
+
+  it('renders copyable code and Markdown inside a closed native disclosure', () => {
+    const html = renderMarkdown('<details id="setup">\n<summary>Set it up</summary>\n\n**Copy this:**\n\n```js\nreturn 2 < 3;\n```\n\n</details>\n\nAfterwards.');
+    expect(html).toContain('<details id="setup">');
+    expect(html).not.toContain('<details open');
+    expect(html).toContain('<p><strong>Copy this:</strong></p>');
+    expect(html).toContain('<pre><code class="language-js">return 2 &lt; 3;');
+    expect(html).toMatch(/<\/details>\s*<p>Afterwards\.<\/p>/);
   });
 });
 

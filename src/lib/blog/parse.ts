@@ -129,6 +129,10 @@ export function parsePost(slug: string, raw: string): BlogPost {
 export const sortPosts = <T extends BlogPostMeta>(posts: readonly T[]): T[] =>
   [...posts].sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
 
+/** The index pins its featured post; feeds and related posts keep date order. */
+export const sortIndexPosts = <T extends BlogPostMeta>(posts: readonly T[]): T[] =>
+  sortPosts(posts).sort((a, b) => Number(b.featured) - Number(a.featured));
+
 /**
  * Up to `limit` other posts, most shared tags first, then same category, then
  * newest. Never empty while there are other posts — a dead end at the bottom
@@ -203,7 +207,7 @@ export function renderMarkdown(markdown: string, sizes: ImageSizes = {}): string
       image({ href, title, text }: Tokens.Image) {
         const size = sizes[href];
         const dims = size ? ` width="${size.width}" height="${size.height}"` : '';
-        const img = `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${dims} loading="lazy" decoding="async">`;
+        const img = `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(text)} — open full-size image"><img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${dims} loading="lazy" decoding="async"></a>`;
         return title
           ? `<figure>${img}<figcaption>${escapeHtml(title)}</figcaption></figure>`
           : `<figure>${img}</figure>`;

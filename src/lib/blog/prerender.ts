@@ -22,99 +22,51 @@
  * Pure string work, no `fs`, so vite.config.ts and the tests share it.
  */
 import {
-  categoryLabel, escapeHtml, formatPostDate,
+  categoryLabel, escapeHtml, formatPostDate, relatedPosts, sortIndexPosts,
   type BlogPost, type BlogPostMeta,
 } from './parse';
 
-export const SITE_ORIGIN = 'https://homecast.cloud';
-export const DEFAULT_OG_IMAGE = `${SITE_ORIGIN}/og-image.png`;
+import { pageHeadEntries, postPath, SITE_ORIGIN, type PageMeta } from './seo';
+export { BLOG_INDEX_META, DEFAULT_OG_IMAGE, postPageMeta, postPageTitle, postPath, SITE_ORIGIN, type PageMeta } from './seo';
 
 /** Shared with Blog.tsx / BlogPost.tsx, so the static and live pages agree. */
 export const BLOG_CLASSES = {
   page: 'min-h-screen bg-background',
   main: 'pt-16',
-  articleSection: 'w-full px-6 pt-10 pb-16 sm:pt-14',
-  articleColumn: 'mx-auto max-w-3xl',
-  kicker: 'flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground mb-4',
-  categoryPill: 'rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium',
-  title: 'text-3xl sm:text-5xl font-bold tracking-tight leading-tight mb-4',
-  standfirst: 'text-lg sm:text-xl text-muted-foreground leading-relaxed mb-6',
-  byline: 'text-sm text-muted-foreground mb-8',
-  cover: 'w-full rounded-2xl border border-border mb-10 aspect-[16/9] object-cover bg-muted',
+  articleSection: 'w-full px-5 sm:px-6 pt-7 pb-12 sm:pt-10',
+  articleColumn: 'mx-auto max-w-2xl',
+  kicker: 'flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground mb-2',
+  title: 'text-[1.75rem] sm:text-4xl font-semibold tracking-tight leading-[1.2] mb-4',
+  standfirst: 'text-base text-muted-foreground leading-relaxed mb-5',
+  byline: 'text-xs text-muted-foreground mb-6',
   body: 'blog-body',
+  postList: 'divide-y divide-border border-y border-border',
+  postLink: 'group grid items-start gap-x-4 sm:gap-x-6 py-5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4',
+  postWithImage: 'grid-cols-[minmax(0,1fr)_4rem] sm:grid-cols-[minmax(0,1fr)_7rem]',
+  postMeta: 'col-span-full mb-1.5 sm:col-span-1',
+  postThumbnail: 'col-start-2 row-start-2 h-16 w-16 rounded-sm object-cover sm:row-start-1 sm:row-span-3 sm:h-20 sm:w-28',
+  postTitle: 'col-start-1 text-lg sm:text-xl font-semibold leading-snug tracking-tight mb-1.5 group-hover:text-primary transition-colors',
+  postDescription: 'col-span-full sm:col-span-1 sm:col-start-1 text-sm text-muted-foreground leading-relaxed',
 } as const;
 
-export interface PageMeta {
-  title: string;
-  description: string;
-  /** Path on homecast.cloud, e.g. /blog/local-mode */
-  path: string;
-  image?: string;
-  imageAlt?: string;
-  type: 'website' | 'article';
-  publishedTime?: string;
-  author?: string;
-}
-
-const absolute = (src: string) => (src.startsWith('http') ? src : `${SITE_ORIGIN}${src}`);
-
-/**
- * Rewrites the built index.html's head for one page: title, description,
- * canonical URL, Open Graph and Twitter tags, the feed link, and (for a post)
- * JSON-LD. Tags the template already has are replaced in place; the rest are
- * added before </head>.
- */
+/** Replaces owned tags, preserving unrelated head content. Safe to run twice. */
 export function withPageHead(template: string, meta: PageMeta): string {
-  const url = `${SITE_ORIGIN}${meta.path}`;
-  const image = meta.image ? absolute(meta.image) : DEFAULT_OG_IMAGE;
-  const title = escapeHtml(meta.title);
-  const description = escapeHtml(meta.description);
-
-  const setMeta = (html: string, attr: 'name' | 'property', key: string, value: string) => {
-    const tag = `<meta ${attr}="${key}" content="${value}" />`;
-    const re = new RegExp(`<meta\\s+${attr}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>`);
-    return re.test(html) ? html.replace(re, () => tag) : html.replace('</head>', () => `    ${tag}\n  </head>`);
-  };
-
-  let html = template.replace(/<title>[\s\S]*?<\/title>/, () => `<title>${title}</title>`);
-  html = setMeta(html, 'name', 'description', description);
-  html = setMeta(html, 'property', 'og:title', title);
-  html = setMeta(html, 'property', 'og:description', description);
-  html = setMeta(html, 'property', 'og:type', meta.type);
-  html = setMeta(html, 'property', 'og:url', url);
-  html = setMeta(html, 'property', 'og:image', escapeHtml(image));
-  html = setMeta(html, 'property', 'og:site_name', 'Homecast');
-  html = setMeta(html, 'name', 'twitter:image', escapeHtml(image));
-  html = setMeta(html, 'name', 'twitter:title', title);
-  html = setMeta(html, 'name', 'twitter:description', description);
-  if (meta.imageAlt) {
-    html = setMeta(html, 'property', 'og:image:alt', escapeHtml(meta.imageAlt));
-    html = setMeta(html, 'name', 'twitter:image:alt', escapeHtml(meta.imageAlt));
+  let html = template.replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escapeHtml(meta.title)}</title>`);
+  for (const entry of pageHeadEntries(meta)) {
+    const conditions = Object.entries(entry.match)
+      .map(([key, value]) => `(?=[^>]*\\b${key}=["']${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'])`)
+      .join('');
+    const pattern = new RegExp(`<${entry.tag}\\b${conditions}[^>]*>${entry.tag === 'script' ? '[\\s\\S]*?<\\/script>' : ''}`, 'g');
+    html = html.replace(pattern, '');
+    if (!entry.attrs) continue;
+    const attrs = Object.entries({ ...entry.match, ...entry.attrs })
+      .map(([key, value]) => `${key}="${escapeHtml(value)}"`).join(' ');
+    const tag = entry.tag === 'script'
+      ? `<script ${attrs}>${entry.text ?? ''}</script>`
+      : `<${entry.tag} ${attrs} />`;
+    html = html.replace('</head>', () => `    ${tag}\n  </head>`);
   }
-  if (meta.publishedTime) {
-    html = setMeta(html, 'property', 'article:published_time', meta.publishedTime);
-  }
-
-  const extra = [
-    `<link rel="canonical" href="${url}" />`,
-    `<link rel="alternate" type="application/rss+xml" title="Homecast Blog" href="${SITE_ORIGIN}/blog/feed.xml" />`,
-  ];
-  if (meta.type === 'article') {
-    const ld = {
-      '@context': 'https://schema.org',
-      '@type': 'BlogPosting',
-      headline: meta.title,
-      description: meta.description,
-      datePublished: meta.publishedTime,
-      image,
-      url,
-      author: meta.author ? { '@type': 'Person', name: meta.author } : undefined,
-      publisher: { '@type': 'Organization', name: 'Homecast', url: SITE_ORIGIN },
-    };
-    // `<` escaped so no string in a post can close the script element.
-    extra.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`);
-  }
-  return html.replace('</head>', () => `    ${extra.join('\n    ')}\n  </head>`);
+  return html;
 }
 
 /**
@@ -129,7 +81,7 @@ export function withRootContent(template: string, content: string): string {
   return template.replace(re, (_m, ws: string) => `<div id="root">${content}</div>${ws}`);
 }
 
-const staticHeader = `<nav class="border-b border-border"><div class="mx-auto flex h-16 max-w-7xl items-center gap-6 px-6">`
+const staticHeader = `<nav class="border-b border-border"><div class="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-4">`
   + `<a href="/" class="text-xl font-bold tracking-tight">Homecast</a>`
   + `<a href="/how-it-works" class="text-sm text-muted-foreground">How it Works</a>`
   + `<a href="/pricing" class="text-sm text-muted-foreground">Pricing</a>`
@@ -138,48 +90,42 @@ const staticHeader = `<nav class="border-b border-border"><div class="mx-auto fl
   + `</div></nav>`;
 
 /** The article as static markup, for #root. */
-export function renderPostPage(post: BlogPost, bodyHtml: string, coverSize?: { width: number; height: number }): string {
+export function renderPostPage(post: BlogPost, bodyHtml: string, posts: readonly BlogPostMeta[] = []): string {
   const c = BLOG_CLASSES;
-  const dims = coverSize ? ` width="${coverSize.width}" height="${coverSize.height}"` : '';
-  const cover = post.cover
-    ? `<img src="${escapeHtml(post.cover)}" alt="${escapeHtml(post.coverAlt ?? '')}"${dims} class="${c.cover}">`
-    : '';
+  const related = relatedPosts(post, posts);
+  const more = related.length ? `<section class="w-full px-6 pb-16"><div class="${c.articleColumn}"><h2 class="text-lg font-semibold tracking-tight mb-4">More from the blog</h2><ul class="${c.postList}">${renderPostLinks(related)}</ul></div></section>` : '';
   return `<div class="${c.page}">${staticHeader}<main><article class="${c.articleSection}"><div class="${c.articleColumn}">`
-    + `<p class="${c.kicker}"><a href="/blog/">Blog</a> · <span class="${c.categoryPill}">${categoryLabel(post.category)}</span>`
-    + ` <time datetime="${post.date}">${formatPostDate(post.date)}</time> · ${post.readingMinutes} min read</p>`
+    + `<a href="/blog/" class="inline-flex text-sm text-muted-foreground mb-6">← Blog</a>`
     + `<h1 class="${c.title}">${escapeHtml(post.title)}</h1>`
-    + `<p class="${c.standfirst}">${escapeHtml(post.description)}</p>`
+    + `<p class="${c.kicker}"><span>${categoryLabel(post.category)}</span> ·`
+    + ` <time datetime="${post.date}">${formatPostDate(post.date)}</time> · ${post.readingMinutes} min read</p>`
     + `<p class="${c.byline}">By ${escapeHtml(post.author)}</p>`
-    + cover
     + `<div class="${c.body}">${bodyHtml}</div>`
-    + `</div></article></main></div>`;
+    + `</div></article>${more}</main></div>`;
 }
 
 /** The index as static markup, for #root: every post, as a plain list of links. */
+function renderPostLinks(posts: readonly BlogPostMeta[]): string {
+  const c = BLOG_CLASSES;
+  return posts.map((p) =>
+    `<li><a href="${postPath(p.slug)}" class="${c.postLink}${p.cover ? ` ${c.postWithImage}` : ''}">`
+    + `<p class="${c.postMeta} text-xs text-muted-foreground">${categoryLabel(p.category)} · <time datetime="${p.date}">${formatPostDate(p.date)}</time> · ${p.readingMinutes} min read</p>`
+    + `<h2 class="${c.postTitle}">${escapeHtml(p.title)}</h2>`
+    + `<p class="${c.postDescription}">${escapeHtml(p.description)}</p>`
+    + (p.cover ? `<img src="${escapeHtml(p.cover)}" alt="" width="144" height="96" loading="lazy" decoding="async" class="${c.postThumbnail}" />` : '')
+    + `</a></li>`).join('');
+}
+
 export function renderIndexPage(posts: readonly BlogPostMeta[]): string {
   const c = BLOG_CLASSES;
-  const items = posts.map((p) =>
-    `<li class="mb-8"><p class="text-sm text-muted-foreground">${categoryLabel(p.category)} · <time datetime="${p.date}">${formatPostDate(p.date)}</time></p>`
-    + `<h2 class="text-xl font-semibold"><a href="${postPath(p.slug)}">${escapeHtml(p.title)}</a></h2>`
-    + `<p class="text-muted-foreground">${escapeHtml(p.description)}</p></li>`).join('');
+  const items = renderPostLinks(sortIndexPosts(posts));
   return `<div class="${c.page}">${staticHeader}<main><section class="${c.articleSection}"><div class="${c.articleColumn}">`
     + `<h1 class="${c.title}">Blog</h1><p class="${c.standfirst}">${escapeHtml(BLOG_INTRO)}</p>`
-    + `<ul>${items}</ul></div></section></main></div>`;
+    + `<ul class="${c.postList}">${items}</ul></div></section></main></div>`;
 }
 
 export const BLOG_INTRO =
-  'News from Homecast, guides to real setups, and notes on running an Apple Home that talks to everything else.';
-
-export const BLOG_INDEX_META: Omit<PageMeta, 'path'> = {
-  title: 'Blog — Homecast',
-  description: BLOG_INTRO,
-  type: 'website',
-};
-
-/** A post's canonical path: /blog/<slug>/ (see the note at the top). */
-export const postPath = (slug: string) => `/blog/${slug}/`;
-
-export const postPageTitle = (post: BlogPostMeta) => `${post.title} — Homecast`;
+  'Things you can do with Homecast, and notes on what’s changing.';
 
 /** sitemap.xml for the website: the marketing pages, the blog, and every post. */
 export function renderSitemap(paths: readonly string[], posts: readonly BlogPostMeta[]): string {
@@ -216,4 +162,10 @@ export function renderRss(posts: readonly BlogPostMeta[]): string {
     '</rss>',
     '',
   ].join('\n');
+}
+
+/** A static fallback keeps merged URLs useful before JavaScript loads. */
+export function renderPostRedirect(slug: string): string {
+  const target = escapeHtml(postPath(slug));
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Post moved — Homecast</title><link rel="canonical" href="${SITE_ORIGIN}${target}"><meta http-equiv="refresh" content="0;url=${target}"></head><body><p>This post is now part of <a href="${target}">the updated post</a>.</p></body></html>`;
 }

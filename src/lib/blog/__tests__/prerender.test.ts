@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parsePost } from '../parse';
-import { renderRss, renderSitemap, withPageHead, withRootContent, renderPostPage } from '../prerender';
+import { renderRss, renderSitemap, withPageHead, withRootContent, renderPostPage, renderPostRedirect, renderIndexPage, postPageMeta, BLOG_INDEX_META } from '../prerender';
 
 // The shape Vite emits: head tags from index.html, the splash inside #root.
 const TEMPLATE = `<!doctype html><html><head>
@@ -51,9 +51,22 @@ describe('withPageHead', () => {
   });
 
   it('adds JSON-LD that cannot close its own script tag', () => {
-    const ld = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/)![1];
+    const ld = html.match(/<script id="blog-structured-data" type="application\/ld\+json">(.*?)<\/script>/)![1];
     expect(ld).not.toContain('<');
-    expect(JSON.parse(ld)).toMatchObject({ '@type': 'BlogPosting', datePublished: '2026-10-05' });
+    expect(JSON.parse(ld)['@graph'][0]).toMatchObject({ '@type': 'BlogPosting', datePublished: '2026-10-05' });
+  });
+
+  it('can replace an article head with the index without duplicates or stale tags', () => {
+    const article = withPageHead(TEMPLATE, postPageMeta(POST));
+    const twice = withPageHead(article, postPageMeta(POST));
+    expect(twice.match(/rel="canonical"/g)).toHaveLength(1);
+    expect(twice.match(/id="blog-structured-data"/g)).toHaveLength(1);
+    const index = withPageHead(twice, BLOG_INDEX_META);
+    expect(index).not.toContain('article:published_time');
+    expect(index).not.toContain('blog-structured-data');
+    expect(index).not.toContain('og:image:alt');
+    expect(index.match(/application\/rss\+xml/g)).toHaveLength(1);
+    expect(index).toContain('rel="canonical" href="https://homecast.cloud/blog/"');
   });
 });
 
@@ -71,13 +84,23 @@ describe('withRootContent', () => {
 });
 
 describe('renderPostPage', () => {
-  it('carries the title, standfirst, date and body', () => {
-    const html = renderPostPage(POST, '<p>Body</p>', { width: 1600, height: 900 });
+  it('carries the title, author, date and body', () => {
+    const html = renderPostPage(POST, '<p>Body</p>');
     expect(html).toContain('<h1');
     expect(html).toContain('Leave &quot;now&quot; &amp; &lt;run&gt;');
     expect(html).toContain('<time datetime="2026-10-05">5 October 2026</time>');
-    expect(html).toContain('width="1600" height="900"');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('By Rob Parker');
+    expect(html).not.toContain(POST.description);
     expect(html).toContain('<p>Body</p>');
+  });
+
+  it('includes related links for readers and crawlers without JavaScript', () => {
+    const other = { ...POST, slug: 'another-post', title: 'Another post' };
+    const html = renderPostPage(POST, '<p>Body</p>', [POST, other]);
+    expect(html).toContain('More from the blog');
+    expect(html).toContain('href="/blog/another-post/"');
+    expect(html).not.toContain('href="/blog/train-light/"');
   });
 });
 
@@ -87,5 +110,25 @@ describe('feeds', () => {
     const rss = renderRss([POST]);
     expect(rss).toContain('<guid isPermaLink="true">https://homecast.cloud/blog/train-light/</guid>');
     expect(rss).toContain('<title>Leave &quot;now&quot; &amp; &lt;run&gt;</title>');
+  });
+});
+
+describe('featured launch', () => {
+  it('leads the static index without changing the feed order', () => {
+    const launch = { ...POST, slug: 'introducing-homecast', title: 'Introducing Homecast', featured: true };
+    const posts = [POST, launch];
+    const index = renderIndexPage(posts);
+    expect(index.indexOf('/blog/introducing-homecast/')).toBeLessThan(index.indexOf('/blog/train-light/'));
+    const feed = renderRss(posts);
+    expect(feed.indexOf('/blog/train-light/')).toBeLessThan(feed.indexOf('/blog/introducing-homecast/'));
+  });
+});
+
+describe('merged posts', () => {
+  it('redirects the static page and canonical URL to the surviving post', () => {
+    const html = renderPostRedirect('your-home-shouldnt-care-which-phone-you-own');
+    expect(html).toContain('content="0;url=/blog/your-home-shouldnt-care-which-phone-you-own/"');
+    expect(html).toContain('rel="canonical" href="https://homecast.cloud/blog/your-home-shouldnt-care-which-phone-you-own/"');
+    expect(html).toContain('<a href="/blog/your-home-shouldnt-care-which-phone-you-own/">');
   });
 });
