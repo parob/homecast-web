@@ -90,6 +90,12 @@ Managed setup needs an Apple Home invitation, so allow time for it to connect.
 
 </details>
 
+## Keeping it running
+
+Homecast has cost me money to build, and it costs money every month to run: the servers behind Homecast Cloud and the Macs that run managed relays. Right now it doesn't make a profit.
+
+Community Edition is free. If Homecast is useful to you and you're able to, a [subscription](/pricing) is what keeps it going, and it's very much appreciated.
+
 ## Give it a try
 
 <div class="blog-actions">
