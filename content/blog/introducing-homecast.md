@@ -5,7 +5,7 @@ date: 2026-10-05
 category: news
 author: Rob Parker
 featured: true
-cover: /blog/whats-new-scenes-in-rooms-long-press-edit/cover.webp
+cover: /blog/introducing-homecast/dashboard.webp
 coverAlt: Homecast dashboard with rooms, scenes and accessory controls
 tags: [launch, apple-home, android, sharing, automations, home-assistant]
 ---
@@ -14,30 +14,30 @@ I'm sharing the first public release of **Homecast**. It lets you control your A
 
 Your existing rooms, scenes and automations stay in Apple Home. There's no need to pair everything again, and you can keep using the Home app and Siri.
 
-![Homecast dashboard with rooms, scenes and accessory controls](/blog/whats-new-scenes-in-rooms-long-press-edit/cover.webp "The Homecast dashboard, shown with example data.")
+![Homecast dashboard with rooms, scenes and accessory controls](/blog/introducing-homecast/dashboard.webp "The Homecast dashboard, shown with example data.")
 
 ## Apple Home from Android
 
 Use the Android app or open Homecast in a browser, including on Windows and Linux. There are apps for iPhone, iPad and Mac too.
 
-You can [invite someone you live with or send a visitor a guest link](/blog/your-home-shouldnt-care-which-phone-you-own/). Choose what they can control, and add a passcode or expiry date for guests.
+You can [invite someone you live with or send a visitor a guest link](https://docs.homecast.cloud/guides/sharing). Choose what they can control, and add a passcode or expiry date for guests.
 
 Household invitations use Homecast Cloud; Community Edition has local sharing.
 
 ## Automations
 
-There's a visual editor for automations, with support for web requests and JavaScript. One example is [a hallway lamp that tells you when to leave for the train](/blog/apple-home-when-to-leave-light/).
+There's a visual editor for automations, with support for web requests and JavaScript. One example is a hallway lamp that tells you when to leave for the train. The [automations guide](https://docs.homecast.cloud/guides/automations/) covers every node.
 
-![A small lamp glowing pale green on a hallway shelf beside a key](/blog/apple-home-when-to-leave-light/lamp.webp)
+![A small lamp glowing pale green on a hallway shelf beside a key](/blog/introducing-homecast/lamp.webp)
 
 ## Look back at what happened
 
-[Analytics](/blog/apple-home-history-and-analytics/) lets you look back at sensor readings, lighting activity and battery levels. Recording is off by default, and sharing history with guests is a separate setting.
+[Analytics](https://docs.homecast.cloud/guides/history) lets you look back at sensor readings, lighting activity and battery levels. Recording is off by default, and sharing history with guests is a separate setting.
 
 <details>
 <summary>See Analytics in action</summary>
 
-![Homecast Analytics comparing lighting activity and temperatures in a room](/blog/apple-home-history-and-analytics/room.webp "Lighting and temperature over a day, shown with example data.")
+![Homecast Analytics comparing lighting activity and temperatures in a room](/blog/introducing-homecast/analytics.webp "Lighting and temperature over a day, shown with example data.")
 
 Analytics is available on every plan. Community Edition stores history on your Mac; Cloud accounts store it in your account.
 
@@ -45,7 +45,7 @@ Analytics is available on every plan. Community Edition stores history on your M
 
 ## Home Assistant, scripts and AI assistants
 
-You can bring your accessories into [Home Assistant](/blog/moving-to-home-assistant-from-apple-home/), or ask [Claude or ChatGPT](/blog/control-apple-home-from-claude-and-chatgpt/) to create a scene. You choose which homes they can access and whether they can make changes.
+You can bring your accessories into [Home Assistant](https://docs.homecast.cloud/guides/home-assistant), or ask [Claude or ChatGPT](https://docs.homecast.cloud/guides/ai-assistant) to create a scene. You choose which homes they can access and whether they can make changes.
 
 For your own tools, there's a [REST API](https://docs.homecast.cloud/reference/rest), [Python client](https://github.com/parob/pyhomecast) and MQTT support.
 
@@ -86,7 +86,7 @@ Managed setup needs an Apple Home invitation, so allow time for it to connect.
 <details>
 <summary>What about cameras?</summary>
 
-[Camera stills and live view](/blog/camera-live-view-on-homecast-cloud/) need a Cloud Managed relay. Your own Mac isn't supported yet. There's no audio, recording or camera access through guest links.
+[Camera stills and live view](https://docs.homecast.cloud/guides/dashboard#cameras) need a Cloud Managed relay. Your own Mac isn't supported yet. There's no audio, recording or camera access through guest links.
 
 </details>
 
