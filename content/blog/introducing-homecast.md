@@ -10,9 +10,9 @@ coverAlt: Homecast dashboard with rooms, scenes and accessory controls
 tags: [launch, apple-home, android, sharing, automations, home-assistant]
 ---
 
-I'm sharing the first public release of **Homecast**. It lets you control your Apple Home from Android or a browser, and connect the same accessories to Home Assistant and your own scripts.
+I built Homecast because I needed it. My home runs on Apple Home, and I wanted to control it from more than an iPhone. Everything I found meant taking accessories out of Apple Home, so in January I started writing my own, in my spare time.
 
-Your existing rooms, scenes and automations stay in Apple Home. There's no need to pair everything again, and you can keep using the Home app and Siri.
+It's taken most of the year, but it's ready. **Homecast** lets you control your Apple Home from Android or a browser, and connect it to Home Assistant and your own scripts, without re-pairing anything. Your rooms, scenes and automations stay in Apple Home, and you can keep using the Home app and Siri.
 
 ![Homecast dashboard with rooms, scenes and accessory controls](/blog/introducing-homecast/dashboard.webp "The Homecast dashboard, shown with example data.")
 
