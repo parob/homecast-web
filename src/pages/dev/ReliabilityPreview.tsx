@@ -1,212 +1,52 @@
-/**
- * Dev-only preview of the Reliability section, fed a week shaped like the one
- * that prompted it: a relay outage of fourteen hours, a power cut at the house
- * of two and a half hours, and a short stretch of the home not responding.
- *
- * Mounted at /dev/reliability by App.tsx in development builds only, so the
- * strip and its day panel can be looked at without signing in, and without
- * waiting for a real outage. The status popover is
- * drawn at its real width above it, in the states that matter, from the pure
- * model — no socket needed.
- */
+/** Dev-only examples of the same component used by owner and admin reliability. */
 import { useState } from 'react';
-import { UptimeSectionView, type UptimeBucket, type UptimeOutage, type UptimeSummary } from '@/components/settings/UptimeSection';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { AnswerCardView, StatusRow } from '@/components/layout/status/AnswerCard';
-import { buildAnswerCard, type AnswerCardInput } from '@/lib/answer-card';
-import type { HomeServing } from '@/server/home-serving';
+import { HomeReliabilityView } from '@/components/settings/HomeReliabilityView';
+import { UptimeSectionView, type UptimeSummary } from '@/components/settings/UptimeSection';
+import type { HomeReliability } from '@/lib/reliability';
 
-const HOUR = 60 * 60 * 1000;
-const MIN = 60 * 1000;
-
-interface Span {
-  start: number;
-  end: number;
-  severity: UptimeOutage['severity'];
-}
-
-/** How much of [hourStart, hourStart + 1h) the span covers, in minutes. */
-function overlapMinutes(span: Span, hourStart: number): number {
-  const s = Math.max(span.start, hourStart);
-  const e = Math.min(span.end, hourStart + HOUR);
-  return e > s ? Math.round((e - s) / MIN) : 0;
-}
-
-/** A week of hourly buckets, as the sampler would have written them: a ping a
- *  minute and a probe every five while connected, and the given spans of
- *  relay-offline or home-not-responding minutes carved out of that. */
-function buildWeek(now: number, spans: Span[], cachedOnlyHours: number[] = []): UptimeBucket[] {
-  const firstHour = Math.floor((now - 7 * 24 * HOUR) / HOUR) * HOUR;
-  const buckets: UptimeBucket[] = [];
-  for (let h = firstHour; h <= now; h += HOUR) {
-    const minutesInHour = h + HOUR <= now ? 60 : Math.max(1, Math.round((now - h) / MIN));
-    let offline = 0;
-    let degraded = 0;
-    for (const span of spans) {
-      const m = overlapMinutes(span, h);
-      if (span.severity === 'offline') offline += m;
-      else degraded += m;
-    }
-    offline = Math.min(offline, minutesInHour);
-    degraded = Math.min(degraded, minutesInHour - offline);
-    const upMinutes = minutesInHour - offline - degraded;
-    // 12 probes an hour while up; verified unless this was a cached-only hour.
-    const probes = Math.round((upMinutes / 60) * 12);
-    const verified = cachedOnlyHours.includes(h) ? 0 : probes;
-    const connected = upMinutes + (probes - verified);
-    buckets.push({
-      bucketStart: new Date(h).toISOString(),
-      verified,
-      connected,
-      degraded,
-      offline,
-      total: verified + connected + degraded + offline,
-    });
+const HOUR = 3600;
+const NOW = Date.parse('2026-10-12T09:00:00Z');
+const iso = (seconds: number) => new Date(NOW + seconds * 1000).toISOString();
+const scenarios = ['unavailable', 'verified', 'failed', 'offline', 'waiting', 'no-history'] as const;
+function evidence(scenario: string): HomeReliability {
+  const empty = scenario === 'no-history';
+  const disconnected = scenario === 'offline' || scenario === 'waiting';
+  const r: HomeReliability = {
+    asOf: iso(0), connectionState: disconnected ? scenario : 'served',
+    checkStatus: empty ? 'pending' : disconnected ? 'stale' : scenario,
+    firstObservedAt: empty ? null : iso(-48*HOUR), lastHeardAt: empty ? null : iso(-10),
+    checkedAt: empty ? null : iso(-60), checkReason: scenario === 'unavailable' ? 'no_probe_target' : scenario === 'failed' ? 'accessory_error: read_error' : null,
+    checksVerified: 0, checksFailed: 0, checksInconclusive: 0,
+    windows: [], timeline: [], interruptions: [],
+  };
+  for (let hour=-168; hour<0; hour++) {
+    const unknown = empty || hour < -48;
+    const offline = !unknown && disconnected && hour === -1;
+    const failed = !unknown && !offline && scenario === 'failed' && hour === -1;
+    const verified = !unknown && !offline && scenario !== 'unavailable' && !failed;
+    r.timeline.push({ bucketStart: iso(hour*HOUR), connectedSeconds: unknown || offline ? 0 : HOUR, offlineSeconds: offline ? HOUR : 0, unknownSeconds: unknown ? HOUR : 0,
+      checksVerified: verified ? 12 : 0, checksFailed: failed ? 2 : 0, checksInconclusive: !unknown && scenario === 'unavailable' ? 12 : 0 });
   }
-  return buckets;
+  r.checksVerified = r.timeline.reduce((n,b) => n+b.checksVerified,0);
+  r.checksFailed = r.timeline.reduce((n,b) => n+b.checksFailed,0);
+  r.checksInconclusive = r.timeline.reduce((n,b) => n+b.checksInconclusive,0);
+  r.windows = [1,7,30].map((days,i) => {
+    const known = empty ? 0 : Math.min(days*24,48)*HOUR;
+    const offline = disconnected ? HOUR : 0;
+    return { label: ['24h','7d','30d'][i], connectedSeconds: known-offline, offlineSeconds: offline, unknownSeconds: days*24*HOUR-known, coveragePercent: known/(days*24*HOUR)*100, availabilityPercent: known ? (known-offline)/known*100 : null };
+  });
+  if(disconnected) r.interruptions.push({startedAt:iso(-HOUR),endedAt:null,durationSeconds:HOUR});
+  return r;
 }
-
-function outage(span: Span): UptimeOutage {
-  return {
-    startedAt: new Date(span.start).toISOString(),
-    endedAt: span.end === Infinity ? null : new Date(span.end).toISOString(),
-    durationSeconds: Math.round(((span.end === Infinity ? Date.now() : span.end) - span.start) / 1000),
-    severity: span.severity,
-  };
-}
-
-function healthyWeek(now: number): UptimeSummary {
-  const relayOut: Span = { start: now - 52 * HOUR - 10 * MIN, end: now - 52 * HOUR - 10 * MIN + (14 * HOUR + 12 * MIN), severity: 'offline' };
-  const powerCut: Span = { start: now - 76 * HOUR + 46 * MIN, end: now - 76 * HOUR + 46 * MIN + (2 * HOUR + 30 * MIN), severity: 'degraded' };
-  const blip: Span = { start: now - 20 * HOUR + 3 * MIN, end: now - 20 * HOUR + 16 * MIN, severity: 'degraded' };
-  const spans = [relayOut, powerCut, blip];
-  const cachedOnly = [1, 2, 3].map((k) => Math.floor((powerCut.start - k * HOUR) / HOUR) * HOUR);
-  return {
-    currentStatus: 'verified',
-    uptimePercent24h: 99.2,
-    uptimePercent7d: 93.7,
-    uptimePercent30d: 95.8,
-    verifiedRatio7d: 54.2,
-    avgLatencyMs: 398,
-    statusSince: null,
-    lastProbe: {
-      probedAt: new Date(now - 3 * MIN).toISOString(),
-      status: 'verified',
-      accessoryName: 'Bedroom 1 Spot 1',
-      characteristicType: 'power_state',
-      value: 'true',
-      reason: null,
-    },
-    timeline: buildWeek(now, spans, cachedOnly),
-    outages: [outage(blip), outage(relayOut), outage(powerCut)],
-  };
-}
-
-function offlineNow(now: number): UptimeSummary {
-  const ongoing: Span = { start: now - 3 * HOUR - 7 * MIN, end: Infinity, severity: 'offline' };
-  const earlier: Span = { start: now - 5 * 24 * HOUR, end: now - 5 * 24 * HOUR + 10 * MIN, severity: 'offline' };
-  const spans = [{ ...ongoing, end: now }, earlier];
-  return {
-    currentStatus: 'offline',
-    uptimePercent24h: 87.1,
-    uptimePercent7d: 98.0,
-    uptimePercent30d: 97.4,
-    verifiedRatio7d: 96.0,
-    avgLatencyMs: 361,
-    statusSince: new Date(ongoing.start).toISOString(),
-    lastProbe: {
-      probedAt: new Date(ongoing.start - 2 * MIN).toISOString(),
-      status: 'verified',
-      accessoryName: 'Kitchen',
-      characteristicType: 'brightness',
-      value: '70',
-      reason: null,
-    },
-    timeline: buildWeek(now, spans),
-    outages: [outage(ongoing), outage(earlier)],
-  };
-}
-
-const CLOUD: HomeServing = { state: 'served', by: 'mac_cloud01', kind: 'cloud', since: null, graceEndsAt: null };
-const GONE: HomeServing = { state: 'offline', by: null, kind: null, since: null, graceEndsAt: null };
-
-const BASE: AnswerCardInput = {
-  quality: 'good', reconnected: false, serving: CLOUD, relayServing: CLOUD, thisDevice: 'mac_me',
-  unmapped: false, localReason: null, managed: true, community: false, rtt: '34ms',
-  homeName: 'George Street', deviceNoun: 'Mac',
-};
-
-/** The status popover's content, at its real width, from the pure model. */
-function PopoverMock({ title, input, week }: { title: string; input: Partial<AnswerCardInput>; week: string }) {
-  const card = buildAnswerCard({ ...BASE, ...input });
-  return (
-    <div className="space-y-2">
-      <p className="text-[11px] font-medium text-muted-foreground">{title}</p>
-      <div className="w-[280px] rounded-xl border bg-popover p-3 pb-2 text-popover-foreground shadow-md">
-        <div className="space-y-3">
-          <AnswerCardView card={card} onReconnect={() => {}} />
-          <div className="divide-y border-t pt-1">
-            <StatusRow label="Reliability" value={week} onOpen={() => {}} />
-            <StatusRow label="This Mac" value={card.tone === 'ok' ? 'Standing by' : 'Standing in'} tone={card.tone === 'ok' ? 'ok' : 'warn'} onOpen={() => {}} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function ReliabilityPreview() {
-  const now = Date.now();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  return (
-    <div className="min-h-screen bg-background text-foreground p-6">
-      <div className="mx-auto max-w-[900px] space-y-10">
-        <div>
-          <h1 className="text-sm font-semibold">Reliability section, preview</h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Development only. A week shaped like the real one: a fourteen-hour relay outage, a two-and-a-half-hour power cut at the house, a short blip, and three cached-only hours before the cut. Hover an hour of the strip, or tap a day, to read what happened in it.
-          </p>
-        </div>
-        <section className="space-y-2">
-          <h2 className="text-xs font-medium text-muted-foreground">The status popover, from the dot</h2>
-          <div className="flex flex-wrap gap-6">
-            <PopoverMock title="Healthy" input={{}} week="94% this week" />
-            <PopoverMock
-              title="Cloud relay down · this Mac standing in"
-              input={{ serving: { ...CLOUD, by: 'mac_me', kind: 'local' }, relayServing: GONE, localReason: 'relay-offline' }}
-              week="98% this week"
-            />
-            <PopoverMock title="Cloud relay down · nothing standing in" input={{ serving: GONE, relayServing: GONE }} week="98% this week" />
-          </div>
-        </section>
-        <section className="space-y-2">
-          <h2 className="text-xs font-medium text-muted-foreground">A healthy home today</h2>
-          <UptimeSectionView summary={healthyWeek(now)} />
-        </section>
-        <section className="space-y-2">
-          <h2 className="text-xs font-medium text-muted-foreground">While the relay is offline</h2>
-          <UptimeSectionView summary={offlineNow(now)} />
-        </section>
-        {/* The real section sits inside the settings dialog, which stacks
-            above the dashboard's tooltip layer; a hover that is fine on this
-            page can be hidden in there. So one copy can be opened in a dialog. */}
-        <section className="space-y-2">
-          <h2 className="text-xs font-medium text-muted-foreground">Inside the settings dialog</h2>
-          <button
-            type="button"
-            onClick={() => setDialogOpen(true)}
-            className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
-          >
-            Open the section in a dialog
-          </button>
-        </section>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-[460px]">
-            <DialogTitle className="text-sm">Inside the settings dialog</DialogTitle>
-            <UptimeSectionView summary={healthyWeek(now)} />
-          </DialogContent>
-        </Dialog>
-      </div>
-    </div>
-  );
+  const params=new URLSearchParams(location.search);
+  const [scenario,setScenario]=useState(params.get('case') ?? 'unavailable');
+  const [admin,setAdmin]=useState(params.has('admin'));
+  const r=evidence(scenario);
+  const s: UptimeSummary = { currentStatus:'connected',uptimePercent24h:0,uptimePercent7d:0,uptimePercent30d:0,verifiedRatio7d:0,avgLatencyMs:null,statusSince:null,lastProbe:null,timeline:[],outages:[],reliability:r };
+  return <main className="max-w-4xl mx-auto p-5 space-y-5">
+    <h1 className="text-xl font-semibold">Reliability preview</h1>
+    <div className="flex flex-wrap gap-3 text-xs"><label>Scenario <select aria-label="Scenario" className="rounded border p-1 bg-background" value={scenario} onChange={e=>setScenario(e.target.value)}>{scenarios.map(s=><option key={s}>{s}</option>)}</select></label><label><input type="checkbox" checked={admin} onChange={e=>setAdmin(e.target.checked)} /> Admin diagnostics</label></div>
+    {admin ? <HomeReliabilityView evidence={r} admin /> : <UptimeSectionView summary={s} />}
+  </main>;
 }

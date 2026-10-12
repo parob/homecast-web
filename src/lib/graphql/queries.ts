@@ -1,3 +1,4 @@
+import { HOME_RELIABILITY_FIELDS } from './reliability';
 import { gql } from '@apollo/client/core';
 
 export const HEALTH_CHECK = gql`
@@ -1053,8 +1054,10 @@ export const GET_HOME_MQTT_STATUS = gql`
 `;
 
 export const GET_HOME_UPTIME = gql`
+  ${HOME_RELIABILITY_FIELDS}
   query GetHomeUptime($homeId: String!, $days: Int) {
     homeUptime(homeId: $homeId, days: $days) {
+      reliability { ...HomeReliabilityFields }
       currentStatus
       uptimePercent24h
       uptimePercent7d

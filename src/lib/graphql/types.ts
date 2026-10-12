@@ -1,3 +1,4 @@
+import type { HomeReliability } from '@/lib/reliability';
 import type { SummarySectionId, HomeActionId } from '@/lib/summary-sections';
 import type { WidgetSizeMap } from '@/lib/widget-sizes';
 
@@ -1770,6 +1771,7 @@ export interface AdminRelaySessionInfo {
 }
 
 export interface AdminRelayHomeInfo {
+  reliability?: HomeReliability | null;
   homeId: string;
   hcId: string | null;
   name: string;
