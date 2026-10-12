@@ -1,3 +1,4 @@
+import { reliabilityBrief } from '@/lib/reliability';
 /**
  * The status popover's body: one answer, then its evidence, then two rows.
  *
@@ -176,7 +177,7 @@ export function ReliabilityRow({ homeId, onOpen }: ReliabilityRowProps) {
   return (
     <StatusRow
       label="Reliability"
-      value={s ? `${pct(s.uptimePercent7d)} this week` : 'checking…'}
+      value={s?.reliability ? reliabilityBrief(s.reliability) : s ? `${pct(s.uptimePercent7d)} this week` : 'checking…'}
       onOpen={onOpen}
     />
   );

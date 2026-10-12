@@ -209,7 +209,10 @@ async function runRelayProbe(homeId: string): Promise<Record<string, unknown>> {
 
   const candidates = collectProbeCandidates(accessories);
   if (candidates.length === 0) {
-    return { noProbeTarget: true, reason: 'no_readable_accessory' };
+    const reason = accessories.length === 0 ? 'no_accessories'
+      : accessories.every(acc => acc?.isReachable === false) ? 'all_reported_unreachable'
+      : 'no_readable_characteristics';
+    return { noProbeTarget: true, reason };
   }
 
   // One candidate per accessory — its best characteristic — so every attempt

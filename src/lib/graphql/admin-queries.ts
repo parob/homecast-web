@@ -1,3 +1,4 @@
+import { HOME_RELIABILITY_FIELDS } from './reliability';
 import { gql } from '@apollo/client/core';
 
 // --- Admin Queries ---
@@ -1169,6 +1170,7 @@ export const ADMIN_RELAY_UPTIME_SUMMARY = gql`
 `;
 
 export const ADMIN_HOMES = gql`
+  ${HOME_RELIABILITY_FIELDS}
   query AdminHomes($limit: Int, $offset: Int, $sortBy: String, $search: String) {
     adminHomes(limit: $limit, offset: $offset, sortBy: $sortBy, search: $search) {
       totalCount
@@ -1186,7 +1188,8 @@ export const ADMIN_HOMES = gql`
         mqttBrokerCount
         memberCount
         relayLastSeenAt
-        currentStatus
+        reliability { ...HomeReliabilityFields }
+      currentStatus
         uptimePercent7d
         verifiedRatio7d
         dailyUptime7d {
@@ -1341,8 +1344,10 @@ export const ADMIN_FLEET_OUTAGE_STATS = gql`
 `;
 
 export const ADMIN_HOME_UPTIME = gql`
+  ${HOME_RELIABILITY_FIELDS}
   query AdminHomeUptime($homeId: String!, $days: Int) {
     adminHomeUptime(homeId: $homeId, days: $days) {
+      reliability { ...HomeReliabilityFields }
       currentStatus
       uptimePercent24h
       uptimePercent7d

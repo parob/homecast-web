@@ -181,3 +181,16 @@ describe('relay.probe characteristic preference', () => {
     expect(res.accessoryId).toBe('canonical');
   });
 });
+
+
+describe('relay.probe explains unavailable checks without new bridge methods', () => {
+  it.each([
+    [[], 'no_accessories'],
+    [[{ ...acc('a', 'Lamp'), isReachable: false }], 'all_reported_unreachable'],
+    [[{ id: 'a', isReachable: true, services: [] }], 'no_readable_characteristics'],
+  ])('returns a specific reason for %j', async (accessories, reason) => {
+    listAccessories.mockResolvedValue(accessories);
+    const result = await executeHomeKitAction('relay.probe', { homeId: 'h1' });
+    expect(result).toEqual({ noProbeTarget: true, reason });
+  });
+});

@@ -1,3 +1,5 @@
+import { HomeReliabilityView } from './HomeReliabilityView';
+import type { HomeReliability } from '@/lib/reliability';
 import { useState } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { GET_HOME_UPTIME } from '@/lib/graphql/queries';
@@ -32,6 +34,7 @@ export interface LastProbe {
 }
 
 export interface UptimeSummary {
+  reliability?: HomeReliability | null;
   currentStatus: string;
   uptimePercent24h: number;
   uptimePercent7d: number;
@@ -418,6 +421,11 @@ function TimelineStrip({ byHour, days, outages, selectedDay, onSelectDay }: Time
  *  live status: it drops the heading, the card and the status badge, and keeps
  *  the history — last check, reachable share and the 7-day strip. */
 export function UptimeSectionView({ summary: s, embedded = false }: { summary: UptimeSummary; embedded?: boolean }) {
+  if (s.reliability) return <HomeReliabilityView evidence={s.reliability} />;
+  return <LegacyUptimeSectionView summary={s} embedded={embedded} />;
+}
+
+function LegacyUptimeSectionView({ summary: s, embedded = false }: { summary: UptimeSummary; embedded?: boolean }) {
   const badge = statusBadge(s.currentStatus);
   const lastProbe = s.lastProbe;
   // A day of the strip opens its own panel, naming every outage that ran
