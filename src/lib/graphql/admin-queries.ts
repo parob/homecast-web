@@ -1061,6 +1061,7 @@ export const ADMIN_RELAYS = gql`
 `;
 
 export const ADMIN_RELAY_DETAIL = gql`
+  ${HOME_RELIABILITY_FIELDS}
   query AdminRelayDetail($userId: String!) {
     adminRelayDetail(userId: $userId) {
       userId
@@ -1110,6 +1111,7 @@ export const ADMIN_RELAY_DETAIL = gql`
         enrollmentStatus
         currentStatus
         uptimePercent7d
+        reliability { ...HomeReliabilityFields }
         relayRole
       }
       activity {
