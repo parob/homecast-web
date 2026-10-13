@@ -234,6 +234,13 @@ const DropdownMenuContent = React.forwardRef<
           // It is coming OUT of the button, not sliding in beside it.
           "data-[side=bottom]:slide-in-from-top-0 data-[side=top]:slide-in-from-bottom-0",
           "data-[side=left]:slide-in-from-right-0 data-[side=right]:slide-in-from-left-0",
+          // Real translucency instead of the opaque `bg-popover` above — the
+          // same recipe `headerGlassClass` uses for the header's own glass
+          // plates (parob/homecast-cloud#199), so a card menu reads as one
+          // material with the chrome it grew out of, not a solid sheet on
+          // top of it. `bg-popover/80` still tracks `--popover` per theme,
+          // so dark mode is unaffected.
+          "bg-popover/80 backdrop-blur-xl backdrop-saturate-150",
         ],
         className,
       )}
