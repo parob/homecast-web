@@ -46,6 +46,7 @@ import { useAccessoryUpdates } from '@/hooks/useAccessoryUpdates';
 import { useNativeHeaderActive } from '@/hooks/useNativeHeader';
 import { useDebugDockHeight } from '@/lib/debug-dock';
 import { sidebarWidthCss } from '@/lib/sidebar-width';
+import { CreateCollectionDialog } from '@/components/collections/CreateCollectionDialog';
 import { activateHeaderControl, publishRefreshDone, type NativeHeaderRefreshKind, type NativeHeaderMenuSection, type NativeHeaderNavItem, type NativeHeaderNavSection, NATIVE_HEADER_COVER_ATTR } from '@/native/native-header';
 import { getRoomSymbol } from '@/components/widgets/roomIcons';
 import { serverConnection, getDeviceId } from '@/server/connection';
@@ -2513,6 +2514,9 @@ const Dashboard = () => {
   const [priceHistoryTarget, setPriceHistoryTarget] = useState<PriceHistoryTarget | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  // New Collection from the navigation menu (the native bar's, or the phone
+  // heading's): the drawer's own dialog, opened from here.
+  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
   // The home the dialog is scoped to — a right-click on another home's
   // sidebar item must open THAT home's analytics, and the title must say so.
   const [analyticsHomeId, setAnalyticsHomeId] = useState<string | null>(null);
@@ -2838,7 +2842,7 @@ const Dashboard = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount
 
   // Collections query (for "apply to all" background feature)
-  const { data: allCollectionsData } = useQuery<GetCollectionsResponse>(
+  const { data: allCollectionsData, refetch: refetchAllCollections } = useQuery<GetCollectionsResponse>(
     GET_COLLECTIONS,
     { skip: !isAuthenticated, fetchPolicy: 'cache-first' }
   );
@@ -7384,11 +7388,15 @@ const Dashboard = () => {
     roomItems.push(...visibleRooms.map(roomItem));
     nativeNavigation.push({ id: 'rooms', items: roomItems });
   }
-  if (hasContentAccess && allCollections.length > 0) {
+  if (hasContentAccess) {
+    // Always present, with New Collection last: under the native bar the web
+    // drawer — the only other place a collection was ever created — has no
+    // route in, so without this a phone could never make its first one
+    // (parob/homecast-cloud#222).
     nativeNavigation.push({
       id: 'collections',
       title: 'Collections',
-      items: allCollections.map((collection) => {
+      items: [...allCollections.map((collection): NavItem => {
         const groups = parseCollectionPayload(collection.payload).groups;
         const selectedHere = selectedCollectionId === collection.id;
         if (groups.length === 0) {
@@ -7410,7 +7418,7 @@ const Dashboard = () => {
             })),
           ],
         };
-      }),
+      }), { id: 'newcollection', label: 'New Collection', symbol: 'folder.badge.plus', icon: FolderPlus }],
     });
   }
   // Mobile web has no native bar and, now, no ☰: the home name in the page
@@ -7638,6 +7646,9 @@ const Dashboard = () => {
         }
         break;
       }
+      case 'newcollection':
+        setCreateCollectionOpen(true);
+        break;
       case 'menu':
         // Everything the drawer does that a menu cannot: the real web drawer.
         activateHeaderControl('menu');
@@ -9975,6 +9986,16 @@ const Dashboard = () => {
       <HistoryDialog
         target={historyTarget}
         onClose={() => setHistoryTarget(null)}
+      />
+
+      <CreateCollectionDialog
+        open={createCollectionOpen}
+        onOpenChange={setCreateCollectionOpen}
+        onCreated={(collection) => {
+          refetchAllCollections();
+          refetchCollectionsRef.current?.();
+          handleSelectCollection(collection);
+        }}
       />
 
       {/* Home Analytics — categories, room filters, custom views — as a
