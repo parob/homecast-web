@@ -153,7 +153,7 @@ test('the field, its two doors, and what each one costs', async ({ page }) => {
   await expect(toPr).toHaveAttribute('aria-checked', 'true');
   await expect(toIssue).toHaveAttribute('aria-checked', 'false');
   await expect(toPr).toContainText('Picked up straight away');
-  await expect(toIssue).toContainText('Next sweep');
+  await expect(toIssue).toContainText('About what you asked for');
 
   // One pull request gets it; the other is named, not commented on.
   await expect(page.getByText(/Goes on homecast-cloud#180 only/)).toContainText('homecast-web#217');
@@ -180,7 +180,7 @@ test('sending says where the words landed, and which pull requests were only nam
   await sheet(page).screenshot({ path: 'screenshots/output/feedback-sent.png' });
 });
 
-test('choosing the issue says it waits for the sweep, and sends there', async ({ page }) => {
+test('choosing the issue sends there, and says who picks it up from the server\'s answer', async ({ page }) => {
   test.skip(BEFORE, 'nothing to choose on main');
   await asAdminReporter(page);
   await openIssue(page);
@@ -192,5 +192,8 @@ test('choosing the issue says it waits for the sweep, and sends there', async ({
   await sheet(page).screenshot({ path: 'screenshots/output/feedback-to-issue.png' });
 
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText(/Sent to issue #179 — it gets picked up on the next sweep, about a day/)).toBeVisible();
+  // The mock answers with no `run`, as a server that predates firing does —
+  // so nothing may claim that Claude has started.
+  await expect(page.getByText('Sent to issue #179 — Claude picks it up at the next scheduled check, twice a day.')).toBeVisible();
+  await expect(page.getByText(/Claude has started/)).toHaveCount(0);
 });

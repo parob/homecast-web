@@ -171,10 +171,35 @@ export interface Resolution {
    * feedback route, so the *absence* of this is the signal to offer no field.
    */
   feedback?: { configured: boolean };
+  /**
+   * How the fix was arrived at: `seen` — the fault was watched failing and
+   * the fix watched working; `diagnosed` — built from reading the code, and
+   * nobody has seen it on a device. The three below are absent on a server
+   * (or a record) that predates them, and every one of them is optional.
+   */
+  verified?: 'seen' | 'diagnosed' | null;
+  /** The one question the routine is waiting on the reporter to answer. */
+  ask?: string | null;
+  /** What to do on a phone to check a fix nobody has seen working yet. */
+  tryIt?: string | null;
 }
 
 /** Where a piece of feedback goes, and how long it waits to be read. */
 export type FeedbackTarget = 'pr' | 'issue';
+
+/**
+ * Whether a comment started Claude on the report, as the server tells it.
+ *
+ * `fired` is the only part the view acts on. A comment on the issue fires a
+ * run; one on a pull request does not — the session that opened the PR reads
+ * its own comments — and a server that predates this sends no key at all.
+ */
+export interface RunOutcome {
+  fired: boolean;
+  /** Where the run can be watched, when the platform said. */
+  url: string | null;
+  error: string | null;
+}
 
 export interface FeedbackResult {
   posted: boolean;
@@ -186,6 +211,37 @@ export interface FeedbackResult {
   /** The sibling pull requests the comment named as part of the same fix. */
   named?: string[];
   error?: string;
+  /** Absent on a server that predates firing runs. */
+  run?: RunOutcome;
+}
+
+/**
+ * Who picks up what was just sent, and when — decided from the server's
+ * answer and nothing else, because the one sentence this must never say is
+ * "Claude has started" about a run that never fired.
+ *
+ *   started    the server fired a run for it
+ *   pr         it is on a pull request, whose session reads it straight away
+ *   scheduled  it waits for the next scheduled check
+ */
+export type FeedbackPickup = 'started' | 'pr' | 'scheduled';
+
+export function feedbackPickup(result: Pick<FeedbackResult, 'target' | 'run'>): FeedbackPickup {
+  if (result.run?.fired === true) return 'started';
+  if (result.target === 'pr') return 'pr';
+  return 'scheduled';
+}
+
+/**
+ * The words a "Still broken" tap sends. The box is optional — on a phone the
+ * tap alone is the message — so an empty one still says something, and typed
+ * words keep the verdict in front of them unless they already lead with it.
+ */
+export function stillBrokenBody(text: string): string {
+  const said = text.trim();
+  if (!said) return 'Still broken.';
+  if (/^still broken\b/i.test(said)) return said;
+  return `Still broken. ${said}`;
 }
 
 /**
@@ -276,6 +332,15 @@ export const BLOCKED_LABEL = 'blocked-upstream';
 /** Deliberately parked for a person to decide. */
 export const NEEDS_HUMAN_LABEL = 'needs-human';
 
+/** The routine asked the reporter one question and is waiting for the answer. */
+export const WAITING_ON_REPORTER_LABEL = 'waiting-on-reporter';
+
+/** The open fix was built from the code; the reporter should try it on a phone. */
+export const DEVICE_CHECK_LABEL = 'needs-device-check';
+
+/** Merged in native code, waiting for a TestFlight or App Store build. */
+export const AWAITING_RELEASE_LABEL = 'awaiting-release';
+
 /**
  * Whether a row should offer its resolution at all.
  *
@@ -308,21 +373,34 @@ export function offersResolution(issue: Pick<ReportedIssue, 'labels' | 'state'>)
  * as worse than it is, which is the safe direction — the opposite mistake is
  * the one that produced this issue.
  *
- * Ordered most-resolved first: a closed report is fixed whatever else it
- * carries, and a pull request outranks the investigation that produced it.
+ * Ordered by who has to move next. A closed report is fixed whatever else it
+ * carries. Then anything waiting on the reporter, because that is the one
+ * state nobody else can end: on 19 Oct homecast-cloud#222, #227 and #228 had
+ * each ended with the routine asking the reporter something, every one of
+ * those rows still read `Investigating` — `claude-attempted` was on them — and
+ * #222's questions had sat unseen for twelve days. So a question outranks a
+ * decision, a decision outranks a fix to try, and all three outrank the states
+ * that are only waiting (another project, an app build) or being worked (a
+ * pull request, then the investigation that produced it).
  */
 export type FixStatus =
   | 'Fixed'
-  | 'Fix proposed'
+  | 'Needs your answer'
+  | 'Needs your decision'
+  | 'Try on your phone'
   | 'Blocked upstream'
-  | 'Needs review'
+  | 'Waiting for app build'
+  | 'Fix proposed'
   | 'Investigating'
   | 'Not picked up yet';
 
 export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): FixStatus {
   if (issue.state === 'closed') return 'Fixed';
+  if (issue.labels.includes(WAITING_ON_REPORTER_LABEL)) return 'Needs your answer';
+  if (issue.labels.includes(NEEDS_HUMAN_LABEL)) return 'Needs your decision';
+  if (issue.labels.includes(DEVICE_CHECK_LABEL)) return 'Try on your phone';
   if (issue.labels.includes(BLOCKED_LABEL)) return 'Blocked upstream';
-  if (issue.labels.includes(NEEDS_HUMAN_LABEL)) return 'Needs review';
+  if (issue.labels.includes(AWAITING_RELEASE_LABEL)) return 'Waiting for app build';
   if (issue.labels.includes(PR_OPEN_LABEL)) return 'Fix proposed';
   if (issue.labels.includes(ATTEMPTED_LABEL)) return 'Investigating';
   return 'Not picked up yet';
@@ -331,33 +409,68 @@ export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): FixSt
 /** Merged code is only part of an open report's resolution. */
 export function mergedReportMessage(status: FixStatus): string {
   const merged = 'All linked pull requests are merged.';
-  if (status === 'Fixed') return merged;
-  if (status === 'Investigating') return 'This report is still being investigated. Earlier code changes have been merged.';
-  if (status === 'Needs review') return `${merged} This report still needs review; see the updates below.`;
-  if (status === 'Blocked upstream') return `${merged} This report is still blocked upstream; see the updates below.`;
-  return `${merged} This report is still open pending verification.`;
+  switch (status) {
+    case 'Fixed':
+      return merged;
+    case 'Investigating':
+      return 'This report is still being investigated. Earlier code changes have been merged.';
+    case 'Needs your answer':
+      return `${merged} Claude is waiting for your answer above.`;
+    case 'Needs your decision':
+      return `${merged} This report still needs your decision; see the updates below.`;
+    case 'Try on your phone':
+      return `${merged} Try it on your phone — if it is still broken, say so above.`;
+    case 'Waiting for app build':
+      return `${merged} The fix reaches your phone with the next app build.`;
+    case 'Blocked upstream':
+      return `${merged} This report is still blocked upstream; see the updates below.`;
+    default:
+      return `${merged} This report is still open pending verification.`;
+  }
 }
 
 /**
  * How loudly a status reads. Here rather than in the view so the word and its
  * weight are decided in one place — they are one fact about the row.
  *
- * `Not picked up yet` is muted on purpose. It is the absence of news, and an
- * absence that shouts is worse than one that is simply legible.
+ * `you` is the loudest, and the only one that is not a tint: it means nothing
+ * moves until the reporter does, which is the one thing the list exists to
+ * make impossible to miss. `Not picked up yet` is muted on purpose. It is the
+ * absence of news, and an absence that shouts is worse than one that is
+ * simply legible.
  */
-export function fixStatusTone(status: FixStatus): 'done' | 'active' | 'waiting' | 'idle' {
+export type FixStatusTone = 'you' | 'done' | 'active' | 'waiting' | 'idle';
+
+export function fixStatusTone(status: FixStatus): FixStatusTone {
   switch (status) {
+    case 'Needs your answer':
+    case 'Needs your decision':
+    case 'Try on your phone':
+      return 'you';
     case 'Fixed':
       return 'done';
     case 'Fix proposed':
     case 'Investigating':
       return 'active';
     case 'Blocked upstream':
-    case 'Needs review':
+    case 'Waiting for app build':
       return 'waiting';
     case 'Not picked up yet':
       return 'idle';
   }
+}
+
+/**
+ * The reporter's own work first, everything else in the order it came.
+ *
+ * Within a page only — the list is paginated server-side — and stable, so
+ * the rows that are not waiting on anyone keep the server's order rather than
+ * being shuffled by a sort that only meant to lift three words.
+ */
+export function reporterFirst<T extends Pick<ReportedIssue, 'labels' | 'state'>>(issues: T[]): T[] {
+  const yours = issues.filter((issue) => fixStatusTone(fixStatus(issue)) === 'you');
+  if (yours.length === 0) return issues;
+  return [...yours, ...issues.filter((issue) => fixStatusTone(fixStatus(issue)) !== 'you')];
 }
 
 /** The part of a PR URL worth reading: `homecast-web#208`. */
@@ -455,24 +568,31 @@ export async function nudgeConflicts(
 /**
  * Send one piece of feedback, to one place.
  *
- * `pr` reaches the primary pull request, where an agent is woken on it
- * straight away; `issue` reaches the report itself and waits for the next
- * scheduled sweep. One comment, on one pull request — the server names the
- * siblings inside it rather than commenting on them, because three comments
- * start three agents that each think they are alone.
+ * `pr` reaches the primary pull request, where the session that opened it is
+ * woken straight away; `issue` reaches the report itself, and the server
+ * starts a run on it — or, where it cannot, the next scheduled check picks it
+ * up. Which of those happened is in the answer's `run`. One comment, on one
+ * pull request — the server names the siblings inside it rather than
+ * commenting on them, because three comments start three agents that each
+ * think they are alone.
+ *
+ * `reopen` marks the words as "still broken" on a closed report. Sent only
+ * when true, so a request without it is byte-for-byte what a server that
+ * predates it was built to read.
  */
 export async function sendFeedback(
   issueNumber: number,
   token: string,
   target: FeedbackTarget,
   body: string,
+  options: { reopen?: boolean } = {},
 ): Promise<FeedbackResult> {
   const response = await fetch(
     `${config.apiUrl}/rest/issue-report/${issueNumber}/resolution/feedback`,
     {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ target, body }),
+      body: JSON.stringify(options.reopen ? { target, body, reopen: true } : { target, body }),
     },
   );
 
