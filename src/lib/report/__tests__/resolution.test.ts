@@ -275,6 +275,8 @@ describe('the merge plan, read for the button', () => {
 
   it('puts each place in the plan into a word or two', () => {
     expect(planStatus(cloud)).toBe('Ready');
+    expect(planStatus({ ...cloud, draft: true })).toBe('Ready · draft');
+    expect(planStatus({ ...cloud, draft: false })).toBe('Ready');
     expect(planStatus(web)).toBe('Waits for deploy');
     expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: true })).toBe('Merged · serving');
     expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: false })).toBe('Merged · deploying');

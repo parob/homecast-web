@@ -50,6 +50,13 @@ export interface MergePlanEntry extends ResolutionPr {
   action: MergeAction;
   reason: string | null;
   serving?: boolean | null;
+  /**
+   * Still a draft on GitHub. The server offers one for merging only on an
+   * issue labelled `needs-device-check` — the draft *is* what the reporter was
+   * asked to try, and merging is how a web fix gets onto their phone — and
+   * marks it ready for review on the way. Absent from older servers.
+   */
+  draft?: boolean;
 }
 
 export interface MergeState {
@@ -310,7 +317,9 @@ export function planStatus(entry: MergePlanEntry): string {
       if (entry.serving === false) return 'Merged · deploying';
       return 'Code merged';
     case 'merge':
-      return 'Ready';
+      // A draft merged from here is a fix nobody has seen working; the pill
+      // must not read like a reviewed one.
+      return entry.draft ? 'Ready · draft' : 'Ready';
     case 'wait_deploy':
       return 'Waits for deploy';
     case 'after':
