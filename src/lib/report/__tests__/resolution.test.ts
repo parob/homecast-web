@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
-  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus,
-  fixStatusTone, mergeLabel,
+  conflictsIn, feedbackPickup, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus,
+  fixStatusTone, mergeLabel, mergedReportMessage,
   mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, offersResolution,
-  planStatus, sendFeedback, shortPr, type MergePlanEntry, type Resolution,
+  planStatus, reporterFirst, sendFeedback, shortPr, stillBrokenBody,
+  type FixStatus, type MergePlanEntry, type Resolution,
 } from '../resolution';
 
 /**
@@ -44,7 +45,10 @@ describe('fixStatus — the word on a row', () => {
   it('names the state a row is actually in, rather than going quiet', () => {
     expect(fixStatus(row(['bug', 'claude-attempted']))).toBe('Investigating');
     expect(fixStatus(row(['bug', 'blocked-upstream']))).toBe('Blocked upstream');
-    expect(fixStatus(row(['bug', 'needs-human']))).toBe('Needs review');
+    expect(fixStatus(row(['bug', 'needs-human']))).toBe('Needs your decision');
+    expect(fixStatus(row(['bug', 'waiting-on-reporter']))).toBe('Needs your answer');
+    expect(fixStatus(row(['bug', 'needs-device-check']))).toBe('Try on your phone');
+    expect(fixStatus(row(['bug', 'awaiting-release']))).toBe('Waiting for app build');
   });
 
   /**
@@ -87,7 +91,117 @@ describe('fixStatusTone — how loudly each word reads', () => {
     expect(fixStatusTone('Investigating')).toBe('active');
     expect(fixStatusTone('Fix proposed')).toBe('active');
     expect(fixStatusTone('Blocked upstream')).toBe('waiting');
-    expect(fixStatusTone('Needs review')).toBe('waiting');
+    expect(fixStatusTone('Waiting for app build')).toBe('waiting');
+  });
+
+  /**
+   * The three that nothing moves on until the reporter does. They share one
+   * tone because they share one consequence: the list lifts them, and the
+   * pill is the only solid one on it.
+   */
+  it('gives the three that wait on the reporter their own tone', () => {
+    expect(fixStatusTone('Needs your answer')).toBe('you');
+    expect(fixStatusTone('Needs your decision')).toBe('you');
+    expect(fixStatusTone('Try on your phone')).toBe('you');
+  });
+
+  it('has a tone for every word fixStatus can answer', () => {
+    const every: FixStatus[] = [
+      'Fixed', 'Needs your answer', 'Needs your decision', 'Try on your phone', 'Blocked upstream',
+      'Waiting for app build', 'Fix proposed', 'Investigating', 'Not picked up yet',
+    ];
+    for (const status of every) expect(fixStatusTone(status)).toMatch(/^(you|done|active|waiting|idle)$/);
+  });
+});
+
+/**
+ * The precedence, one step at a time. Each row carries its label and every
+ * label below it in the order, so a row only reads as its own word if that
+ * word outranks all the rest — which is the order the contract fixes:
+ * closed → waiting-on-reporter → needs-human → needs-device-check →
+ * blocked-upstream → awaiting-release → claude-pr-open → claude-attempted.
+ */
+describe('fixStatus — precedence', () => {
+  const ORDER: [string, FixStatus][] = [
+    ['waiting-on-reporter', 'Needs your answer'],
+    ['needs-human', 'Needs your decision'],
+    ['needs-device-check', 'Try on your phone'],
+    ['blocked-upstream', 'Blocked upstream'],
+    ['awaiting-release', 'Waiting for app build'],
+    ['claude-pr-open', 'Fix proposed'],
+    ['claude-attempted', 'Investigating'],
+  ];
+
+  it.each(ORDER.map(([label, word], index) => [label, word, ORDER.slice(index).map(([l]) => l)] as const))(
+    '%s outranks everything after it, and reads %s',
+    (_label, word, labels) => {
+      expect(fixStatus(row([...labels].reverse()))).toBe(word);
+    },
+  );
+
+  it('reads Fixed on a closed report whatever it still carries', () => {
+    expect(fixStatus(row(ORDER.map(([label]) => label), 'closed'))).toBe('Fixed');
+  });
+
+  /**
+   * The reported fault, as it stood on 19 Oct: the routine had asked and
+   * stopped, `claude-attempted` was still on, and the row said someone was
+   * working on it.
+   */
+  it('no longer reads Investigating once the routine is waiting on an answer', () => {
+    expect(fixStatus(row(['bug', 'issue-reporter', 'claude-attempted', 'waiting-on-reporter'])))
+      .toBe('Needs your answer');
+  });
+
+  it('asks the question before the fix is tried, when a report carries both', () => {
+    expect(fixStatus(row(['claude-pr-open', 'needs-device-check', 'waiting-on-reporter'])))
+      .toBe('Needs your answer');
+  });
+});
+
+describe('reporterFirst — the order of the Open list', () => {
+  const issue = (issueNumber: number, labels: string[], state = 'open') => ({ issueNumber, labels, state });
+
+  it('lifts every row waiting on the reporter, and keeps both halves in the order they came', () => {
+    const rows = [
+      issue(228, ['claude-attempted']),
+      issue(227, ['claude-attempted', 'waiting-on-reporter']),
+      issue(222, ['claude-pr-open']),
+      issue(202, ['needs-device-check', 'claude-pr-open']),
+      issue(201, []),
+      issue(188, ['needs-human']),
+    ];
+    expect(reporterFirst(rows).map((r) => r.issueNumber)).toEqual([227, 202, 188, 228, 222, 201]);
+  });
+
+  it('leaves a list with nothing waiting on the reporter exactly as it was', () => {
+    const rows = [issue(1, ['claude-attempted']), issue(2, []), issue(3, ['awaiting-release'])];
+    expect(reporterFirst(rows)).toBe(rows);
+  });
+
+  it('does not lift a closed report, whatever labels it kept', () => {
+    const rows = [issue(1, []), issue(2, ['waiting-on-reporter'], 'closed')];
+    expect(reporterFirst(rows).map((r) => r.issueNumber)).toEqual([1, 2]);
+  });
+});
+
+describe('mergedReportMessage — what "all merged" means for a report still open', () => {
+  const merged = 'All linked pull requests are merged.';
+
+  it('is only the fact on a fixed report, and says what is left on the rest', () => {
+    expect(mergedReportMessage('Fixed')).toBe(merged);
+    expect(mergedReportMessage('Needs your answer')).toBe(`${merged} Claude is waiting for your answer above.`);
+    expect(mergedReportMessage('Needs your decision'))
+      .toBe(`${merged} This report still needs your decision; see the updates below.`);
+    expect(mergedReportMessage('Try on your phone'))
+      .toBe(`${merged} Try it on your phone — if it is still broken, say so above.`);
+    expect(mergedReportMessage('Waiting for app build'))
+      .toBe(`${merged} The fix reaches your phone with the next app build.`);
+    expect(mergedReportMessage('Blocked upstream'))
+      .toBe(`${merged} This report is still blocked upstream; see the updates below.`);
+    expect(mergedReportMessage('Fix proposed')).toBe(`${merged} This report is still open pending verification.`);
+    expect(mergedReportMessage('Investigating'))
+      .toBe('This report is still being investigated. Earlier code changes have been merged.');
   });
 });
 
@@ -161,6 +275,8 @@ describe('the merge plan, read for the button', () => {
 
   it('puts each place in the plan into a word or two', () => {
     expect(planStatus(cloud)).toBe('Ready');
+    expect(planStatus({ ...cloud, draft: true })).toBe('Ready · draft');
+    expect(planStatus({ ...cloud, draft: false })).toBe('Ready');
     expect(planStatus(web)).toBe('Waits for deploy');
     expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: true })).toBe('Merged · serving');
     expect(planStatus({ ...cloud, action: 'merged', merged: true, serving: false })).toBe('Merged · deploying');
@@ -333,10 +449,67 @@ describe('sendFeedback', () => {
     answer(403);
     await expect(sendFeedback(179, 'tok', 'pr', 'hi')).rejects.toThrow('admin');
   });
+
+  it('marks a still-broken report with reopen, and sends no such key otherwise', async () => {
+    const fetchMock = answer(200, { posted: true, target: 'issue', on: 'https://github.com/parob/homecast-cloud/issues/200' });
+    await sendFeedback(200, 'tok', 'issue', 'Still broken.', { reopen: true });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'https://api.test/rest/issue-report/200/resolution/feedback',
+      expect.objectContaining({ body: JSON.stringify({ target: 'issue', body: 'Still broken.', reopen: true }) }),
+    );
+
+    // Unset and false send exactly what a server that predates the flag reads.
+    await sendFeedback(200, 'tok', 'issue', 'hi', { reopen: false });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'https://api.test/rest/issue-report/200/resolution/feedback',
+      expect.objectContaining({ body: JSON.stringify({ target: 'issue', body: 'hi' }) }),
+    );
+  });
+
+  it('hands back the run the server fired, and tolerates a server that sends none', async () => {
+    const run = { fired: true, url: 'https://claude.ai/code/session_01abc', error: null };
+    answer(200, { posted: true, target: 'issue', on: 'https://github.com/parob/homecast-cloud/issues/222', run });
+    await expect(sendFeedback(222, 'tok', 'issue', 'The sidebar.')).resolves.toMatchObject({ run });
+
+    answer(200, { posted: true, target: 'issue', on: 'https://github.com/parob/homecast-cloud/issues/222' });
+    const older = await sendFeedback(222, 'tok', 'issue', 'The sidebar.');
+    expect(older.run).toBeUndefined();
+  });
+});
+
+/**
+ * Who reads what was just sent. Decided from the answer alone, and the one
+ * thing pinned hardest is the negative: no `run`, or one that did not fire,
+ * never reads as started.
+ */
+describe('feedbackPickup', () => {
+  it('says started only for a run the server reports as fired', () => {
+    expect(feedbackPickup({ target: 'issue', run: { fired: true, url: null, error: null } })).toBe('started');
+    expect(feedbackPickup({ target: 'issue', run: { fired: false, url: null, error: 'not configured' } })).toBe('scheduled');
+    expect(feedbackPickup({ target: 'issue' })).toBe('scheduled');
+  });
+
+  it('leaves a pull request comment to the session that reads it', () => {
+    expect(feedbackPickup({ target: 'pr' })).toBe('pr');
+    expect(feedbackPickup({ target: 'pr', run: { fired: false, url: null, error: null } })).toBe('pr');
+  });
+});
+
+describe('stillBrokenBody', () => {
+  it('says it on its own when nothing was typed, and leads with it when something was', () => {
+    expect(stillBrokenBody('')).toBe('Still broken.');
+    expect(stillBrokenBody('   ')).toBe('Still broken.');
+    expect(stillBrokenBody(' The clock is still white. ')).toBe('Still broken. The clock is still white.');
+  });
+
+  it('does not say it twice when the words already do', () => {
+    expect(stillBrokenBody('Still broken — same as before')).toBe('Still broken — same as before');
+    expect(stillBrokenBody('still broken on the Mac too')).toBe('still broken on the Mac too');
+  });
 });
 
 
-it('keeps an unresolved dependency or review ahead of a proposed fix', () => {
-  expect(fixStatus({ state: 'open', labels: ['needs-human', 'claude-pr-open'] })).toBe('Needs review');
+it('keeps an unresolved dependency or decision ahead of a proposed fix', () => {
+  expect(fixStatus({ state: 'open', labels: ['needs-human', 'claude-pr-open'] })).toBe('Needs your decision');
   expect(fixStatus({ state: 'open', labels: ['blocked-upstream', 'claude-pr-open'] })).toBe('Blocked upstream');
 });

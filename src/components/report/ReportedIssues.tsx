@@ -28,14 +28,19 @@ import { Button } from '@/components/ui/button';
 import {
   fetchReportedIssues, relativeAge, type IssueFilter, type ReportedIssue,
 } from '@/lib/report/issues';
-import { fixStatus, fixStatusTone } from '@/lib/report/resolution';
+import { fixStatus, fixStatusTone, reporterFirst, type FixStatusTone } from '@/lib/report/resolution';
 
 /**
  * How each status reads. Muted for `idle` on purpose: "not picked up yet" is
  * the absence of news, and it should be legible without competing with the
  * rows that actually have some.
+ *
+ * `you` is the one solid fill. Every other word is a tint describing someone
+ * else's progress; this one is an instruction to the reader, and on a list of
+ * tinted pills it is the shape the eye finds first.
  */
-const STATUS_TONE: Record<ReturnType<typeof fixStatusTone>, string> = {
+const STATUS_TONE: Record<FixStatusTone, string> = {
+  you: 'bg-primary font-medium text-primary-foreground',
   done: 'bg-green-600/15 text-green-700 dark:text-green-400',
   active: 'bg-primary/15 text-primary',
   waiting: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
@@ -84,7 +89,11 @@ export function ReportedIssues({ onAddTo, onOpen }: ReportedIssuesProps = {}) {
       const result = await fetchReportedIssues(
         { state: nextFilter, page: nextPage }, token,
       );
-      setIssues(result.issues);
+      // On Open, whatever is waiting on the reader goes first — a question
+      // that sits mid-list under rows being worked is a question nobody
+      // answers. The other filters keep the server's order: Fixed has nothing
+      // waiting, and All is read as a history.
+      setIssues(nextFilter === 'open' ? reporterFirst(result.issues) : result.issues);
       setHasMore(result.hasMore);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load reports.');

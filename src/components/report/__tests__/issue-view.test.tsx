@@ -71,6 +71,9 @@ const WITH_PLAN: Resolution = {
   ...RESOLUTION, prs: [CLOUD_PR, WEB_PR], primary: CLOUD_PR, merge: TWO_PR_PLAN,
 };
 
+/** What the list mock answers; a test that needs other rows sets it. */
+let listed: ReportedIssue[] = [];
+
 const fetchResolution = vi.fn();
 const mergeResolution = vi.fn();
 const nudgeConflicts = vi.fn();
@@ -79,7 +82,7 @@ const openExternalUrl = vi.fn();
 
 vi.mock('@/lib/report/issues', async (importActual) => ({
   ...(await importActual<typeof import('@/lib/report/issues')>()),
-  fetchReportedIssues: async () => ({ issues: [FIXED, UNTOUCHED], page: 1, hasMore: false }),
+  fetchReportedIssues: async () => ({ issues: listed, page: 1, hasMore: false }),
 }));
 
 vi.mock('@/lib/report/resolution', async (importActual) => ({
@@ -95,6 +98,7 @@ vi.mock('@/lib/open-url', () => ({
 }));
 
 beforeEach(() => {
+  listed = [FIXED, UNTOUCHED];
   localStorage.setItem('homecast-token', 'tok');
   fetchResolution.mockReset();
   mergeResolution.mockReset();
@@ -445,7 +449,10 @@ describe('sending feedback from the issue view', () => {
     expect(toPr.getAttribute('aria-checked')).toBe('true');
     expect(toIssue.getAttribute('aria-checked')).toBe('false');
     expect(toPr.textContent).toContain('Picked up straight away');
-    expect(toIssue.textContent).toContain('Next sweep');
+    // How soon the issue is read depends on whether the server can start a
+    // run, so it is said after the send, from its answer — not promised here.
+    expect(toIssue.textContent).toContain('About what you asked for');
+    expect(toIssue.textContent).not.toContain('about a day');
   });
 
   it('says which pull request gets it and which do not', async () => {
@@ -484,7 +491,7 @@ describe('sending feedback from the issue view', () => {
     expect(openExternalUrl).toHaveBeenCalledWith(`${CLOUD_PR.url}#issuecomment-1`);
   });
 
-  it('sends to the issue when that is chosen, and says it waits for the sweep', async () => {
+  it('sends to the issue when that is chosen, and says when it is picked up', async () => {
     fetchResolution.mockResolvedValue(WITH_FEEDBACK);
     sendFeedback.mockResolvedValue({
       posted: true, target: 'issue', on: FIXED.url, comment: `${FIXED.url}#issuecomment-2`,
@@ -498,7 +505,10 @@ describe('sending feedback from the issue view', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Send$/ }));
 
     await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(167, 'tok', 'issue', 'Not what I meant.'));
-    await screen.findByText(/Sent to issue #167 — it gets picked up on the next sweep, about a day/);
+    // No `run` in the answer — a server that predates firing — so nothing
+    // claims a start.
+    await screen.findByText('Sent to issue #167 — Claude picks it up at the next scheduled check, twice a day.');
+    expect(screen.queryByText(/Claude has started/)).toBeNull();
   });
 
   it('offers only the issue when no pull request is open, with no selector to get wrong', async () => {
@@ -811,7 +821,7 @@ describe('everything that happened to the fix', () => {
 });
 
 
-it('keeps an outstanding review visible after all PRs merge', async () => {
+it('keeps an outstanding decision visible after all PRs merge', async () => {
   fetchResolution.mockResolvedValue({
     ...RESOLUTION, labels: ['needs-human', 'claude-pr-open'],
     merge: { configured: true, servingSha: 'abc', plan: [
@@ -819,7 +829,562 @@ it('keeps an outstanding review visible after all PRs merge', async () => {
     ] },
   });
   render(<IssueView issue={FIXED} onBack={() => {}} />);
-  await screen.findByText('All linked pull requests are merged. This report still needs review; see the updates below.');
-  expect(screen.getByText(/#167.*Needs review/)).toBeTruthy();
+  await screen.findByText('All linked pull requests are merged. This report still needs your decision; see the updates below.');
+  expect(screen.getByText(/#167.*Needs your decision/)).toBeTruthy();
   expect(screen.queryByText('All merged.')).toBeNull();
+});
+
+/**
+ * Whatever is waiting on the reader, first.
+ *
+ * The reported fault: on 19 Oct three reports had ended with the routine
+ * asking the reporter something, every one of those rows read
+ * `Investigating`, and the questions sat unseen. These pin the word, the
+ * order of the list, and the card at the top of the screen — the question
+ * itself, and a box to answer it in that starts Claude on it.
+ *
+ * The records are the routine's own, as it wrote them on homecast-cloud#228,
+ * #227 and #222 on 20 Oct: an ask with `prs: []`; a draft to try beside a
+ * question; and both labels at once on one report.
+ */
+const WAITING: ReportedIssue = {
+  ...FIXED,
+  issueNumber: 228,
+  title: 'System tray at top isn’t visible when analytics is opened (batter/time etc)',
+  url: 'https://github.com/parob/homecast-cloud/issues/228',
+  labels: ['bug', 'issue-reporter', 'claude-attempted', 'waiting-on-reporter'],
+};
+
+const ASK = 'In the iOS app, open any automation in the editor. Can you see the clock and battery at the top?';
+
+/** homecast-cloud#228's record: a question, and nothing built. */
+const ASKING: Resolution = {
+  ...RESOLUTION,
+  issueNumber: 228,
+  title: WAITING.title,
+  url: WAITING.url,
+  labels: WAITING.labels,
+  summary: "Web tells the iOS app the right status-bar colour; need to know whether the app's native fix (#166) works anywhere",
+  reach: 'native',
+  prs: [], primary: null, evidence: [],
+  merge: { configured: true, servingSha: 'abc', plan: [] },
+  feedback: { configured: true },
+  ask: ASK,
+  verified: 'diagnosed',
+  tryIt: null,
+};
+
+const RUN_URL = 'https://claude.ai/code/session_01Gd7xYzTrigger';
+
+describe('the list puts what is waiting on you first', () => {
+  const row = (issueNumber: number, labels: string[]): ReportedIssue => ({
+    ...FIXED, issueNumber, title: `Report ${issueNumber}`, labels,
+    url: `https://github.com/parob/homecast-cloud/issues/${issueNumber}`,
+  });
+
+  it('lifts the rows that need an answer, a decision or a phone, and keeps the rest in order', async () => {
+    listed = [
+      row(227, ['claude-attempted']),
+      row(228, ['claude-attempted', 'waiting-on-reporter']),
+      row(202, ['claude-attempted', 'awaiting-release']),
+      row(201, ['claude-attempted', 'claude-pr-open', 'needs-device-check']),
+      row(199, ['claude-attempted', 'claude-pr-open']),
+      row(188, ['claude-attempted', 'needs-human']),
+    ];
+    render(<ReportedIssues onOpen={() => {}} />);
+    await screen.findByRole('button', { name: 'Open #228' });
+
+    const order = screen.getAllByRole('button', { name: /^Open #/ }).map((b) => b.getAttribute('aria-label'));
+    expect(order).toEqual(['Open #228', 'Open #201', 'Open #188', 'Open #227', 'Open #202', 'Open #199']);
+
+    expect(screen.getByRole('button', { name: 'Open #228' }).textContent).toContain('Needs your answer');
+    expect(screen.getByRole('button', { name: 'Open #201' }).textContent).toContain('Try on your phone');
+    expect(screen.getByRole('button', { name: 'Open #188' }).textContent).toContain('Needs your decision');
+    expect(screen.getByRole('button', { name: 'Open #202' }).textContent).toContain('Waiting for app build');
+    // The one solid pill: a tint describes someone else's progress, this is
+    // the reader's own turn.
+    const pill = screen.getByText('Needs your answer');
+    expect(pill.className).toContain('bg-primary');
+    expect(pill.className).not.toContain('bg-primary/15');
+    expect(screen.getByText('Waiting for app build').className).toContain('bg-amber-500/15');
+  });
+});
+
+describe('Claude needs your answer', () => {
+  it('puts the question above everything else, with a box that answers on the issue', async () => {
+    fetchResolution.mockResolvedValue(ASKING);
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    const card = await screen.findByRole('region', { name: 'Claude needs your answer' });
+    expect(card.textContent).toContain(ASK);
+    expect(screen.getByText(/#228 · reported .* · Needs your answer/)).toBeTruthy();
+    // First on the screen: above the report the reader already knows.
+    const regions = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    expect(regions[0]).toBe('Claude needs your answer');
+    expect(regions.indexOf('You reported')).toBeGreaterThan(0);
+
+    const send = screen.getByRole('button', { name: 'Send answer' });
+    expect(send.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('says Claude has started when the server fired a run, with the run as a quiet second link', async () => {
+    fetchResolution.mockResolvedValue(ASKING);
+    sendFeedback.mockResolvedValue({
+      posted: true, target: 'issue', on: WAITING.url, comment: `${WAITING.url}#issuecomment-7`,
+      run: { fired: true, url: RUN_URL, error: null },
+    });
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Your answer' }), {
+      target: { value: ' Home-screen app. The editor is fine, Analytics is not. ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(
+      228, 'tok', 'issue', 'Home-screen app. The editor is fine, Analytics is not.',
+    ));
+    await screen.findByText('Sent to issue #228 — Claude has started on it.');
+    expect(screen.getByRole('button', { name: `Open The comment on GitHub — ${WAITING.url}#issuecomment-7` })).toBeTruthy();
+    const run = screen.getByRole('button', { name: `View the run — ${RUN_URL}` });
+    fireEvent.click(run);
+    expect(openExternalUrl).toHaveBeenCalledWith(RUN_URL);
+  });
+
+  it('never claims a start for a run that did not fire, and offers no run link', async () => {
+    fetchResolution.mockResolvedValue(ASKING);
+    sendFeedback.mockResolvedValue({
+      posted: true, target: 'issue', on: WAITING.url,
+      // A url with fired:false is still not a run anyone can watch.
+      run: { fired: false, url: RUN_URL, error: 'not configured' },
+    });
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Your answer' }), { target: { value: 'Safari.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+
+    await screen.findByText('Sent to issue #228 — Claude picks it up at the next scheduled check, twice a day.');
+    expect(screen.queryByText(/Claude has started/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /View the run/ })).toBeNull();
+  });
+
+  it('says the same when the server sends no run at all', async () => {
+    fetchResolution.mockResolvedValue(ASKING);
+    sendFeedback.mockResolvedValue({ posted: true, target: 'issue', on: WAITING.url });
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Your answer' }), { target: { value: 'Safari.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+
+    await screen.findByText('Sent to issue #228 — Claude picks it up at the next scheduled check, twice a day.');
+    expect(screen.queryByRole('button', { name: /View the run/ })).toBeNull();
+  });
+
+  it('keeps the words and shows why when the answer could not be sent', async () => {
+    fetchResolution.mockResolvedValue(ASKING);
+    sendFeedback.mockRejectedValue(new Error('GitHub refused the comment (403): Resource not accessible'));
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    const box = await screen.findByRole('textbox', { name: 'Your answer' });
+    fireEvent.change(box, { target: { value: 'Safari.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('403'));
+    expect((box as HTMLTextAreaElement).value).toBe('Safari.');
+  });
+
+  /**
+   * A record written before questions had a field: the label says the
+   * routine is waiting, and the question is somewhere in its last update.
+   */
+  it('points at the last update when the record has no question in it', async () => {
+    const { ask: _a, verified: _v, tryIt: _t, ...older } = ASKING;
+    fetchResolution.mockResolvedValue({
+      ...older,
+      updates: [{
+        id: '1', url: `${WAITING.url}#issuecomment-1`, at: new Date().toISOString(), author: 'robjampar',
+        by: 'claude', kind: 'comment', where: 'issue', whereUrl: WAITING.url, meta: null, collapsed: false,
+        text: 'What would settle it: was this the home-screen icon or Safari?', truncated: false,
+      }],
+    });
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    const card = await screen.findByRole('region', { name: 'Claude needs your answer' });
+    expect(card.textContent).toMatch(/See Claude.s last update below\./);
+    // Still answerable from here.
+    expect(screen.getByRole('textbox', { name: 'Your answer' })).toBeTruthy();
+  });
+
+  it('shows the question but no box on a server that cannot send feedback', async () => {
+    const { feedback: _f, ...older } = ASKING;
+    fetchResolution.mockResolvedValue(older);
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    const card = await screen.findByRole('region', { name: 'Claude needs your answer' });
+    expect(card.textContent).toContain(ASK);
+    expect(card.textContent).toContain('Reply on GitHub — the link is below.');
+    expect(screen.queryByRole('textbox', { name: 'Your answer' })).toBeNull();
+  });
+
+  it('is the same card for a decision, pointing at the update that sets it out', async () => {
+    const deciding = { ...WAITING, labels: ['bug', 'claude-attempted', 'needs-human'] };
+    fetchResolution.mockResolvedValue({ ...ASKING, ask: null, labels: deciding.labels, updates: UPDATED.updates });
+    sendFeedback.mockResolvedValue({
+      posted: true, target: 'issue', on: WAITING.url, run: { fired: true, url: null, error: null },
+    });
+    render(<IssueView issue={deciding} onBack={() => {}} />);
+
+    const card = await screen.findByRole('region', { name: 'Claude needs your decision' });
+    expect(card.textContent).toMatch(/See Claude.s last update below\./);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Your reply' }), { target: { value: 'Go ahead.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send reply' }));
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(228, 'tok', 'issue', 'Go ahead.'));
+    // Fired, but the platform gave no address: the sentence, and no link.
+    await screen.findByText('Sent to issue #228 — Claude has started on it.');
+    expect(screen.queryByRole('button', { name: /View the run/ })).toBeNull();
+  });
+
+  /**
+   * `prs: []` with a summary and `verified: diagnosed` is a diagnosis, not a
+   * fix. It used to read as "Proposed fix" with nothing proposed.
+   */
+  it('does not dress a question-only record up as a fix', async () => {
+    fetchResolution.mockResolvedValue(ASKING);
+    render(<IssueView issue={WAITING} onBack={() => {}} />);
+
+    const fix = await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(fix.textContent).toContain('No fix proposed yet.');
+    // The routine's line on where it stands is still there, under "no fix".
+    expect(fix.textContent).toContain('need to know whether the app');
+    expect(fix.textContent).not.toContain('Built from the code');
+  });
+
+  it('shows no card on a report that is waiting on nobody but Claude', async () => {
+    fetchResolution.mockResolvedValue(WITH_PLAN);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(screen.queryByRole('region', { name: /Claude needs/ })).toBeNull();
+    expect(screen.queryByRole('region', { name: /on your phone/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Still broken/ })).toBeNull();
+  });
+});
+
+/**
+ * A fix built from the code, put in front of the one person with the phone.
+ */
+describe('Try this on your phone', () => {
+  const CHECKING: ReportedIssue = {
+    ...FIXED,
+    issueNumber: 201,
+    title: 'Hidden accessories should stay visible inside their room',
+    url: 'https://github.com/parob/homecast-cloud/issues/201',
+    labels: ['bug', 'claude-attempted', 'claude-pr-open', 'needs-device-check'],
+  };
+  const TRY = 'Hide an accessory on the home screen, then open its room — it should still be there.';
+  const DRAFT = { repo: 'parob/homecast-web', number: 284, url: 'https://github.com/parob/homecast-web/pull/284' };
+  const TO_TRY: Resolution = {
+    ...RESOLUTION,
+    issueNumber: 201,
+    labels: CHECKING.labels,
+    url: CHECKING.url,
+    primary: DRAFT,
+    prs: [DRAFT],
+    evidence: [],
+    merge: {
+      configured: true, servingSha: 'abc',
+      plan: [entry(DRAFT, { action: 'blocked', reason: 'pull request is still a draft' })],
+    },
+    feedback: { configured: true },
+    verified: 'diagnosed',
+    tryIt: TRY,
+  };
+
+  it('says what to try, and that nobody has seen the fix working yet', async () => {
+    fetchResolution.mockResolvedValue(TO_TRY);
+    render(<IssueView issue={CHECKING} onBack={() => {}} />);
+
+    const card = await screen.findByRole('region', { name: 'Try this on your phone' });
+    expect(card.textContent).toContain(TRY);
+    expect(card.textContent).toContain('built from the code, and nobody has seen it working on a device yet.');
+    // A draft cannot merge, so the card does not send the reader to a button
+    // that is not there…
+    expect(card.textContent).not.toContain('merge it below');
+    // …and the fix section does not say "built from the code" a second time.
+    expect(screen.queryByText('Built from the code — not yet seen working on a device.')).toBeNull();
+  });
+
+  it('points at Merge when a tap would merge the fix, and keeps the Merge flow as it was', async () => {
+    fetchResolution.mockResolvedValue({
+      ...TO_TRY,
+      merge: { configured: true, servingSha: 'abc', plan: [entry(DRAFT, { action: 'merge' })] },
+    });
+    render(<IssueView issue={CHECKING} onBack={() => {}} />);
+
+    const card = await screen.findByRole('region', { name: 'Try this on your phone' });
+    expect(card.textContent).toContain('— merge it below to try it.');
+    expect(screen.getByRole('button', { name: 'Merge homecast-web#284' })).toBeTruthy();
+  });
+
+  it('sends Still broken to the open pull request, where the session that built it reads it', async () => {
+    fetchResolution.mockResolvedValue(TO_TRY);
+    sendFeedback.mockResolvedValue({
+      posted: true, target: 'pr', on: DRAFT.url, comment: `${DRAFT.url}#issuecomment-3`,
+    });
+    render(<IssueView issue={CHECKING} onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Still broken' }));
+    expect(screen.getByText('Goes on homecast-web#284.')).toBeTruthy();
+    // Saying more is optional: on a phone the tap is the message.
+    const send = screen.getByRole('button', { name: 'Tell Claude' });
+    expect(send.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(send);
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(201, 'tok', 'pr', 'Still broken.'));
+    await screen.findByText('Sent to homecast-web#284 — it gets picked up straight away.');
+  });
+
+  it('sends it to the issue once no pull request is open, with what was typed', async () => {
+    fetchResolution.mockResolvedValue({
+      ...TO_TRY,
+      merge: {
+        configured: true, servingSha: 'abc',
+        plan: [entry(DRAFT, { action: 'merged', merged: true, state: 'closed', serving: true })],
+      },
+    });
+    sendFeedback.mockResolvedValue({
+      posted: true, target: 'issue', on: CHECKING.url, run: { fired: true, url: RUN_URL, error: null },
+    });
+    render(<IssueView issue={CHECKING} onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Still broken' }));
+    expect(screen.getByText('Goes on issue #201.')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'What did you see?' }), {
+      target: { value: 'The lamp is gone from Bedroom.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Tell Claude' }));
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(
+      201, 'tok', 'issue', 'Still broken. The lamp is gone from Bedroom.',
+    ));
+    await screen.findByText('Sent to issue #201 — Claude has started on it.');
+  });
+
+  it('says a fix watched in a test still has not been watched on a device', async () => {
+    fetchResolution.mockResolvedValue({ ...TO_TRY, verified: 'seen' });
+    render(<IssueView issue={CHECKING} onBack={() => {}} />);
+    const card = await screen.findByRole('region', { name: 'Try this on your phone' });
+    expect(card.textContent).toContain('seen working in a test, but not yet on a device.');
+    expect(card.textContent).not.toContain('built from the code');
+  });
+
+  it('asks the reader to check the fix even when the record says nothing about how', async () => {
+    const { tryIt: _t, ...older } = TO_TRY;
+    fetchResolution.mockResolvedValue(older);
+    render(<IssueView issue={CHECKING} onBack={() => {}} />);
+    const card = await screen.findByRole('region', { name: 'Try the fix on your phone' });
+    expect(card.textContent).toContain('nobody has seen it working on a device yet');
+  });
+
+  it('cancels back to the button without sending', async () => {
+    fetchResolution.mockResolvedValue(TO_TRY);
+    render(<IssueView issue={CHECKING} onBack={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Still broken' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Still broken' })).toBeTruthy();
+    expect(sendFeedback).not.toHaveBeenCalled();
+  });
+});
+
+/** "It came back", from a report marked fixed. */
+describe('Still broken? on a fixed report', () => {
+  const CLOSED: ReportedIssue = {
+    ...FIXED,
+    issueNumber: 200,
+    title: 'When changing homes with the top menu keep the room',
+    state: 'closed',
+    url: 'https://github.com/parob/homecast-cloud/issues/200',
+    labels: ['bug', 'claude-attempted'],
+  };
+  const FIXED_RESOLUTION: Resolution = {
+    ...RESOLUTION, issueNumber: 200, state: 'closed', labels: CLOSED.labels, url: CLOSED.url,
+    feedback: { configured: true }, verified: 'seen',
+  };
+
+  it('is one quiet button until it is asked for, then posts as still broken on the issue', async () => {
+    fetchResolution.mockResolvedValue(FIXED_RESOLUTION);
+    sendFeedback.mockResolvedValue({
+      posted: true, target: 'issue', on: CLOSED.url, comment: `${CLOSED.url}#issuecomment-9`,
+      run: { fired: true, url: RUN_URL, error: null },
+    });
+    render(<IssueView issue={CLOSED} onBack={() => {}} />);
+
+    const button = await screen.findByRole('button', { name: 'Still broken?' });
+    expect(screen.queryByRole('textbox', { name: 'What did you see?' })).toBeNull();
+    fireEvent.click(button);
+
+    expect(screen.getByText('Goes on issue #200.')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'What did you see?' }), {
+      target: { value: 'Switching homes lands on the first room again.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Tell Claude' }));
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(
+      200, 'tok', 'issue', 'Still broken. Switching homes lands on the first room again.', { reopen: true },
+    ));
+    await screen.findByText('Sent to issue #200 — Claude has started on it.');
+    expect(screen.getByRole('button', { name: `View the run — ${RUN_URL}` })).toBeTruthy();
+  });
+
+  it('says the next scheduled check when no run fired', async () => {
+    fetchResolution.mockResolvedValue(FIXED_RESOLUTION);
+    sendFeedback.mockResolvedValue({ posted: true, target: 'issue', on: CLOSED.url });
+    render(<IssueView issue={CLOSED} onBack={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Still broken?' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tell Claude' }));
+
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(200, 'tok', 'issue', 'Still broken.', { reopen: true }));
+    await screen.findByText('Sent to issue #200 — Claude picks it up at the next scheduled check, twice a day.');
+  });
+
+  it('offers nothing on a server that cannot send feedback', async () => {
+    const { feedback: _f, ...older } = FIXED_RESOLUTION;
+    fetchResolution.mockResolvedValue(older);
+    render(<IssueView issue={CLOSED} onBack={() => {}} />);
+    await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(screen.queryByRole('button', { name: 'Still broken?' })).toBeNull();
+  });
+});
+
+/** How far the fix has been seen to work, said once and plainly. */
+describe('how the fix was verified', () => {
+  it('says a diagnosed fix was built from the code', async () => {
+    fetchResolution.mockResolvedValue({ ...RESOLUTION, verified: 'diagnosed' });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    const fix = await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(fix.textContent).toContain('Built from the code — not yet seen working on a device.');
+  });
+
+  it('says a seen fix was seen failing first', async () => {
+    fetchResolution.mockResolvedValue({ ...RESOLUTION, verified: 'seen' });
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    const fix = await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(fix.textContent).toContain('Seen failing, then fixed.');
+    expect(fix.textContent).not.toContain('Built from the code');
+  });
+
+  it('says nothing on a record that predates the field', async () => {
+    fetchResolution.mockResolvedValue(RESOLUTION);
+    render(<IssueView issue={FIXED} onBack={() => {}} />);
+    const fix = await screen.findByRole('region', { name: 'Proposed fix' });
+    expect(fix.textContent).not.toMatch(/Built from the code|Seen failing/);
+  });
+});
+
+/**
+ * A question and a fix to try, on one report.
+ *
+ * homecast-cloud#222 on 20 Oct: the routine built a draft and asked a question
+ * in the same run, and the issue carried `waiting-on-reporter` and
+ * `needs-device-check` together. #227 asked a question beside its draft
+ * without the waiting label. Both cards show, the question first — the answer
+ * may change the fix.
+ */
+describe('a question and a fix to try, together', () => {
+  const DRAFT = { repo: 'parob/homecast-web', number: 284, url: 'https://github.com/parob/homecast-web/pull/284' };
+  const BOTH: ReportedIssue = {
+    ...FIXED,
+    issueNumber: 222,
+    title: 'I can’t see how to create collections in the iOS native app there’s no way to create the collections',
+    url: 'https://github.com/parob/homecast-cloud/issues/222',
+    labels: ['bug', 'issue-reporter', 'claude-attempted', 'claude-pr-open', 'waiting-on-reporter', 'needs-device-check'],
+  };
+  const RECORD_222: Resolution = {
+    ...RESOLUTION,
+    issueNumber: 222,
+    url: BOTH.url,
+    labels: BOTH.labels,
+    summary: 'Native menu always offers New Collection, so the iOS app can create a collection',
+    reach: 'web',
+    primary: DRAFT,
+    prs: [DRAFT],
+    evidence: [{ url: 'https://storage.test/new-collection.png', alt: 'after: New Collection opens Create Collection' }],
+    merge: {
+      configured: true, servingSha: 'abc',
+      plan: [entry(DRAFT, { action: 'blocked', reason: 'pull request is still a draft' })],
+    },
+    feedback: { configured: true },
+    verified: 'diagnosed',
+    ask: "When a collection didn't open on tap, which control did you tap: the menu under the title, or something else?",
+    tryIt: 'After merging and restarting the app: tap the title at the top. Under Collections you should see New Collection; tap it, name one, and it should open.',
+  };
+
+  it('asks first, then hands over the fix to try, and says the diagnosis once', async () => {
+    fetchResolution.mockResolvedValue(RECORD_222);
+    render(<IssueView issue={BOTH} onBack={() => {}} />);
+
+    const ask = await screen.findByRole('region', { name: 'Claude needs your answer' });
+    const tryIt = screen.getByRole('region', { name: 'Try this on your phone' });
+    expect(screen.getByText(/#222 · reported .* · Needs your answer/)).toBeTruthy();
+
+    const regions = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    expect(regions.slice(0, 3)).toEqual(['Claude needs your answer', 'Try this on your phone', 'You reported']);
+
+    expect(ask.textContent).toContain('which control did you tap');
+    expect(tryIt.textContent).toContain('Under Collections you should see New Collection');
+    // The draft cannot merge from here, so neither card points at a button.
+    expect(tryIt.textContent).not.toContain('merge it below');
+    expect(screen.getByText('homecast-web#284: pull request is still a draft.')).toBeTruthy();
+    // The try card says how the fix was built; the fix section does not repeat it.
+    expect(screen.getByRole('region', { name: 'Proposed fix' }).textContent).not.toContain('Built from the code');
+  });
+
+  it('answers on the issue from the first card, and says still broken on the draft from the second', async () => {
+    fetchResolution.mockResolvedValue(RECORD_222);
+    sendFeedback.mockImplementation(async (_n: number, _t: string, target: string) => (
+      target === 'issue'
+        ? { posted: true, target: 'issue', on: BOTH.url, run: { fired: true, url: RUN_URL, error: null } }
+        : { posted: true, target: 'pr', on: DRAFT.url }
+    ));
+    render(<IssueView issue={BOTH} onBack={() => {}} />);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Your answer' }), { target: { value: 'The menu under the title.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(222, 'tok', 'issue', 'The menu under the title.'));
+    await screen.findByText('Sent to issue #222 — Claude has started on it.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Still broken' }));
+    expect(screen.getByText('Goes on homecast-web#284.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tell Claude' }));
+    await waitFor(() => expect(sendFeedback).toHaveBeenCalledWith(222, 'tok', 'pr', 'Still broken.'));
+    await screen.findByText('Sent to homecast-web#284 — it gets picked up straight away.');
+  });
+
+  it('shows a question the record carries even without the waiting label, said less strongly', async () => {
+    const NATIVE = { repo: 'parob/homecast', number: 81, url: 'https://github.com/parob/homecast/pull/81' };
+    const checking: ReportedIssue = {
+      ...FIXED,
+      issueNumber: 227,
+      url: 'https://github.com/parob/homecast-cloud/issues/227',
+      labels: ['bug', 'issue-reporter', 'claude-attempted', 'claude-pr-open', 'needs-device-check'],
+    };
+    fetchResolution.mockResolvedValue({
+      ...RECORD_222,
+      issueNumber: 227,
+      url: checking.url,
+      labels: checking.labels,
+      reach: 'native',
+      primary: NATIVE, prs: [NATIVE], evidence: [],
+      merge: { configured: true, servingSha: 'abc', plan: [entry(NATIVE, { action: 'blocked', reason: 'pull request is still a draft' })] },
+      ask: 'When Back shows the grey screen, does it stay grey, or does Home appear by itself after a second?',
+      tryIt: 'With a build carrying #81: open a room, close the app fully, reopen (it lands on the room), tap Back.',
+    });
+    render(<IssueView issue={checking} onBack={() => {}} />);
+
+    // The word is the label's — Try on your phone — and the question still shows.
+    await screen.findByText(/#227 · reported .* · Try on your phone/);
+    const regions = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    expect(regions.slice(0, 2)).toEqual(['Claude has a question', 'Try this on your phone']);
+    expect(screen.queryByRole('region', { name: 'Claude needs your answer' })).toBeNull();
+  });
 });

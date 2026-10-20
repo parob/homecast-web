@@ -9,6 +9,13 @@
  * faster than a PR body; and the pull requests as a short list with their
  * place in the merge plan.
  *
+ * Above all of it, when the report is waiting on the person reading it, a
+ * card that says what for — the question Claude asked, the fix to try on a
+ * phone, or on a fixed report a way to say it is still broken — with the box
+ * to answer in right there. A question used to reach this screen only as the
+ * tail of a long update, under a status that read `Investigating`, and it went
+ * unanswered for days: the routine had stopped and nobody knew it was waiting.
+ *
  * Then **Updates** — what has been said on the report, newest first. The fix
  * above it is four machine-readable things; this is the prose, and it is where
  * a reason, a judgement call, or a question put to the reporter actually
@@ -35,7 +42,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
-  Bot, GitCommitHorizontal, MessageSquare, RefreshCw, Send, Sparkles, User,
+  Bot, GitCommitHorizontal, MessageCircleQuestion, MessageSquare, RefreshCw, RotateCcw, Send, Smartphone,
+  Sparkles, User,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -44,10 +52,11 @@ import { openExternalUrl } from '@/lib/open-url';
 import { readComment, type Block, type Inline } from '@/lib/report/comment-markdown';
 import { relativeAge, relativeMoment, type ReportedIssue } from '@/lib/report/issues';
 import {
-  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus, mergeLabel, mergedReportMessage,
-  mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planStatus, sendFeedback, shortPr,
-  type ConflictNudge, type FeedbackResult, type FeedbackTarget, type MergePlanEntry, type MergeState,
-  type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate, type FixStatus,
+  conflictsIn, DEVICE_CHECK_LABEL, feedbackPickup, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution,
+  fixStatus, mergeLabel, mergedReportMessage, mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planStatus,
+  sendFeedback, shortPr, stillBrokenBody, WAITING_ON_REPORTER_LABEL,
+  type ConflictNudge, type FeedbackPickup, type FeedbackResult, type FeedbackTarget, type MergePlanEntry,
+  type MergeState, type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate, type FixStatus,
 } from '@/lib/report/resolution';
 
 interface IssueViewProps {
@@ -90,9 +99,13 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
   const age = relativeAge(resolution?.createdAt ?? issue.createdAt);
   const reportedText = (resolution?.reportedText ?? '').trim();
   const reported = resolution?.reported ?? [];
-  const hasFix = resolution !== null && (
-    resolution.prs.length > 0 || resolution.evidence.length > 0 || Boolean(resolution.summary)
-  );
+  // A fix is a pull request or a picture of one. A summary on its own is not:
+  // the routine now writes a record when all it did was ask — `prs: []`, a
+  // line on where the diagnosis stands — and that read as a proposed fix,
+  // "built from the code", over nothing that had been built.
+  const hasFix = resolution !== null && (resolution.prs.length > 0 || resolution.evidence.length > 0);
+  const standing = !hasFix ? resolution?.summary?.trim() || null : null;
+  const tryCardShown = !fixed && (resolution?.labels ?? issue.labels).includes(DEVICE_CHECK_LABEL);
 
   const plan = resolution?.merge?.plan ?? [];
   const planByUrl = new Map(plan.map((entry) => [entry.url, entry]));
@@ -140,6 +153,8 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
       {!loading && !error && (
         <>
+          <ReporterCards issue={issue} resolution={resolution} status={reportStatus} />
+
           <section aria-label="You reported" className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               You reported
@@ -180,6 +195,11 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
             {!hasFix && (
               <p className="text-sm text-muted-foreground">No fix proposed yet.</p>
             )}
+            {standing && (
+              // Where the diagnosis stands, in the routine's own line — under
+              // "no fix", because that is what it is.
+              <p className="text-sm">{standing}</p>
+            )}
 
             {hasFix && resolution && (
               <>
@@ -193,6 +213,18 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
                 {resolution.summary && (
                   <p className="text-sm">{resolution.summary}</p>
+                )}
+
+                {/* How far the fix has been seen to work. Said once: the
+                    Try-on-your-phone card above already explains a
+                    diagnosed fix, so the line here would only repeat it. */}
+                {resolution.verified === 'diagnosed' && !tryCardShown && (
+                  <p className="text-xs text-muted-foreground">
+                    Built from the code — not yet seen working on a device.
+                  </p>
+                )}
+                {resolution.verified === 'seen' && (
+                  <p className="text-xs text-muted-foreground">Seen failing, then fixed.</p>
                 )}
 
                 {resolution.prs.length > 0 && (
@@ -247,6 +279,360 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
         </>
       )}
     </div>
+  );
+}
+
+/** The `you` tone as a card: the list's solid pill, at the scale of a section. */
+const YOU_CARD = 'space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3';
+
+/**
+ * What the report is waiting on the reader for — or nothing, when it is
+ * waiting on no one but Claude.
+ *
+ * Up to two cards, question first. The routine can ask something and hand
+ * over a fix to try in the same run — homecast-cloud#222 carried both labels
+ * and a draft — and the answer may well change the fix, so the question
+ * leads and the fix to try follows rather than one hiding the other. A
+ * question is shown whenever the record has one on an open report, not only
+ * under `waiting-on-reporter`: #227 asked one beside its draft without the
+ * label, and a question the reader never sees is the fault this replaces.
+ * The label decides only how strongly the card says it.
+ */
+function ReporterCards(
+  { issue, resolution, status }: { issue: ReportedIssue; resolution: Resolution | null; status: FixStatus },
+) {
+  if (status === 'Fixed') return <StillBrokenCard issue={issue} resolution={resolution} />;
+  const labels = resolution?.labels ?? issue.labels;
+  const asked = Boolean(resolution?.ask?.trim());
+  const deciding = status === 'Needs your decision';
+  const answering = labels.includes(WAITING_ON_REPORTER_LABEL);
+  const trying = labels.includes(DEVICE_CHECK_LABEL);
+  if (!asked && !deciding && !answering && !trying) return null;
+  return (
+    <>
+      {(asked || deciding || answering) && (
+        <AnswerCard
+          issue={issue}
+          resolution={resolution}
+          title={
+            answering ? 'Claude needs your answer'
+            : deciding ? 'Claude needs your decision'
+            : 'Claude has a question'
+          }
+          decision={deciding && !answering}
+        />
+      )}
+      {trying && <TryCard issue={issue} resolution={resolution} />}
+    </>
+  );
+}
+
+/**
+ * The question Claude is waiting on, and the box to answer it in.
+ *
+ * The question is the largest text on the screen because it is the reason
+ * the reader is here. The answer goes on the issue, never a pull request: the
+ * question was asked there, and an answer there is what the server starts a
+ * run on. A record written before questions had a field of their own has
+ * none to show, so the card points at the update that asked it instead; a
+ * server with no feedback route gets the question and a pointer to GitHub,
+ * never a box that cannot send.
+ *
+ * `decision` is the same card for `needs-human` — a call only a person can
+ * make, set out in Claude's last update rather than as one question.
+ */
+function AnswerCard(
+  { issue, resolution, title, decision }: {
+    issue: ReportedIssue; resolution: Resolution | null; title: string; decision: boolean;
+  },
+) {
+  const ask = resolution?.ask?.trim() || null;
+  const canReply = Boolean(resolution?.feedback?.configured);
+  const hasUpdates = (resolution?.updates?.length ?? 0) > 0;
+
+  return (
+    <section aria-label={title} className={YOU_CARD}>
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-primary">
+        <MessageCircleQuestion className="h-4 w-4 shrink-0" />
+        {title}
+      </h3>
+      {ask ? (
+        <p className="whitespace-pre-wrap break-words text-base font-medium">{ask}</p>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {hasUpdates
+            ? <>See Claude&rsquo;s last update below.</>
+            : <>Claude&rsquo;s last update is on GitHub.</>}
+        </p>
+      )}
+      {canReply ? (
+        <ReplyBox
+          issueNumber={issue.issueNumber}
+          target="issue"
+          label={decision ? 'Your reply' : 'Your answer'}
+          sendLabel={decision ? 'Send reply' : 'Send answer'}
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">Reply on GitHub — the link is below.</p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A fix nobody has seen working, put in front of the one person who can.
+ *
+ * `needs-device-check` means the fix was built from reading the code — the
+ * routine could not watch the fault happen, so it cannot watch it go away.
+ * The card says so plainly, says what to try where the record has it, and
+ * offers the one answer that changes what happens next. "Still broken" goes
+ * on the open pull request, where the session that built it reads it straight
+ * away; with none open — it merged — it goes on the issue, which starts a
+ * run. A fix that works needs no message: merging it is the answer.
+ */
+function TryCard({ issue, resolution }: { issue: ReportedIssue; resolution: Resolution | null }) {
+  const tryIt = resolution?.tryIt?.trim() || null;
+  const pr = resolution ? feedbackPr(resolution) : null;
+  const canReply = Boolean(resolution?.feedback?.configured);
+  // Only point at Merge when there is something it would merge now — a
+  // draft reads as blocked in the plan, and "merge it below" over no button
+  // is a sentence the reader cannot act on.
+  const mergeable = resolution?.merge?.configured === true && mergeLabel(resolution.merge.plan) !== null;
+  const title = tryIt ? 'Try this on your phone' : 'Try the fix on your phone';
+
+  return (
+    <section aria-label={title} className={YOU_CARD}>
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-primary">
+        <Smartphone className="h-4 w-4 shrink-0" />
+        {title}
+      </h3>
+      {tryIt && (
+        <p className="whitespace-pre-wrap break-words text-base font-medium">{tryIt}</p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {/* `seen` can still need a phone — watched in a test is not watched
+            on a device — so the line says which it was rather than assuming. */}
+        {resolution?.verified === 'seen'
+          ? 'This fix was seen working in a test, but not yet on a device'
+          : 'This fix was built from the code, and nobody has seen it working on a device yet'}
+        {mergeable ? ' — merge it below to try it.' : '.'}
+      </p>
+      {canReply && (
+        <StillBrokenReply
+          issueNumber={issue.issueNumber}
+          target={pr ? 'pr' : 'issue'}
+          where={pr ? shortPr(pr) : `issue #${issue.issueNumber}`}
+          trigger="Still broken"
+        />
+      )}
+    </section>
+  );
+}
+
+/**
+ * "It came back", from a fixed report.
+ *
+ * Quiet until asked for: most visits to a fixed report are to look at the
+ * fix, and nothing on a closed one is waiting on anybody. One tap opens a
+ * small box; the words go on the issue marked as still broken, which is what
+ * the server starts a run for. Typing is optional — on a phone the tap is
+ * most of the message.
+ */
+function StillBrokenCard({ issue, resolution }: { issue: ReportedIssue; resolution: Resolution | null }) {
+  if (!resolution?.feedback?.configured) return null;
+  return (
+    <section aria-label="Still broken?">
+      <StillBrokenReply
+        issueNumber={issue.issueNumber}
+        target="issue"
+        where={`issue #${issue.issueNumber}`}
+        trigger="Still broken?"
+        reopen
+        boxed
+      />
+    </section>
+  );
+}
+
+/** A "Still broken" button that opens into a box where saying more is optional. */
+function StillBrokenReply(
+  { issueNumber, target, where, trigger, reopen = false, boxed = false }: {
+    issueNumber: number; target: FeedbackTarget; where: string; trigger: string;
+    reopen?: boolean; boxed?: boolean;
+  },
+) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <RotateCcw className="mr-2 h-3.5 w-3.5" />
+        {trigger}
+      </Button>
+    );
+  }
+  return (
+    <div className={boxed ? 'rounded-md border p-3' : undefined}>
+      <ReplyBox
+        issueNumber={issueNumber}
+        target={target}
+        label="What did you see?"
+        placeholder="Optional"
+        sendLabel="Tell Claude"
+        hint={`Goes on ${where}.`}
+        compose={stillBrokenBody}
+        optional
+        reopen={reopen}
+        onCancel={() => setOpen(false)}
+      />
+    </div>
+  );
+}
+
+interface ReplyBoxProps {
+  issueNumber: number;
+  target: FeedbackTarget;
+  /** The box's accessible name — what is being asked for. */
+  label: string;
+  sendLabel: string;
+  placeholder?: string;
+  /** One line above the box: where the words go. */
+  hint?: string;
+  /** Turns what was typed into what is sent. Defaults to the words, trimmed. */
+  compose?: (text: string) => string;
+  /** Whether an empty box can be sent — `compose` then has to say something. */
+  optional?: boolean;
+  reopen?: boolean;
+  onCancel?: () => void;
+}
+
+/**
+ * A box, a Send button, and what came of it — the one shape every reply on
+ * these cards takes, so each card decides only what it asks and where the
+ * words go. The words stay in the box when sending fails, so a refusal never
+ * costs the retyping.
+ */
+function ReplyBox(
+  { issueNumber, target, label, sendLabel, placeholder, hint, compose, optional = false, reopen = false, onCancel }:
+    ReplyBoxProps,
+) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<FeedbackResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (sent) return <SentOutcome sent={sent} issueNumber={issueNumber} />;
+
+  const send = async () => {
+    const token = localStorage.getItem('homecast-token');
+    if (!token) {
+      setError('You are signed out.');
+      return;
+    }
+    const body = compose ? compose(text) : text.trim();
+    setSending(true);
+    setError(null);
+    try {
+      setSent(reopen
+        ? await sendFeedback(issueNumber, token, target, body, { reopen: true })
+        : await sendFeedback(issueNumber, token, target, body));
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Could not send that.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      <Textarea
+        aria-label={label}
+        placeholder={placeholder}
+        rows={optional ? 2 : 3}
+        value={text}
+        disabled={sending}
+        onChange={(event) => setText(event.target.value)}
+        className="bg-background"
+      />
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          className="flex-1"
+          disabled={sending || (!optional && text.trim().length === 0)}
+          onClick={() => void send()}
+        >
+          {sending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sending&hellip;
+            </>
+          ) : (
+            <>
+              <Send className="mr-2 h-4 w-4" />
+              {sendLabel}
+            </>
+          )}
+        </Button>
+        {onCancel && (
+          <Button type="button" variant="ghost" disabled={sending} onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+      </div>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Who reads it now, in words the server's answer can stand behind. `started`
+ * is said only for a run the server reports as fired — the complaint this
+ * screen answers was a status that claimed work nobody was doing, and "Claude
+ * has started" over a run that never fired would be the same mistake again.
+ */
+const PICKUP_WORDS: Record<FeedbackPickup, string> = {
+  started: 'Claude has started on it.',
+  pr: 'it gets picked up straight away.',
+  scheduled: 'Claude picks it up at the next scheduled check, twice a day.',
+};
+
+/** Where the words landed, who reads them next, and the comment's address. */
+function SentOutcome({ sent, issueNumber }: { sent: FeedbackResult; issueNumber: number }) {
+  const pickup = feedbackPickup(sent);
+  const where = sent.target === 'issue' ? `issue #${issueNumber}` : shortPr(prFromUrl(sent.on));
+  const runUrl = pickup === 'started' ? sent.run?.url ?? null : null;
+  return (
+    <div role="status" className="space-y-1 text-sm">
+      <p>Sent to {where} — {PICKUP_WORDS[pickup]}</p>
+      {sent.named && sent.named.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          The comment names {sent.named.map((url) => shortPr(prFromUrl(url))).join(', ')} as part of the
+          same fix. Nothing was posted on them.
+        </p>
+      )}
+      {sent.comment && <ExternalRow label="The comment" url={sent.comment} />}
+      {runUrl && <RunLink url={runUrl} />}
+    </div>
+  );
+}
+
+/**
+ * Where to watch the run — deliberately the smallest thing in the outcome.
+ * The sentence above it is the answer; this is for the curious, and it
+ * prints its address in full like every other way out of the app.
+ */
+function RunLink({ url }: { url: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => openExternalUrl(url)}
+      aria-label={`View the run — ${url}`}
+      className="flex w-full min-w-0 items-center gap-1.5 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ExternalLink className="h-3 w-3 shrink-0" />
+      <span className="shrink-0">View the run</span>
+      <span className="min-w-0 truncate font-mono text-[11px]">{url}</span>
+    </button>
   );
 }
 
@@ -808,11 +1194,13 @@ function Spans({ spans }: { spans: Inline[] }) {
 /**
  * Saying something back, and choosing who hears it.
  *
- * The two doors are not the same speed and the difference is the whole point:
- * a comment on the pull request wakes an agent on it straight away, while a
- * comment on the issue waits for the next scheduled sweep — about a day. So
- * the pull request is the default, and each option says what it costs rather
- * than leaving the reader to know.
+ * The two doors are about different things: the pull request is where a
+ * remark about the fix goes, and the session that built it is woken on it
+ * straight away; the issue is where a remark about what was asked for goes.
+ * The pull request is the default. How soon the issue is read is no longer
+ * promised before the tap — a server that can starts a run on it there and
+ * then, one that cannot leaves it for the next scheduled check — so it is
+ * said afterwards, from the server's answer, by `SentOutcome`.
  *
  * It goes to exactly **one** pull request. Three comments would start three
  * agents that each think they are working alone, so the server puts the words
@@ -879,20 +1267,8 @@ function FeedbackSection({ issue, resolution }: { issue: ReportedIssue; resoluti
       </h3>
 
       {sent ? (
-        <div className="space-y-1 text-sm">
-          <p>
-            Sent to {sent.target === 'issue' ? `issue #${issue.issueNumber}` : shortPr(prFromUrl(sent.on))}
-            {sent.target === 'issue'
-              ? ' — it gets picked up on the next sweep, about a day.'
-              : ' — it gets picked up straight away.'}
-          </p>
-          {sent.named && sent.named.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              The comment names {sent.named.map((url) => shortPr(prFromUrl(url))).join(', ')} as part of the
-              same fix. Nothing was posted on them.
-            </p>
-          )}
-          {sent.comment && <ExternalRow label="The comment" url={sent.comment} />}
+        <div className="space-y-1">
+          <SentOutcome sent={sent} issueNumber={issue.issueNumber} />
           <Button type="button" variant="ghost" size="sm" onClick={() => setSent(null)}>
             Say something else
           </Button>
@@ -911,7 +1287,7 @@ function FeedbackSection({ issue, resolution }: { issue: ReportedIssue; resoluti
                 chosen={target === 'issue'}
                 onChoose={() => setWanted('issue')}
                 label={`Issue #${issue.issueNumber}`}
-                detail="Next sweep — about a day"
+                detail="About what you asked for"
               />
             </div>
           )}
