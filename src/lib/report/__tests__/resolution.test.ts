@@ -44,7 +44,7 @@ describe('fixStatus — the word on a row', () => {
   it('names the state a row is actually in, rather than going quiet', () => {
     expect(fixStatus(row(['bug', 'claude-attempted']))).toBe('Investigating');
     expect(fixStatus(row(['bug', 'blocked-upstream']))).toBe('Blocked upstream');
-    expect(fixStatus(row(['bug', 'needs-human']))).toBe('Needs review');
+    expect(fixStatus(row(['bug', 'needs-human']))).toBe('Needs your decision');
   });
 
   /**
@@ -77,6 +77,41 @@ describe('fixStatus — the word on a row', () => {
   });
 });
 
+/**
+ * homecast-cloud#188. The routine leaves an issue with a question, a device
+ * check or a decision for the reporter, always beside the claim or a draft
+ * PR. These are the label sets three real issues carried on 24 Oct; each read
+ * "Investigating" or "Fix proposed", so nothing on the screen said it was his
+ * move.
+ */
+describe('fixStatus — rows waiting on the reporter', () => {
+  it('says when the routine is waiting on his answer', () => {
+    // #228
+    expect(fixStatus(row(['bug', 'issue-reporter', 'claude-attempted', 'waiting-on-reporter'])))
+      .toBe('Needs your answer');
+  });
+
+  it('says when a draft fix needs trying on the phone', () => {
+    // #227
+    expect(fixStatus(row(['bug', 'claude-attempted', 'claude-pr-open', 'needs-device-check'])))
+      .toBe('Try on your phone');
+  });
+
+  it('puts the question ahead of the device check when a row carries both', () => {
+    // #222
+    expect(fixStatus(row(['claude-attempted', 'claude-pr-open', 'waiting-on-reporter', 'needs-device-check'])))
+      .toBe('Needs your answer');
+  });
+
+  it('says when merged native code is waiting for an app build', () => {
+    expect(fixStatus(row(['bug', 'claude-attempted', 'awaiting-release']))).toBe('Waiting for app build');
+  });
+
+  it('still reads Fixed once closed, whatever is left on it', () => {
+    expect(fixStatus(row(['waiting-on-reporter', 'needs-device-check'], 'closed'))).toBe('Fixed');
+  });
+});
+
 describe('fixStatusTone — how loudly each word reads', () => {
   it('mutes the absence of news and greens a fix', () => {
     expect(fixStatusTone('Not picked up yet')).toBe('idle');
@@ -87,7 +122,10 @@ describe('fixStatusTone — how loudly each word reads', () => {
     expect(fixStatusTone('Investigating')).toBe('active');
     expect(fixStatusTone('Fix proposed')).toBe('active');
     expect(fixStatusTone('Blocked upstream')).toBe('waiting');
-    expect(fixStatusTone('Needs review')).toBe('waiting');
+    expect(fixStatusTone('Needs your decision')).toBe('waiting');
+    expect(fixStatusTone('Needs your answer')).toBe('waiting');
+    expect(fixStatusTone('Try on your phone')).toBe('waiting');
+    expect(fixStatusTone('Waiting for app build')).toBe('waiting');
   });
 });
 
@@ -337,6 +375,6 @@ describe('sendFeedback', () => {
 
 
 it('keeps an unresolved dependency or review ahead of a proposed fix', () => {
-  expect(fixStatus({ state: 'open', labels: ['needs-human', 'claude-pr-open'] })).toBe('Needs review');
+  expect(fixStatus({ state: 'open', labels: ['needs-human', 'claude-pr-open'] })).toBe('Needs your decision');
   expect(fixStatus({ state: 'open', labels: ['blocked-upstream', 'claude-pr-open'] })).toBe('Blocked upstream');
 });

@@ -819,7 +819,7 @@ it('keeps an outstanding review visible after all PRs merge', async () => {
     ] },
   });
   render(<IssueView issue={FIXED} onBack={() => {}} />);
-  await screen.findByText('All linked pull requests are merged. This report still needs review; see the updates below.');
-  expect(screen.getByText(/#167.*Needs review/)).toBeTruthy();
+  await screen.findByText('All linked pull requests are merged. This report still needs your decision; see the updates below.');
+  expect(screen.getByText(/#167.*Needs your decision/)).toBeTruthy();
   expect(screen.queryByText('All merged.')).toBeNull();
 });

@@ -213,7 +213,7 @@ test('Merge names what it merges, asks once, and shows what happened', async ({ 
   await sheet(page).screenshot({ path: 'screenshots/output/resolution-merged.png' });
 });
 
-test('a merged change still explains the report needs review', async ({ page }) => {
+test('a merged change still explains the report needs a decision', async ({ page }) => {
   await asAdminReporter(page);
   await page.route(/\/rest\/issue-report\/167\/resolution$/, route => route.fulfill({
     status: 200, contentType: 'application/json',
@@ -221,8 +221,8 @@ test('a merged change still explains the report needs review', async ({ page }) 
   }));
   await openExisting(page);
   await openIssue(page);
-  await expect(page.getByText(/#167.*Needs review/)).toBeVisible();
-  await expect(page.getByText('All linked pull requests are merged. This report still needs review; see the updates below.')).toBeVisible();
+  await expect(page.getByText(/#167.*Needs your decision/)).toBeVisible();
+  await expect(page.getByText('All linked pull requests are merged. This report still needs your decision; see the updates below.')).toBeVisible();
   await sheet(page).screenshot({ path: test.info().outputPath('report-needs-review.png') });
 });
 
