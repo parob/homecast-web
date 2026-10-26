@@ -29,13 +29,35 @@ jobs:
       - name: Build
         run: npm run build
 
+  # The Playwright version the lockfile pins, so the browser job's image
+  # always carries exactly the Chromium that version expects.
+  playwright-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: screenshots/package-lock.json
+          sparse-checkout-cone-mode: false
+      - id: v
+        run: echo "version=$(node -p "require('./screenshots/package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+
   # Four shards in parallel. Run as one job the suite took 17-23 minutes
   # against a 25-minute limit, so every deploy waited on it and a slow runner
   # cancelled it outright. A quarter each finishes in a few minutes, and the
   # notify job still waits for all four.
+  #
+  # In Playwright's own image, so Chromium and its system libraries are
+  # already there. `playwright install --with-deps` fetched them from the
+  # Ubuntu mirror on every run, and a slow mirror alone took 11-15 minutes —
+  # on 2026-10-26 it cancelled the same shard three times and held two deploys.
   browser:
+    needs: playwright-version
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.playwright-version.outputs.version }}-noble
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -51,8 +73,6 @@ jobs:
             screenshots/package-lock.json
       - run: npm ci
       - run: npm ci
-        working-directory: screenshots
-      - run: npx playwright install --with-deps chromium
         working-directory: screenshots
       - name: Browser regressions (desktop and phone)
         run: npx playwright test --config playwright.ci.config.ts --shard=${{ matrix.shard }}/4
