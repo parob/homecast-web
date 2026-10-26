@@ -38,11 +38,17 @@ export default defineConfig({
       // roughly a hundred. Nothing regressed: statements, branches and lines
       // all rose in the same change. NodeConfigPanel is the remaining mountain
       // and is best climbed alongside the editor redesign that will rewrite it.
+      //
+      // 2026-10-26: raised to just under 72.3 / 77.1 / 71.0 / 72.3. The floor
+      // had drifted ~14 points below the real numbers, so it would have let
+      // a large drop through. node-config-renders.test.tsx now renders every
+      // palette node's panel (NodeConfigPanel lines 43% → 68%); functions
+      // there stay low because rendering doesn't fire the handlers.
       thresholds: {
-        statements: 58,
-        branches: 73,
-        functions: 67,
-        lines: 58,
+        statements: 71,
+        branches: 76,
+        functions: 70,
+        lines: 71,
       },
     },
   },
