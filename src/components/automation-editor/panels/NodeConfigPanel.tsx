@@ -725,13 +725,14 @@ function renderConfigForm(
         return (
           <>
             <ConfigField label="Watch automation">
+              {/* Radix throws on an empty-string item value, so "All" needs one of its own. */}
               <Select
-                value={(config.watchAutomationId as string) ?? ''}
-                onValueChange={(v) => updateConfig('watchAutomationId', v || undefined)}
+                value={(config.watchAutomationId as string) || 'all'}
+                onValueChange={(v) => updateConfig('watchAutomationId', v === 'all' ? undefined : v)}
               >
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All automations" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All automations</SelectItem>
+                  <SelectItem value="all">All automations</SelectItem>
                   {(availableAutomations ?? []).map((a) => (
                     <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                   ))}
