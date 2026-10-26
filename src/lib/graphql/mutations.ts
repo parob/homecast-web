@@ -68,6 +68,26 @@ export const RESET_PASSWORD = gql`
   }
 `;
 
+export const UPDATE_MY_NAME = gql`
+  mutation UpdateMyName($name: String) {
+    updateMyName(name: $name) {
+      success
+      error
+      message
+    }
+  }
+`;
+
+export const CHANGE_MY_PASSWORD = gql`
+  mutation ChangeMyPassword($currentPassword: String!, $newPassword: String!) {
+    changeMyPassword(currentPassword: $currentPassword, newPassword: $newPassword) {
+      success
+      error
+      message
+    }
+  }
+`;
+
 export const DELETE_MY_ACCOUNT = gql`
   mutation DeleteMyAccount($password: String!) {
     deleteMyAccount(password: $password) {

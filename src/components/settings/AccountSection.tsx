@@ -23,6 +23,7 @@ import { appVersionLabel } from '@/lib/app-version';
 import { toast } from 'sonner';
 import HomeKit, { isRelayCapable } from '@/native/homekit-bridge';
 import { DeleteAccountSection } from './DeleteAccountSection';
+import { AccountDetailsSection } from './AccountDetailsSection';
 
 interface CommunityUser {
   id: string;
@@ -401,10 +402,14 @@ export function AccountSection({
       )}
 
       {userEmail && !showAuthManagement && (
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Signed in as</p>
-          <p className="text-sm font-medium">{userEmail}</p>
-        </div>
+        isCommunity ? (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Signed in as</p>
+            <p className="text-sm font-medium">{userEmail}</p>
+          </div>
+        ) : (
+          <AccountDetailsSection email={userEmail} />
+        )
       )}
 
       <div className="space-y-4">
