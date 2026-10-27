@@ -265,6 +265,7 @@ import {
 } from '@/components/ui/context-menu';
 import { toast } from 'sonner';
 import { switchEnvironment, stagingServerIsUp } from '@/lib/environment-switch';
+import { useStagingWake } from '@/hooks/useStagingWake';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile, useIsPhone } from '@/hooks/use-mobile';
 import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
@@ -1423,6 +1424,7 @@ const Dashboard = () => {
 
 
   const { user, isAuthenticated, isAdmin, hasStagingAccess, isLoading: authLoading, logout, resetAndUninstall } = useAuth();
+  const { wake: wakeStagingAndSwitch } = useStagingWake();
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -7287,12 +7289,13 @@ const Dashboard = () => {
         switchEnvironment('production');
         return;
       }
-      // Staging's server is scaled to zero between deploys. Going there then
-      // lands on a login that can't succeed, so say why instead of going.
+      // Staging's server is scaled to zero between deploys, and going there
+      // then lands on a login that can't succeed. Wake it first instead.
       if (!(await stagingServerIsUp())) {
-        toast.error('Staging is offline', {
-          description: 'Its server only runs while a server deploy is being promoted.',
-        });
+        const id = toast.loading('Waking staging for 6 hours…', { description: 'Usually takes about three minutes.' });
+        const result = await wakeStagingAndSwitch();
+        if (result.ok) toast.success('Staging is awake for 6 hours', { id });
+        else toast.error("Couldn't wake staging", { id, description: result.error });
         return;
       }
       switchEnvironment('staging');
