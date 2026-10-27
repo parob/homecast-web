@@ -1,77 +1,40 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { useMutation } from '@apollo/client/react';
-import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
-import { WAKE_STAGING } from '@/lib/graphql/mutations';
-import { config } from '@/lib/config';
-import { stagingServerIsUp, switchEnvironment, takeStagingWakeRequest } from '@/lib/environment-switch';
+import { useCallback, useRef, useState } from 'react';
+import { switchEnvironment, waitForStaging, wakeStaging } from '@/lib/environment-switch';
 
-interface WakeStagingResponse {
-  wakeStaging: { available: boolean; running: boolean; starting: boolean; awakeUntil: string | null; error: string | null };
-}
-
-// A cold start schedules a pod, pulls the image and boots the server: 3m20s
-// on 26 Oct. Ten minutes is the point at which something is wrong, not slow.
-const WAKE_POLL_MS = 5000;
-const WAKE_GIVE_UP_MS = 10 * 60 * 1000;
-
-function sleepFor(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+export type StagingWakePhase = 'idle' | 'starting' | 'failed';
 
 /**
- * Production's half of waking staging: start it for six hours, wait until it
- * answers, then switch to it.
+ * Wake staging for six hours, wait until it answers, then `onReady`.
  *
- * Reached two ways: "Switch to Staging" in the menu when staging is asleep,
- * and the staging badge's "Wake for 6 hours", which can't wake staging itself
- * (a sleeping staging can't sign you in) and hands the request here in a
- * cookie. Production is where you are signed in, so it is where the wake can
- * be authorised.
+ * Used by the staging badge (which reloads into the woken staging) and by
+ * "Switch to Staging" on production (which switches there). Waking asks
+ * production's API and needs no sign-in, so it works from either side.
  */
-export function useStagingWake() {
-  const { isAuthenticated, hasStagingAccess } = useAuth();
-  const [wakeStaging] = useMutation<WakeStagingResponse>(WAKE_STAGING);
-  const running = useRef(false);
+export function useStagingWake(onReady: () => void = () => switchEnvironment('staging')) {
+  const [phase, setPhase] = useState<StagingWakePhase>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
-  const wakeAndSwitch = useCallback(async () => {
-    if (running.current) return;
-    running.current = true;
-    const id = toast.loading('Waking staging for 6 hours…', { description: 'Usually takes about three minutes.' });
+  const wake = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (inFlight.current) return { ok: false, error: 'Already waking staging.' };
+    inFlight.current = true;
+    setPhase('starting');
+    setError(null);
+    const fail = (message: string) => {
+      setError(message);
+      setPhase('failed');
+      return { ok: false, error: message };
+    };
     try {
-      const { data } = await wakeStaging();
-      const result = data?.wakeStaging;
-      if (!result?.available) {
-        toast.error("Couldn't wake staging", { id, description: result?.error ?? undefined });
-        return;
-      }
-      const deadline = Date.now() + WAKE_GIVE_UP_MS;
-      while (!(await stagingServerIsUp())) {
-        if (Date.now() > deadline) {
-          toast.error("Staging didn't come up", { id, description: 'It is still starting; try switching again shortly.' });
-          return;
-        }
-        await sleepFor(WAKE_POLL_MS);
-      }
-      toast.success('Staging is awake for 6 hours', { id });
-      switchEnvironment('staging');
-    } catch (e) {
-      toast.error("Couldn't wake staging", { id, description: e instanceof Error ? e.message : undefined });
+      const result = await wakeStaging();
+      if ('error' in result) return fail(result.error);
+      if (!(await waitForStaging())) return fail("Staging didn't come up within ten minutes.");
+      onReady();
+      return { ok: true };
     } finally {
-      running.current = false;
+      inFlight.current = false;
     }
-  }, [wakeStaging]);
+  }, [onReady]);
 
-  // A wake asked for from staging's badge, picked up once signed in here.
-  useEffect(() => {
-    if (config.isStaging || !isAuthenticated) return;
-    if (!takeStagingWakeRequest()) return;
-    if (!hasStagingAccess) {
-      toast.error("Your account can't wake staging");
-      return;
-    }
-    void wakeAndSwitch();
-  }, [isAuthenticated, hasStagingAccess, wakeAndSwitch]);
-
-  return { wakeAndSwitch };
+  return { phase, error, wake };
 }

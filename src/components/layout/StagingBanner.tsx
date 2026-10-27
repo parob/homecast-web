@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { config } from '@/lib/config';
 import { useLocation } from 'react-router-dom';
@@ -9,7 +9,8 @@ import { GET_STAGING_ENVIRONMENT, GET_VERSION } from '@/lib/graphql/queries';
 import { WAKE_STAGING } from '@/lib/graphql/mutations';
 import { appVersionLabel } from '@/lib/app-version';
 import { isMarketingPath } from '@/lib/marketing-routes';
-import { requestStagingWake, switchEnvironment } from '@/lib/environment-switch';
+import { switchEnvironment } from '@/lib/environment-switch';
+import { useStagingWake } from '@/hooks/useStagingWake';
 
 interface VersionEntry {
   label: string;
@@ -175,9 +176,8 @@ interface StagingEnvironment {
 }
 
 /**
- * While staging is up, for someone signed in here with staging access: when
- * it goes back to sleep, and a way to push that out. Absent otherwise — the
- * query answers `available: false` to anyone else.
+ * While staging is up: when it goes back to sleep, and a way to push that
+ * out. Absent when the server predates the field or can't read its state.
  */
 function StagingAwakeLine() {
   const { data, refetch } = useQuery<{ stagingEnvironment: StagingEnvironment }>(GET_STAGING_ENVIRONMENT, {
@@ -215,11 +215,17 @@ export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {
   const { info, serverDown } = useStagingVersionInfo();
   const [isOpen, setIsOpen] = useState(false);
   const openTimeRef = useRef(0);
+  // Woken in place: this page is staging, so once it answers, reload into it.
+  const reload = useCallback(() => window.location.reload(), []);
+  const { phase: wakePhase, error: wakeError, wake } = useStagingWake(reload);
   if (!config.isStaging) return null;
 
-  const dotColor = serverDown
-    ? 'bg-zinc-400'
-    : !info ? 'bg-amber-500 animate-pulse' : info.synced ? 'bg-green-500' : 'bg-red-500';
+  const waking = wakePhase === 'starting';
+  const dotColor = waking
+    ? 'bg-amber-500 animate-pulse'
+    : serverDown
+      ? 'bg-zinc-400'
+      : !info ? 'bg-amber-500 animate-pulse' : info.synced ? 'bg-green-500' : 'bg-red-500';
 
   const pill = (
     <button
@@ -271,8 +277,13 @@ export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {
           </div>
           {serverDown && (
             <p className="text-[11px] text-muted-foreground">
-              Staging's server is asleep, so you can't sign in here. It runs during deploys, or for six hours when woken.
+              {waking
+                ? "Starting staging. It usually takes about three minutes, and this page reloads when it's ready."
+                : "Staging's server is asleep, so you can't sign in here. It runs during deploys, or for six hours when woken."}
             </p>
+          )}
+          {serverDown && wakePhase === 'failed' && wakeError && (
+            <p className="text-[11px] text-red-600">{wakeError}</p>
           )}
           {!serverDown && <StagingAwakeLine />}
           {info && !serverDown && (
@@ -285,9 +296,8 @@ export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {
           )}
           <div className="border-t" />
           {serverDown && (
-            // Production does the waking: it is where you are signed in.
-            <Button size="sm" className="w-full" onClick={() => requestStagingWake()}>
-              Wake for 6 hours
+            <Button size="sm" className="w-full" disabled={waking} onClick={() => { void wake(); }}>
+              {waking ? 'Starting…' : wakePhase === 'failed' ? 'Try again' : 'Wake for 6 hours'}
             </Button>
           )}
           <Button size="sm" variant="secondary" className="w-full" onClick={() => switchEnvironment('production')}>

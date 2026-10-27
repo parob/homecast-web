@@ -1424,7 +1424,7 @@ const Dashboard = () => {
 
 
   const { user, isAuthenticated, isAdmin, hasStagingAccess, isLoading: authLoading, logout, resetAndUninstall } = useAuth();
-  const { wakeAndSwitch: wakeStagingAndSwitch } = useStagingWake();
+  const { wake: wakeStagingAndSwitch } = useStagingWake();
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -7292,7 +7292,10 @@ const Dashboard = () => {
       // Staging's server is scaled to zero between deploys, and going there
       // then lands on a login that can't succeed. Wake it first instead.
       if (!(await stagingServerIsUp())) {
-        void wakeStagingAndSwitch();
+        const id = toast.loading('Waking staging for 6 hours…', { description: 'Usually takes about three minutes.' });
+        const result = await wakeStagingAndSwitch();
+        if (result.ok) toast.success('Staging is awake for 6 hours', { id });
+        else toast.error("Couldn't wake staging", { id, description: result.error });
         return;
       }
       switchEnvironment('staging');

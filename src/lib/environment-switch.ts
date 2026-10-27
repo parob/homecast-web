@@ -10,14 +10,12 @@
  *
  * Staging's server is scaled to zero between deploys to save cost, so most
  * of the time it is not there to sign in to. `stagingServerIsUp` lets the
- * menu check before sending anyone into it, and a person with staging access
- * can wake it for six hours (`wakeStaging`).
+ * menu check before sending anyone into it, and anyone can wake it for six
+ * hours (`wakeStaging`, then `waitForStaging`).
  *
- * Waking has to happen on production: a sleeping staging can't sign you in,
- * so it can't tell who is asking. The staging badge therefore hands the
- * request to production in a short-lived cookie on `.homecast.cloud` — the
- * one thing both origins, and the native apps' WebView, share — switches
- * there, and production wakes staging and brings you back once it answers.
+ * The wake is asked of production's API, from wherever you are: a sleeping
+ * staging has no server to ask. It needs no sign-in, which is what lets the
+ * staging badge do it in place — staging can't sign you in while asleep.
  */
 
 export type CloudEnvironment = 'production' | 'staging';
@@ -28,11 +26,12 @@ const PORTAL_URL: Record<CloudEnvironment, string> = {
 };
 
 const STAGING_API_URL = 'https://staging.api.homecast.cloud/';
+const PRODUCTION_API_URL = 'https://api.homecast.cloud/';
 
-const WAKE_REQUEST_COOKIE = 'homecast-wake-staging';
-// Long enough to sign in on production first, short enough that a stale
-// request can't fire on some later visit.
-const WAKE_REQUEST_MAX_AGE = 15 * 60;
+// A cold start schedules a pod, pulls the image and boots the server: 3m20s
+// on 26 Oct. Ten minutes is the point at which something is wrong, not slow.
+const WAKE_POLL_MS = 5000;
+const WAKE_GIVE_UP_MS = 10 * 60 * 1000;
 
 interface BridgeWindow {
   homekit?: { call: (method: string, payload: Record<string, unknown>, callbackId: string) => void };
@@ -66,23 +65,44 @@ export function switchEnvironment(
   win.location.href = PORTAL_URL[target];
 }
 
-/**
- * From a sleeping staging: ask production to wake it, and go there to do it.
- * Production picks the request up once signed in (`takeStagingWakeRequest`).
- */
-export function requestStagingWake(
-  win: BridgeWindow = window as unknown as BridgeWindow,
-  doc: { cookie: string } = document,
-  storage: Pick<Storage, 'setItem'> | undefined = typeof localStorage === 'undefined' ? undefined : localStorage,
-): void {
-  doc.cookie = `${WAKE_REQUEST_COOKIE}=1;domain=.homecast.cloud;path=/;max-age=${WAKE_REQUEST_MAX_AGE};secure;samesite=lax`;
-  switchEnvironment('production', win, doc, storage);
+export type WakeResult = { ok: true; awakeUntil: string | null } | { ok: false; error: string };
+
+/** Ask production to run staging for the next six hours. No sign-in needed. */
+export async function wakeStaging(fetchImpl: typeof fetch = fetch): Promise<WakeResult> {
+  try {
+    const response = await fetchImpl(PRODUCTION_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'mutation WakeStaging { wakeStaging { available awakeUntil error } }' }),
+    });
+    const body = await response.json();
+    const result = body?.data?.wakeStaging;
+    if (result?.available) return { ok: true, awakeUntil: result.awakeUntil ?? null };
+    return { ok: false, error: result?.error || body?.errors?.[0]?.message || `HTTP ${response.status}` };
+  } catch {
+    return { ok: false, error: "Couldn't reach Homecast. Check your connection and try again." };
+  }
 }
 
-/** On production: whether a wake was asked for, consuming the request. */
-export function takeStagingWakeRequest(doc: { cookie: string } = document): boolean {
-  if (!new RegExp(`(?:^|;\\s*)${WAKE_REQUEST_COOKIE}=1(?:;|$)`).test(doc.cookie)) return false;
-  doc.cookie = `${WAKE_REQUEST_COOKIE}=;domain=.homecast.cloud;path=/;max-age=0;secure;samesite=lax`;
+/** Poll until staging answers. False if it hasn't within `timeoutMs`. */
+export async function waitForStaging({
+  isUp = () => stagingServerIsUp(),
+  pollMs = WAKE_POLL_MS,
+  timeoutMs = WAKE_GIVE_UP_MS,
+  sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  now = () => Date.now(),
+}: {
+  isUp?: () => Promise<boolean>;
+  pollMs?: number;
+  timeoutMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+} = {}): Promise<boolean> {
+  const deadline = now() + timeoutMs;
+  while (!(await isUp())) {
+    if (now() >= deadline) return false;
+    await sleep(pollMs);
+  }
   return true;
 }
 
