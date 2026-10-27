@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { stagingServerIsUp, switchEnvironment } from '../environment-switch';
+import { requestStagingWake, stagingServerIsUp, switchEnvironment, takeStagingWakeRequest } from '../environment-switch';
 
 function fakeWindow(withBridge = false) {
   const call = vi.fn();
@@ -53,5 +53,36 @@ describe('stagingServerIsUp', () => {
   it('is false when the request fails or times out', async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
     expect(await stagingServerIsUp(fetchImpl as unknown as typeof fetch)).toBe(false);
+  });
+});
+
+describe('waking staging from its own badge', () => {
+  it('leaves a short-lived request for production, then goes there', () => {
+    const { win } = fakeWindow();
+    const writes: string[] = [];
+    const doc = { set cookie(v: string) { writes.push(v); }, get cookie() { return writes.join('; '); } };
+    requestStagingWake(win, doc, undefined);
+    expect(writes[0]).toMatch(/^homecast-wake-staging=1;domain=\.homecast\.cloud;.*max-age=900/);
+    expect(win.location.href).toBe('https://homecast.cloud/portal');
+  });
+
+  it('in the iOS/Mac app, also leaves the request and asks the app to switch', () => {
+    const { win, call } = fakeWindow(true);
+    const doc = { cookie: '' };
+    requestStagingWake(win, doc, undefined);
+    expect(doc.cookie).toContain('homecast-wake-staging=1');
+    expect(call).toHaveBeenCalledWith('settings.setEnvironment', { environment: 'production' }, expect.any(String));
+  });
+
+  it('production takes the request once, clearing it', () => {
+    const doc = { cookie: 'homecast-env=production; homecast-wake-staging=1' };
+    expect(takeStagingWakeRequest(doc)).toBe(true);
+    expect(doc.cookie).toMatch(/^homecast-wake-staging=;.*max-age=0/);
+    expect(takeStagingWakeRequest(doc)).toBe(false);
+  });
+
+  it('ignores other cookies that merely contain the name', () => {
+    expect(takeStagingWakeRequest({ cookie: 'x-homecast-wake-staging=1' })).toBe(false);
+    expect(takeStagingWakeRequest({ cookie: 'homecast-wake-staging=10' })).toBe(false);
   });
 });

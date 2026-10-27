@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { config } from '@/lib/config';
 import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { GET_VERSION } from '@/lib/graphql/queries';
+import { GET_STAGING_ENVIRONMENT, GET_VERSION } from '@/lib/graphql/queries';
+import { WAKE_STAGING } from '@/lib/graphql/mutations';
 import { appVersionLabel } from '@/lib/app-version';
 import { isMarketingPath } from '@/lib/marketing-routes';
-import { switchEnvironment } from '@/lib/environment-switch';
+import { requestStagingWake, switchEnvironment } from '@/lib/environment-switch';
 
 interface VersionEntry {
   label: string;
@@ -165,6 +166,47 @@ function VersionLine({ entry }: { entry: VersionEntry }) {
   );
 }
 
+interface StagingEnvironment {
+  available: boolean;
+  running: boolean;
+  starting: boolean;
+  awakeUntil: string | null;
+  error: string | null;
+}
+
+/**
+ * While staging is up, for someone signed in here with staging access: when
+ * it goes back to sleep, and a way to push that out. Absent otherwise — the
+ * query answers `available: false` to anyone else.
+ */
+function StagingAwakeLine() {
+  const { data, refetch } = useQuery<{ stagingEnvironment: StagingEnvironment }>(GET_STAGING_ENVIRONMENT, {
+    fetchPolicy: 'network-only',
+  });
+  const [wake, { loading }] = useMutation<{ wakeStaging: StagingEnvironment }>(WAKE_STAGING, {
+    onCompleted: () => { void refetch(); },
+  });
+  const env = data?.stagingEnvironment;
+  if (!env?.available) return null;
+
+  const until = env.awakeUntil
+    ? new Date(env.awakeUntil).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    : null;
+  return (
+    <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+      {/* No wake recorded means a deploy started it, and the deploy stops it. */}
+      <span>{until ? `Awake until ${until}` : 'Up for a deploy'}</span>
+      <button
+        className="font-medium text-foreground hover:underline disabled:opacity-50"
+        disabled={loading}
+        onClick={() => { void wake(); }}
+      >
+        {until ? 'Extend to 6h' : 'Keep awake 6h'}
+      </button>
+    </div>
+  );
+}
+
 interface StagingSyncLabelProps {
   isDarkBackground?: boolean;
 }
@@ -229,9 +271,10 @@ export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {
           </div>
           {serverDown && (
             <p className="text-[11px] text-muted-foreground">
-              Staging's server only runs while a server deploy is being promoted, so you can't sign in here right now.
+              Staging's server is asleep, so you can't sign in here. It runs during deploys, or for six hours when woken.
             </p>
           )}
+          {!serverDown && <StagingAwakeLine />}
           {info && !serverDown && (
             <>
               <div className="border-t" />
@@ -241,6 +284,12 @@ export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {
             </>
           )}
           <div className="border-t" />
+          {serverDown && (
+            // Production does the waking: it is where you are signed in.
+            <Button size="sm" className="w-full" onClick={() => requestStagingWake()}>
+              Wake for 6 hours
+            </Button>
+          )}
           <Button size="sm" variant="secondary" className="w-full" onClick={() => switchEnvironment('production')}>
             Switch to Production
           </Button>

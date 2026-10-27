@@ -78,6 +78,19 @@ export const UPDATE_MY_NAME = gql`
   }
 `;
 
+/** Run staging for the next six hours, starting it if it is asleep. */
+export const WAKE_STAGING = gql`
+  mutation WakeStaging {
+    wakeStaging {
+      available
+      running
+      starting
+      awakeUntil
+      error
+    }
+  }
+`;
+
 export const CHANGE_MY_PASSWORD = gql`
   mutation ChangeMyPassword($currentPassword: String!, $newPassword: String!) {
     changeMyPassword(currentPassword: $currentPassword, newPassword: $newPassword) {
