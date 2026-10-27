@@ -14,6 +14,19 @@ export const GET_VERSION = gql`
   }
 `;
 
+/** Whether staging is running, and until when if it was woken. Staff only. */
+export const GET_STAGING_ENVIRONMENT = gql`
+  query GetStagingEnvironment {
+    stagingEnvironment {
+      available
+      running
+      starting
+      awakeUntil
+      error
+    }
+  }
+`;
+
 export const GET_IS_WAITLIST_MODE = gql`
   query GetIsWaitlistMode {
     isWaitlistMode

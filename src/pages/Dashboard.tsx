@@ -265,6 +265,8 @@ import {
   ContextMenuSeparator,
 } from '@/components/ui/context-menu';
 import { toast } from 'sonner';
+import { switchEnvironment, stagingServerIsUp } from '@/lib/environment-switch';
+import { useStagingWake } from '@/hooks/useStagingWake';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile, useIsPhone } from '@/hooks/use-mobile';
 import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
@@ -1423,6 +1425,7 @@ const Dashboard = () => {
 
 
   const { user, isAuthenticated, isAdmin, hasStagingAccess, isLoading: authLoading, logout, resetAndUninstall } = useAuth();
+  const { wake: wakeStagingAndSwitch } = useStagingWake();
 
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -7285,20 +7288,21 @@ const Dashboard = () => {
   }
   generalItems.push({ id: 'settings', label: 'Settings', icon: Settings, symbol: 'gearshape', onSelect: () => setSettingsOpen(true) });
   if (hasStagingAccess) {
-    generalItems.push({ id: 'environment', label: config.isStaging ? 'Switch to Production' : 'Switch to Staging', icon: FlaskConical, symbol: 'flask', onSelect: () => {
-      const targetEnv = config.isStaging ? 'production' : 'staging';
-      const targetUrl = config.isStaging ? 'https://homecast.cloud/portal' : 'https://staging.homecast.cloud/portal';
-      const w = window as Window & { homekit?: { call: (method: string, payload: Record<string, unknown>, callbackId: string) => void } };
-      if (w.homekit?.call) {
-        // Native iOS/Mac app: switch WebView URL via bridge
-        w.homekit.call('settings.setEnvironment', { environment: targetEnv }, `env-switch-${Date.now()}`);
-      } else {
-        // Browser/Tauri: persist preference via cookie (shared across subdomains
-        // unlike localStorage which is per-origin) and navigate directly
-        document.cookie = 'homecast-env=' + targetEnv + ';domain=.homecast.cloud;path=/;max-age=31536000;secure;samesite=lax';
-        localStorage.setItem('homecast-environment', targetEnv); // backward compat with old Tauri builds
-        window.location.href = targetUrl;
+    generalItems.push({ id: 'environment', label: config.isStaging ? 'Switch to Production' : 'Switch to Staging', icon: FlaskConical, symbol: 'flask', onSelect: async () => {
+      if (config.isStaging) {
+        switchEnvironment('production');
+        return;
       }
+      // Staging's server is scaled to zero between deploys, and going there
+      // then lands on a login that can't succeed. Wake it first instead.
+      if (!(await stagingServerIsUp())) {
+        const id = toast.loading('Waking staging for 6 hours…', { description: 'Usually takes about three minutes.' });
+        const result = await wakeStagingAndSwitch();
+        if (result.ok) toast.success('Staging is awake for 6 hours', { id });
+        else toast.error("Couldn't wake staging", { id, description: result.error });
+        return;
+      }
+      switchEnvironment('staging');
     } });
   }
   // Only where the admin panel actually exists: it ships in the cloud
@@ -7721,24 +7725,34 @@ const Dashboard = () => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent scrim align="end" className="min-w-[200px]">
-        {overflowSections.map(section => section.title ? (
-          <div key={section.id} className="mx-1 my-1 rounded-lg bg-muted/50 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">{section.title}</span>
-              <button
-                onClick={refreshAll}
-                disabled={refreshing}
-                className="p-1 rounded hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${refreshing ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            {section.items.map(renderOverflowItem)}
-          </div>
-        ) : (
+        {/* One card with hairline dividers between logical groups — what a
+            native UIMenu looks like — rather than the titled section sitting
+            in its own boxed, separately-tinted panel (parob/homecast-cloud#199).
+            The title is just a header row inside the same card; a separator
+            marks it off from whatever comes after, not a background colour. */}
+        {overflowSections.map((section, index) => (
           <React.Fragment key={section.id}>
-            {section.separator && <DropdownMenuSeparator />}
-            {section.items.map(renderOverflowItem)}
+            {section.title ? (
+              <>
+                <div className="flex items-center justify-between px-2.5 py-1.5">
+                  <span className="text-xs font-medium text-muted-foreground truncate">{section.title}</span>
+                  <button
+                    onClick={refreshAll}
+                    disabled={refreshing}
+                    className="-mr-1 p-1 rounded hover:bg-accent disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${refreshing ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                {section.items.map(renderOverflowItem)}
+              </>
+            ) : (
+              <>
+                {section.separator && <DropdownMenuSeparator />}
+                {section.items.map(renderOverflowItem)}
+              </>
+            )}
+            {section.title && index < overflowSections.length - 1 && <DropdownMenuSeparator />}
           </React.Fragment>
         ))}
         {hasStagingAccess && (() => {
