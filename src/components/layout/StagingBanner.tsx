@@ -3,10 +3,12 @@ import { useQuery } from '@apollo/client/react';
 import { config } from '@/lib/config';
 import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { GET_VERSION } from '@/lib/graphql/queries';
 import { appVersionLabel } from '@/lib/app-version';
 import { isMarketingPath } from '@/lib/marketing-routes';
+import { switchEnvironment } from '@/lib/environment-switch';
 
 interface VersionEntry {
   label: string;
@@ -39,17 +41,20 @@ function formatDeployTime(iso: string | undefined): string | undefined {
   }
 }
 
-function useStagingVersionInfo(): StagingVersionInfo | undefined {
+function useStagingVersionInfo(): { info: StagingVersionInfo | undefined; serverDown: boolean } {
   const [prodData, setProdData] = useState<{
     server?: string; serverDeployedAt?: string;
     web?: string; webDeployedAt?: string;
   }>({});
   const [stagingWebDeployedAt, setStagingWebDeployedAt] = useState<string>();
   const [fetched, setFetched] = useState(false);
-  const { data: versionData } = useQuery<{ version: string; deployedAt?: string }>(GET_VERSION, {
+  const { data: versionData, error: versionError } = useQuery<{ version: string; deployedAt?: string }>(GET_VERSION, {
     fetchPolicy: 'cache-first',
     skip: !config.isStaging,
   });
+  // Staging's server is scaled to zero between deploys, so this failing is
+  // the normal state, not an outage — and it is why signing in fails.
+  const serverDown = !!versionError && !versionData;
 
   useEffect(() => {
     if (!config.isStaging) return;
@@ -86,7 +91,7 @@ function useStagingVersionInfo(): StagingVersionInfo | undefined {
     });
   }, []);
 
-  if (!fetched) return undefined;
+  if (!fetched) return { info: undefined, serverDown };
 
   const stagingServer = versionData?.version && versionData.version !== 'dev' ? versionData.version : undefined;
   const stagingServerDeployedAt = versionData?.deployedAt || undefined;
@@ -124,9 +129,9 @@ function useStagingVersionInfo(): StagingVersionInfo | undefined {
     entries.push({ label: 'app', staging: appVer });
   }
 
-  if (entries.length === 0) return undefined;
+  if (entries.length === 0) return { info: undefined, serverDown };
 
-  return { synced: allSynced, entries };
+  return { info: { synced: allSynced, entries }, serverDown };
 }
 
 function VersionLine({ entry }: { entry: VersionEntry }) {
@@ -165,12 +170,14 @@ interface StagingSyncLabelProps {
 }
 
 export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {}) {
-  const info = useStagingVersionInfo();
+  const { info, serverDown } = useStagingVersionInfo();
   const [isOpen, setIsOpen] = useState(false);
   const openTimeRef = useRef(0);
   if (!config.isStaging) return null;
 
-  const dotColor = !info ? 'bg-amber-500 animate-pulse' : info.synced ? 'bg-green-500' : 'bg-red-500';
+  const dotColor = serverDown
+    ? 'bg-zinc-400'
+    : !info ? 'bg-amber-500 animate-pulse' : info.synced ? 'bg-green-500' : 'bg-red-500';
 
   const pill = (
     <button
@@ -186,8 +193,9 @@ export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {
     </button>
   );
 
-  if (!info) return pill;
-
+  // Always openable, even before the versions load and when staging's
+  // server is down: it carries the way back to production, and the dashboard
+  // menu that also does is unreachable when staging can't sign you in.
   return (
     <Popover open={isOpen} onOpenChange={(open) => {
       if (open) openTimeRef.current = Date.now();
@@ -201,21 +209,41 @@ export function StagingSyncLabel({ isDarkBackground }: StagingSyncLabelProps = {
           if (Date.now() - openTimeRef.current < 300) e.preventDefault();
         }}
       >
-        <div className="p-3 space-y-2">
+        <div className="p-3 space-y-2 max-w-[16rem]">
           <div className="flex items-center justify-between gap-4">
             <span className="text-xs font-semibold">Staging</span>
-            <span className={cn(
-              "flex items-center gap-1.5 text-[11px] font-medium px-1.5 py-0.5 rounded-full",
-              info.synced ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
-            )}>
-              <span className={cn("h-1.5 w-1.5 rounded-full", info.synced ? 'bg-green-500' : 'bg-red-500')} />
-              {info.synced ? 'In Sync' : 'Out of Sync'}
-            </span>
+            {serverDown ? (
+              <span className="flex items-center gap-1.5 text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-zinc-500/10 text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+                Server Offline
+              </span>
+            ) : info && (
+              <span className={cn(
+                "flex items-center gap-1.5 text-[11px] font-medium px-1.5 py-0.5 rounded-full",
+                info.synced ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+              )}>
+                <span className={cn("h-1.5 w-1.5 rounded-full", info.synced ? 'bg-green-500' : 'bg-red-500')} />
+                {info.synced ? 'In Sync' : 'Out of Sync'}
+              </span>
+            )}
           </div>
+          {serverDown && (
+            <p className="text-[11px] text-muted-foreground">
+              Staging's server only runs while a server deploy is being promoted, so you can't sign in here right now.
+            </p>
+          )}
+          {info && !serverDown && (
+            <>
+              <div className="border-t" />
+              <div className="text-[11px] text-muted-foreground select-text selectable space-y-1">
+                {info.entries.map((entry, i) => <VersionLine key={i} entry={entry} />)}
+              </div>
+            </>
+          )}
           <div className="border-t" />
-          <div className="text-[11px] text-muted-foreground select-text selectable space-y-1">
-            {info.entries.map((entry, i) => <VersionLine key={i} entry={entry} />)}
-          </div>
+          <Button size="sm" variant="secondary" className="w-full" onClick={() => switchEnvironment('production')}>
+            Switch to Production
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
