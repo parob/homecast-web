@@ -264,6 +264,7 @@ import {
   ContextMenuSeparator,
 } from '@/components/ui/context-menu';
 import { toast } from 'sonner';
+import { switchEnvironment, stagingServerIsUp } from '@/lib/environment-switch';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile, useIsPhone } from '@/hooks/use-mobile';
 import { useEdgeSwipeOpen } from '@/hooks/useDrawerSwipe';
@@ -7281,20 +7282,20 @@ const Dashboard = () => {
   }
   generalItems.push({ id: 'settings', label: 'Settings', icon: Settings, symbol: 'gearshape', onSelect: () => setSettingsOpen(true) });
   if (hasStagingAccess) {
-    generalItems.push({ id: 'environment', label: config.isStaging ? 'Switch to Production' : 'Switch to Staging', icon: FlaskConical, symbol: 'flask', onSelect: () => {
-      const targetEnv = config.isStaging ? 'production' : 'staging';
-      const targetUrl = config.isStaging ? 'https://homecast.cloud/portal' : 'https://staging.homecast.cloud/portal';
-      const w = window as Window & { homekit?: { call: (method: string, payload: Record<string, unknown>, callbackId: string) => void } };
-      if (w.homekit?.call) {
-        // Native iOS/Mac app: switch WebView URL via bridge
-        w.homekit.call('settings.setEnvironment', { environment: targetEnv }, `env-switch-${Date.now()}`);
-      } else {
-        // Browser/Tauri: persist preference via cookie (shared across subdomains
-        // unlike localStorage which is per-origin) and navigate directly
-        document.cookie = 'homecast-env=' + targetEnv + ';domain=.homecast.cloud;path=/;max-age=31536000;secure;samesite=lax';
-        localStorage.setItem('homecast-environment', targetEnv); // backward compat with old Tauri builds
-        window.location.href = targetUrl;
+    generalItems.push({ id: 'environment', label: config.isStaging ? 'Switch to Production' : 'Switch to Staging', icon: FlaskConical, symbol: 'flask', onSelect: async () => {
+      if (config.isStaging) {
+        switchEnvironment('production');
+        return;
       }
+      // Staging's server is scaled to zero between deploys. Going there then
+      // lands on a login that can't succeed, so say why instead of going.
+      if (!(await stagingServerIsUp())) {
+        toast.error('Staging is offline', {
+          description: 'Its server only runs while a server deploy is being promoted.',
+        });
+        return;
+      }
+      switchEnvironment('staging');
     } });
   }
   // Only where the admin panel actually exists: it ships in the cloud
