@@ -5,7 +5,7 @@
 // in the browser (history/aggregate.ts). So a room is a SUBSET of the house's
 // refs, and caching ONE SERIES AT A TIME is what lets the house view reuse
 // what the room view just fetched. Caching whole responses would not: refs are
-// re-chunked six at a time and the batches never line up twice.
+// re-chunked between scopes and the batches never line up twice.
 //
 // Everything here is in memory and lives for five minutes. There is no
 // persistence, no interval bookkeeping and no partial top-up: a request either
@@ -135,7 +135,7 @@ export function clearSeriesCache(): void {
 /**
  * Collapse concurrent identical queries into one.
  *
- * Keyed on the whole chunk, not a series: a query carries up to six refs, and
+ * Keyed on the whole chunk, not a series: a query carries up to sixty refs, and
  * the callers that race here (a re-render, a StrictMode double-effect, a
  * dialog over the page) build the identical chunk rather than an overlapping
  * one.

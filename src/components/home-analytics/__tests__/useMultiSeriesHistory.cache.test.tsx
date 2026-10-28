@@ -9,11 +9,13 @@
 // over-fetch fails the test rather than merely being slower.
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { GraphQLError } from 'graphql';
 import { renderHook, waitFor } from '@testing-library/react';
 import { MockedProvider } from '@apollo/client/testing/react';
 import type { ReactNode } from 'react';
 import { useMultiSeriesHistory } from '../useMultiSeriesHistory';
-import { GET_HISTORY } from '@/lib/graphql/queries';
+import { GET_HISTORY, GET_PUBLIC_ENTITY_HISTORY } from '@/lib/graphql/queries';
+import { SharedHistoryProvider } from '@/contexts/HistoryContext';
 import { __resetSeriesCacheForTests } from '@/history/seriesCache';
 
 const HOUR = 3_600_000;
@@ -53,13 +55,13 @@ const answer = (accessoryIds: string[]) => ({
 const refs = (accessoryIds: string[]) =>
   accessoryIds.map(accessoryId => ({ accessoryId, characteristicType: TYPE }));
 
-function wrapperWith(mocks: ReturnType<typeof answer>[]) {
+function wrapperWith(mocks: Array<ReturnType<typeof answer> & { delay?: number }>) {
   return ({ children }: { children: ReactNode }) => (
     <MockedProvider mocks={mocks}>{children}</MockedProvider>
   );
 }
 
-const render = (accessoryIds: string[], mocks: ReturnType<typeof answer>[]) =>
+const render = (accessoryIds: string[], mocks: Array<ReturnType<typeof answer> & { delay?: number }>) =>
   renderHook(
     () => useMultiSeriesHistory('HOME-1', refs(accessoryIds), FROM, TO, false),
     { wrapper: wrapperWith(mocks) },
@@ -129,5 +131,83 @@ describe('useMultiSeriesHistory — the series cache', () => {
     // be served for it.
     await waitFor(() => expect(moved.result.current.data.size).toBe(1));
     expect(moved.result.current.error).toBeNull();
+  });
+});
+
+
+describe('analytics batches', () => {
+  it('loads sixty series in one request', async () => {
+    const ids = Array.from({ length: 60 }, (_, i) => `ACC-${i}`);
+    const view = render(ids, [answer(ids)]);
+    await waitFor(() => expect(view.result.current.data.size).toBe(60));
+    expect(view.result.current.progress).toEqual({ done: 60, total: 60 });
+  });
+
+  it('shows the first batch while the rest is still loading', async () => {
+    const ids = Array.from({ length: 61 }, (_, i) => `ACC-${i}`);
+    const view = render(ids, [
+      { ...answer(ids.slice(0, 60)), delay: 0 },
+      { ...answer(ids.slice(60)), delay: 250 },
+    ]);
+    await waitFor(() => expect(view.result.current.data.size).toBe(60));
+    expect(view.result.current.loading).toBe(true);
+    expect(view.result.current.progress).toEqual({ done: 60, total: 61 });
+    await waitFor(() => expect(view.result.current.data.size).toBe(61));
+    expect(view.result.current.loading).toBe(false);
+  });
+
+  it('falls back to six-series requests on an older relay', async () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `ACC-${i}`);
+    const rejected = {
+      ...answer(ids),
+      result: { errors: [new GraphQLError('history queries take 1-6 series')] },
+    };
+    const view = renderHook(
+      () => useMultiSeriesHistory('HOME-1', refs(ids), FROM, TO, false),
+      { wrapper: ({ children }) => <MockedProvider mocks={[
+        rejected, answer(ids.slice(0, 6)), answer(ids.slice(6)),
+      ]}>{children}</MockedProvider> },
+    );
+    await waitFor(() => expect(view.result.current.data.size).toBe(12));
+    expect(view.result.current.error).toBeNull();
+  });
+
+  it('does not hide permission errors behind a compatibility retry', async () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `ACC-${i}`);
+    const view = renderHook(
+      () => useMultiSeriesHistory('HOME-1', refs(ids), FROM, TO, false),
+      { wrapper: ({ children }) => <MockedProvider mocks={[{
+        ...answer(ids), result: { errors: [new GraphQLError('Access denied')] },
+      }]}>{children}</MockedProvider> },
+    );
+    await waitFor(() => expect(view.result.current.error).toContain('Access denied'));
+    expect(view.result.current.data.size).toBe(0);
+  });
+});
+
+
+it('keeps concurrent share requests separate, including their passcodes', async () => {
+  const renderShare = (shareHash: string, passcode: string, value: number) => {
+    const resultSeries = answer(['ACC-A']).result.data.history[0];
+    return renderHook(() => useMultiSeriesHistory('HOME-1', refs(['ACC-A']), FROM, TO, false), {
+      wrapper: ({ children }) => <MockedProvider mocks={[{
+        request: {
+          query: GET_PUBLIC_ENTITY_HISTORY,
+          variables: { shareHash, passcode, series: refs(['ACC-A']), fromTs: FROM, toTs: TO, maxPoints: 500 },
+        },
+        result: { data: { publicEntityHistory: [{ ...resultSeries, prevValue: value }] } },
+        delay: 30,
+      }]}><SharedHistoryProvider shareHash={shareHash} passcode={passcode} homeId="HOME-1" enabled>
+        {children}
+      </SharedHistoryProvider></MockedProvider>,
+    });
+  };
+  const a = renderShare('share-a', '1234', 10);
+  const b = renderShare('share-b', '1234', 20);
+  const c = renderShare('share-a', '5678', 30);
+  await waitFor(() => {
+    expect(a.result.current.data.get(`ACC-A|${TYPE}`)?.main.prevValue).toBe(10);
+    expect(b.result.current.data.get(`ACC-A|${TYPE}`)?.main.prevValue).toBe(20);
+    expect(c.result.current.data.get(`ACC-A|${TYPE}`)?.main.prevValue).toBe(30);
   });
 });

@@ -34,7 +34,7 @@ export function SeriesProgress({ progress }: { progress?: { done: number; total:
  * measures nothing and then shoves everything down.
  *
  * The wait is reported as real progress rather than a guessed ETA: the wire
- * caps a query at six series, so a wide view is a known number of sequential
+ * caps a query at sixty series, so a wide view is a known number of concurrent
  * chunks and "18 of 30 series" is a fact. A percentage invented from a timer
  * is the kind of progress bar nobody believes twice.
  */

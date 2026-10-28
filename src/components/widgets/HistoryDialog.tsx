@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ExternalLink, Loader2, LineChart } from 'lucide-react';
 import { useQuery } from '@apollo/client/react';
 import {
-  GET_HISTORY_STORAGE_STATS, GET_HISTORY_SERIES, GET_PUBLIC_ENTITY_HISTORY_SERIES,
+  GET_ANALYTICS_STATUS, GET_ANALYTICS_SERIES, GET_PUBLIC_ENTITY_ANALYTICS_SERIES,
 } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics, sortByHistoryImportance, type WritableChar } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled, mockRecordedSeries } from '@/history/mock';
@@ -105,7 +105,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   }, [recordable]);
 
   // EVERY recordable characteristic, importance-ordered — the chunked fetch
-  // handles the 6-refs-per-query wire cap (the old first-6 cap hid lux and
+  // handles the bounded wire batches (the old first-6 cap hid lux and
   // air quality on multi-sensor devices).
   const refs = useMemo<HistorySeriesRefInput[]>(
     () => recordable.map(c => ({
@@ -123,7 +123,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   const shared = transport?.kind === 'share' ? transport : null;
 
   const { data: statsData } = useQuery<{ historyStorageStats: HistoryStorageStatsData }>(
-    GET_HISTORY_STORAGE_STATS,
+    GET_ANALYTICS_STATUS,
     { variables: { homeId: target?.homeId }, skip: !target || mock || !!shared },
   );
   const historyEnabled = mock
@@ -136,7 +136,7 @@ export function HistoryDialog({ target, onClose, onOpenSettings }: HistoryDialog
   const { data: recordedData } = useQuery<{
     historySeries?: HistorySeriesInfo[];
     publicEntityHistorySeries?: HistorySeriesInfo[];
-  }>(shared ? GET_PUBLIC_ENTITY_HISTORY_SERIES : GET_HISTORY_SERIES, {
+  }>(shared ? GET_PUBLIC_ENTITY_ANALYTICS_SERIES : GET_ANALYTICS_SERIES, {
     variables: shared
       ? { shareHash: shared.shareHash, passcode: shared.passcode ?? null }
       : { homeId: target?.homeId },

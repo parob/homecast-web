@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient } from '@apollo/client/react';
-import { GET_HISTORY_STORAGE_STATS } from '@/lib/graphql/queries';
+import { GET_ANALYTICS_STATUS } from '@/lib/graphql/queries';
 import { getRecordableCharacteristics } from '@/components/automations/characteristics';
 import { isMockHistoryEnabled } from '@/history/mock';
 import type { CategoryId } from '@/history/categories';
@@ -121,7 +121,7 @@ export function HistoryProvider({
       for (const id of ids) {
         try {
           const result = await client.query<{ historyStorageStats: HistoryStorageStatsData }>({
-            query: GET_HISTORY_STORAGE_STATS,
+            query: GET_ANALYTICS_STATUS,
             variables: { homeId: id },
             fetchPolicy: 'network-only',
           });
@@ -223,7 +223,7 @@ interface SharedHistoryProviderProps {
  * The Analytics gate for a public share page.
  *
  * A second provider rather than a mode flag on HistoryProvider, for one
- * structural reason: HistoryProvider polls GET_HISTORY_STORAGE_STATS, an
+ * structural reason: HistoryProvider polls GET_ANALYTICS_STATUS, an
  * authenticated query, every five minutes. On an anonymous page that must not
  * merely be skipped — it must be absent, so no future edit can reintroduce it
  * behind a condition. This provider simply has no query in it.

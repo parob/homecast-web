@@ -1,5 +1,5 @@
 import { useQuery } from '@apollo/client/react';
-import { GET_HISTORY_SERIES, GET_PUBLIC_ENTITY_HISTORY_SERIES } from '@/lib/graphql/queries';
+import { GET_ANALYTICS_SERIES, GET_PUBLIC_ENTITY_ANALYTICS_SERIES } from '@/lib/graphql/queries';
 import { useHistory } from '@/contexts/HistoryContext';
 import { mockRecordedSeries } from '@/history/mock';
 import type { HistorySeriesInfo } from '@/lib/graphql/types';
@@ -21,7 +21,7 @@ export function useRecordedSeries(homeId: string | null, mock: boolean) {
   const { data, loading, error, refetch } = useQuery<{
     historySeries?: HistorySeriesInfo[];
     publicEntityHistorySeries?: HistorySeriesInfo[];
-  }>(shared ? GET_PUBLIC_ENTITY_HISTORY_SERIES : GET_HISTORY_SERIES, {
+  }>(shared ? GET_PUBLIC_ENTITY_ANALYTICS_SERIES : GET_ANALYTICS_SERIES, {
     variables: shared
       ? { shareHash: shared.shareHash, passcode: shared.passcode ?? null }
       : { homeId },
