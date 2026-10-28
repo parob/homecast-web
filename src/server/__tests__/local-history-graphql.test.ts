@@ -30,6 +30,8 @@ import {
   resetHistoryRuntimeForTest,
 } from '../local-history';
 import { DAY_MS, HOUR_MS } from '@/history/rollup';
+import { print } from 'graphql';
+import { GET_ANALYTICS_SERIES, GET_ANALYTICS_STATUS } from '@/lib/graphql/queries';
 
 const HOME = 'HOME-AAAA';
 const ACC = 'ACC-1111';
@@ -124,11 +126,11 @@ describe('history GraphQL operations', () => {
       operationName: 'GetHistory',
       variables: {
         homeId: HOME,
-        series: Array.from({ length: 7 }, (_, i) => ({ accessoryId: `A${i}`, characteristicType: 'power_state' })),
+        series: Array.from({ length: 61 }, (_, i) => ({ accessoryId: `A${i}`, characteristicType: 'power_state' })),
         fromTs: T0, toTs: T0 + HOUR_MS,
       },
     })) as { errors?: Array<{ message: string }> };
-    expect(tooMany.errors?.[0].message).toMatch(/1-6 series/);
+    expect(tooMany.errors?.[0].message).toMatch(/1-60 series/);
   });
 
   it('serves string series with text through the wire shape', async () => {
@@ -188,4 +190,32 @@ describe('history GraphQL operations', () => {
     const parsed = JSON.parse(data.stateBuckets[0].stateMsJson) as Record<string, number>;
     expect(Object.keys(parsed).length).toBeGreaterThan(0);
   });
+});
+
+
+it('serves the chart catalogue and gate without reading sample storage', async () => {
+  await gql('SetHomeHistoryEnabled', { homeId: HOME, enabled: true });
+  await reloadHistoryConfig();
+  recordHistoryEvent(HOME, ACC, 'power_state', true, 0, T0);
+  await flushHistoryBuffer();
+  const samples = vi.spyOn(db, 'getHistorySamples');
+  const last = vi.spyOn(db, 'getLastHistorySampleBefore');
+  const count = vi.spyOn(db, 'countHistorySamples');
+  const stats = vi.spyOn(db, 'getHistoryStorageStats');
+  try {
+    const catalogue = await handleGraphQL({
+      operationName: 'GetHistorySeries', query: print(GET_ANALYTICS_SERIES), variables: { homeId: HOME },
+    }) as any;
+    expect(catalogue.data.historySeries).toHaveLength(1);
+    const gate = await handleGraphQL({
+      operationName: 'GetHistoryStorageStats', query: print(GET_ANALYTICS_STATUS), variables: { homeId: HOME },
+    }) as any;
+    expect(gate.data.historyStorageStats.enabled).toBe(true);
+    expect(samples).not.toHaveBeenCalled();
+    expect(last).not.toHaveBeenCalled();
+    expect(count).not.toHaveBeenCalled();
+    expect(stats).not.toHaveBeenCalled();
+  } finally {
+    vi.restoreAllMocks();
+  }
 });

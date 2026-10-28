@@ -2,6 +2,7 @@ import { ApolloClient, InMemoryCache, createHttpLink, ApolloLink, Observable } f
 import { SetContextLink } from "@apollo/client/link/context";
 import { RetryLink } from "@apollo/client/link/retry";
 import { ErrorLink } from "@apollo/client/link/error";
+import { print } from "graphql";
 import { generateTraceId, getClientType } from "./tracing";
 import { config, isCommunity } from "./config";
 import { browserLogger } from "./browser-logger";
@@ -181,6 +182,7 @@ const communityLocalLink = new ApolloLink((operation, forward) => {
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('homecast-token') : null;
       handleGraphQL({
         operationName: operation.operationName,
+        query: print(operation.query),
         variables: operation.variables,
         authorization: token ? `Bearer ${token}` : undefined,
         // This link only runs on the relay Mac — see the guard above.

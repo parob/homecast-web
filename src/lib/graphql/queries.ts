@@ -1259,3 +1259,27 @@ export const EXPORT_HISTORY = gql`
     exportHistory(homeId: $homeId, accessoryId: $accessoryId, characteristicType: $characteristicType)
   }
 `;
+
+// Chart navigation only needs the catalogue and the recording gate. Exact
+// storage statistics stay in the Settings documents above.
+export const GET_ANALYTICS_SERIES = gql`
+  query GetHistorySeries($homeId: String!) {
+    historySeries(homeId: $homeId) {
+      accessoryId characteristicType kind unit enabled minIntervalS deadband
+    }
+  }
+`;
+
+export const GET_PUBLIC_ENTITY_ANALYTICS_SERIES = gql`
+  query GetPublicEntityHistorySeries($shareHash: String!, $passcode: String) {
+    publicEntityHistorySeries(shareHash: $shareHash, passcode: $passcode) {
+      accessoryId characteristicType kind unit enabled minIntervalS deadband
+    }
+  }
+`;
+
+export const GET_ANALYTICS_STATUS = gql`
+  query GetHistoryStorageStats($homeId: String!) {
+    historyStorageStats(homeId: $homeId) { enabled }
+  }
+`;

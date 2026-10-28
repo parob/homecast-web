@@ -457,7 +457,7 @@ export async function handleGraphQL(request: GraphQLRequest): Promise<unknown> {
       }
     }
 
-    const data = await resolveOperation(operationName, variables);
+    const data = await resolveOperation(operationName, variables, request.query);
     return { data };
   } catch (error: any) {
     return {
@@ -492,9 +492,22 @@ function idbHistoryStore(): import('../history/query').HistoryStore {
   };
 }
 
+// Operations retain their established names so updated browsers can still
+// use an older bundled relay. No document means an internal caller expecting
+// full statistics; parsing conservatively includes fields in any fragment.
+async function requestsHistoryStats(query?: string): Promise<boolean> {
+  if (!query) return true;
+  const { parse, visit } = await import('graphql');
+  const stats = new Set(['firstTs', 'lastTs', 'sampleCount', 'seriesCount', 'sampleRows', 'rollupRows', 'estBytes', 'oldestTs']);
+  let requested = false;
+  visit(parse(query), { Field(node) { if (stats.has(node.name.value)) requested = true; } });
+  return requested;
+}
+
 async function resolveOperation(
   operationName: string | undefined,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
+  query?: string,
 ): Promise<unknown> {
   switch (operationName) {
     // --- Auth ---
@@ -1585,11 +1598,12 @@ async function resolveOperation(
         import('../history/policy'),
         db.getHistorySeries(homeId),
       ]);
+      const includeStats = await requestsHistoryStats(query);
       const out = [];
       for (const row of rows) {
         const profile = getProfile(row.characteristicType);
-        const first = await db.getHistorySamples(row.id, 0, Number.MAX_SAFE_INTEGER, 1);
-        const last = await db.getLastHistorySampleBefore(row.id, Number.MAX_SAFE_INTEGER);
+        const first = includeStats ? await db.getHistorySamples(row.id, 0, Number.MAX_SAFE_INTEGER, 1) : [];
+        const last = includeStats ? await db.getLastHistorySampleBefore(row.id, Number.MAX_SAFE_INTEGER) : undefined;
         out.push({
           accessoryId: row.accessoryId,
           characteristicType: row.characteristicType,
@@ -1600,7 +1614,7 @@ async function resolveOperation(
           deadband: row.deadband ?? profile?.deadband ?? null,
           firstTs: first[0]?.ts ?? null,
           lastTs: last?.ts ?? null,
-          sampleCount: await db.countHistorySamples(row.id),
+          sampleCount: includeStats ? await db.countHistorySamples(row.id) : 0,
           __typename: 'HistorySeriesInfo',
         });
       }
@@ -1616,8 +1630,8 @@ async function resolveOperation(
       if (!Number.isFinite(from) || !Number.isFinite(to))
 
         throw new Error('fromTs/toTs must be epoch milliseconds');
-      if (refs.length === 0 || refs.length > 6) {
-        throw new Error('history queries take 1-6 series');
+      if (refs.length === 0 || refs.length > 60) {
+        throw new Error('history queries take 1-60 series');
       }
 
       const [{ seriesKey }, { queryHistorySeries }, { getProfile }] = await Promise.all([
@@ -1627,15 +1641,16 @@ async function resolveOperation(
       ]);
       const store = idbHistoryStore();
 
-      const results = [];
-      for (const ref of refs) {
+      // IndexedDB read transactions can run together. A larger wire batch
+      // must not turn into sixty sequential series reads on a relay Mac.
+      const results = await Promise.all(refs.map(async (ref) => {
         const sid = seriesKey(homeId, ref.accessoryId, ref.characteristicType);
         const row = await db.getHistorySeriesById(sid);
         const profile = getProfile(ref.characteristicType);
         const kind = row?.kind ?? profile?.kind;
-        if (!kind) continue; // unrecordable characteristic — nothing to serve
+        if (!kind) return null; // unrecordable characteristic — nothing to serve
         const data = await queryHistorySeries(store, sid, kind, from, to, maxPoints);
-        results.push({
+        return {
           accessoryId: ref.accessoryId,
           characteristicType: row?.characteristicType ?? ref.characteristicType,
           kind,
@@ -1654,9 +1669,9 @@ async function resolveOperation(
             __typename: 'HistoryStateBucket',
           })),
           __typename: 'HistorySeriesData',
-        });
-      }
-      return { history: results };
+        };
+      }));
+      return { history: results.filter(Boolean) };
     }
 
     /*
@@ -1687,13 +1702,14 @@ async function resolveOperation(
         import('../history/policy'),
         db.getHistorySeries(homeId),
       ]);
+      const includeStats = await requestsHistoryStats(query);
       const out = [];
       for (const row of rows) {
         const key = String(row.accessoryId || '').replace(/-/g, '').toLowerCase();
         if (!allowed.has(key)) continue;
         const profile = getProfile(row.characteristicType);
-        const first = await db.getHistorySamples(row.id, 0, Number.MAX_SAFE_INTEGER, 1);
-        const last = await db.getLastHistorySampleBefore(row.id, Number.MAX_SAFE_INTEGER);
+        const first = includeStats ? await db.getHistorySamples(row.id, 0, Number.MAX_SAFE_INTEGER, 1) : [];
+        const last = includeStats ? await db.getLastHistorySampleBefore(row.id, Number.MAX_SAFE_INTEGER) : undefined;
         out.push({
           accessoryId: row.accessoryId,
           characteristicType: row.characteristicType,
@@ -1704,7 +1720,7 @@ async function resolveOperation(
           deadband: row.deadband ?? profile?.deadband ?? null,
           firstTs: first[0]?.ts ?? null,
           lastTs: last?.ts ?? null,
-          sampleCount: await db.countHistorySamples(row.id),
+          sampleCount: includeStats ? await db.countHistorySamples(row.id) : 0,
           __typename: 'HistorySeriesInfo',
         });
       }
@@ -1725,8 +1741,8 @@ async function resolveOperation(
       if (!Number.isFinite(from) || !Number.isFinite(to)) {
         throw new Error('fromTs/toTs must be epoch milliseconds');
       }
-      if (refs.length === 0 || refs.length > 6) {
-        throw new Error('history queries take 1-6 series');
+      if (refs.length === 0 || refs.length > 60) {
+        throw new Error('history queries take 1-60 series');
       }
 
       // The refs came from the client, so they are input, not authority.
@@ -1747,15 +1763,16 @@ async function resolveOperation(
       ]);
       const store = idbHistoryStore();
 
-      const results = [];
-      for (const ref of refs) {
+      // IndexedDB read transactions can run together. A larger wire batch
+      // must not turn into sixty sequential series reads on a relay Mac.
+      const results = await Promise.all(refs.map(async (ref) => {
         const sid = seriesKey(homeId, ref.accessoryId, ref.characteristicType);
         const row = await db.getHistorySeriesById(sid);
         const profile = getProfile(ref.characteristicType);
         const kind = row?.kind ?? profile?.kind;
-        if (!kind) continue; // unrecordable characteristic — nothing to serve
+        if (!kind) return null; // unrecordable characteristic — nothing to serve
         const data = await queryHistorySeries(store, sid, kind, from, to, maxPoints);
-        results.push({
+        return {
           accessoryId: ref.accessoryId,
           characteristicType: row?.characteristicType ?? ref.characteristicType,
           kind,
@@ -1774,16 +1791,18 @@ async function resolveOperation(
             __typename: 'HistoryStateBucket',
           })),
           __typename: 'HistorySeriesData',
-        });
-      }
-      return { publicEntityHistory: results };
+        };
+      }));
+      return { publicEntityHistory: results.filter(Boolean) };
     }
 
     case 'GetHistoryStorageStats': {
       const homeId = variables.homeId as string;
       const [{ getHistoryHomeConfigs }, stats] = await Promise.all([
         import('./local-history'),
-        db.getHistoryStorageStats(variables.homeId as string),
+        !(await requestsHistoryStats(query))
+          ? { sampleRows: 0, rollupRows: 0, seriesCount: 0, oldestSampleTs: null }
+          : db.getHistoryStorageStats(variables.homeId as string),
       ]);
       const config = (await getHistoryHomeConfigs())[homeId.toUpperCase()];
       // Empirical CE row cost: a sample object with its two index entries

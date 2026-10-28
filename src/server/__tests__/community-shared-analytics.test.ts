@@ -283,10 +283,10 @@ describe('scope', () => {
 });
 
 describe('caps', () => {
-  it('enforces the 1-6 series wire cap server-side', async () => {
+  it('enforces the 1-60 series wire cap server-side', async () => {
     share('home', HOME);
     await setFlags(true, true);
-    const seven = Array.from({ length: 7 }, (_, i) => ({
+    const seven = Array.from({ length: 61 }, (_, i) => ({
       accessoryId: LAMP, characteristicType: `c${i}`,
     }));
     const tooMany = await call('GetPublicEntityHistory', {

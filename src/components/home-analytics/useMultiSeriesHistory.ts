@@ -29,7 +29,7 @@ const entryKey = (accessoryId: string, characteristicType: string) =>
   `${accessoryId.toUpperCase()}|${characteristicType}`;
 
 /**
- * Chunked multi-series fetch: the wire caps GetHistory at 6 refs, so wider
+ * Chunked multi-series fetch: the wire caps GetHistory at 60 refs, so wider
  * views issue several queries. Keyed by UPPERCASE accessory id +
  * characteristic — the case-insensitive UUID rule. Accessory UUIDs are
  * globally unique, so that key stays right across homes.
@@ -37,7 +37,7 @@ const entryKey = (accessoryId: string, characteristicType: string) =>
  * Answers are cached one series at a time (history/seriesCache), which is what
  * makes a room and the whole house share work: the house's refs are a superset
  * of the room's, so only what is genuinely new is fetched. Caching at the
- * response level could not do that — the refs are re-chunked six at a time and
+ * response level could not do that — the refs are re-chunked between views and
  * two views never produce the same batches.
  */
 export function useMultiSeriesHistory(
@@ -54,8 +54,7 @@ export function useMultiSeriesHistory(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
-  // Real progress, not a guessed ETA: the wire caps a query at 6 series, so a
-  // wide view is a known number of sequential chunks and "18 of 30" is a fact.
+  // Progress counts answered series, including cache hits, as batches arrive.
   const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const refsKey = refs.map(r => `${r.homeId ?? ''}|${r.accessoryId}|${r.characteristicType}`).join(',');
   const maxPoints = opts?.maxPoints ?? 500;
@@ -67,7 +66,7 @@ export function useMultiSeriesHistory(
    * every call.
    */
   const nsOf = (ref: ScopedSeriesRef): string =>
-    shared ? `share:${shared.shareHash}` : (ref.homeId ?? homeId ?? '');
+    shared ? JSON.stringify(['share', shared.shareHash, shared.passcode ?? null]) : (ref.homeId ?? homeId ?? '');
 
   const cacheKeyOf = (ref: ScopedSeriesRef): string =>
     seriesCacheKey(nsOf(ref), ref.accessoryId, ref.characteristicType, fromTs, toTs, maxPoints);
@@ -95,6 +94,9 @@ export function useMultiSeriesHistory(
     const anyHome = shared || homeId || refs.some(r => r.homeId);
     if (!enabled || !anyHome || refs.length === 0) {
       setData(new Map());
+      setLoading(false);
+      setError(null);
+      setProgress({ done: 0, total: 0 });
       return;
     }
     let cancelled = false;
@@ -117,7 +119,7 @@ export function useMultiSeriesHistory(
     const fetchAll = async (from: number, to: number): Promise<HistorySeriesData[]> => {
       if (mock) return mockHistoryData(refs, from, to, maxPoints);
       // Group by home first — GetHistory takes one home — then into the
-      // 6-ref wire batches. The homeId never travels in the variables.
+      // 60-ref wire batches. The homeId never travels in the variables.
       //
       // A share never spans homes (the hash names one entity), so in share
       // mode the per-ref home is dropped and everything batches together; the
@@ -132,15 +134,13 @@ export function useMultiSeriesHistory(
       }
       const chunks: Array<{ homeId: string; refs: HistorySeriesRefInput[] }> = [];
       for (const [home, homeRefs] of byHome) {
-        for (let i = 0; i < homeRefs.length; i += 6) {
-          chunks.push({ homeId: home, refs: homeRefs.slice(i, i + 6) });
+        for (let i = 0; i < homeRefs.length; i += 60) {
+          chunks.push({ homeId: home, refs: homeRefs.slice(i, i + 60) });
         }
       }
 
-      // Sequentially, a home of 688 series is 115 round trips end to end —
-      // half a minute of waiting for a relay that could have answered several
-      // at once. Six in flight keeps it well inside what a relay and the
-      // browser's connection limit will take.
+      // Larger batches amortise auth and database round trips. Three workers
+      // bound response memory and leave connections for device controls.
       const out: HistorySeriesData[] = [];
       let done = cached.size;
       let next = 0;
@@ -150,10 +150,11 @@ export function useMultiSeriesHistory(
           if (index >= chunks.length || cancelled) return;
           const chunk = chunks[index];
           const dedupeKey = [
-            chunk.homeId, from, to, maxPoints,
+            shared ? JSON.stringify([shared.shareHash, shared.passcode]) : chunk.homeId,
+            gen, from, to, maxPoints,
             chunk.refs.map(r => `${r.accessoryId}|${r.characteristicType}`).join(','),
           ].join('#');
-          const result = await inflight(dedupeKey, () => client.query<{
+          const fetchChunk = (chunkRefs: HistorySeriesRefInput[]) => client.query<{
             history?: HistorySeriesData[];
             publicEntityHistory?: HistorySeriesData[];
           }>({
@@ -161,19 +162,37 @@ export function useMultiSeriesHistory(
             variables: shared
               ? {
                   shareHash: shared.shareHash, passcode: shared.passcode ?? null,
-                  series: chunk.refs, fromTs: from, toTs: to, maxPoints,
+                  series: chunkRefs, fromTs: from, toTs: to, maxPoints,
                 }
-              : { homeId: chunk.homeId, series: chunk.refs, fromTs: from, toTs: to, maxPoints },
-            fetchPolicy: 'network-only',
-          }));
-          const series = result.data?.publicEntityHistory ?? result.data?.history ?? [];
+              : { homeId: chunk.homeId, series: chunkRefs, fromTs: from, toTs: to, maxPoints },
+            // The per-series cache owns reuse. Apollo normalising every point
+            // adds work and retains a second copy of these large payloads.
+            fetchPolicy: 'no-cache',
+          });
+          const series = await inflight(dedupeKey, async () => {
+            try {
+              const result = await fetchChunk(chunk.refs);
+              return result.data?.publicEntityHistory ?? result.data?.history ?? [];
+            } catch (error) {
+              // Old cloud servers and bundled Community relays still cap at
+              // six. A rolling deployment must keep their charts working.
+              if (chunk.refs.length <= 6 || !(error instanceof Error)
+                || !error.message.includes('history queries take 1-6 series')) throw error;
+              const fallback: HistorySeriesData[] = [];
+              for (let i = 0; i < chunk.refs.length; i += 6) {
+                const result = await fetchChunk(chunk.refs.slice(i, i + 6));
+                fallback.push(...(result.data?.publicEntityHistory ?? result.data?.history ?? []));
+              }
+              return fallback;
+            }
+          });
           for (const s of series) {
             // Keyed by what was ASKED for, so the next view asking the same
             // question finds it — the answer carries its own ids, which a
             // caller has no way to guess in advance.
             setCachedSeries(
               seriesCacheKey(
-                shared ? `share:${shared.shareHash}` : chunk.homeId,
+                shared ? JSON.stringify(['share', shared.shareHash, shared.passcode ?? null]) : chunk.homeId,
                 s.accessoryId, s.characteristicType, from, to, maxPoints,
               ),
               s,
@@ -182,13 +201,19 @@ export function useMultiSeriesHistory(
           }
           out.push(...series);
           done += chunk.refs.length;
-          if (!cancelled) setProgress(p => ({ ...p, done: Math.min(done, p.total) }));
+          if (!cancelled) {
+            const ready = new Map(cached);
+            for (const s of out) ready.set(entryKey(s.accessoryId, s.characteristicType), { main: s });
+            setData(ready);
+            setProgress(p => ({ ...p, done: Math.min(done, p.total) }));
+          }
         }
       };
-      await Promise.all(Array.from({ length: Math.min(6, chunks.length) }, worker));
+      await Promise.all(Array.from({ length: Math.min(3, chunks.length) }, worker));
       return out;
     };
 
+    setData(cached);
     setProgress({ done: mock ? 0 : cached.size, total: refs.length });
     setLoading(true);
     setError(null);
