@@ -17,6 +17,7 @@ import { config } from '@/lib/config';
 import { getCacheTimestamp } from '@/hooks/useHomeKitData';
 import type { HomeKitHome } from '@/native/homekit-bridge';
 import { effectiveServing, type HomeServing } from '@/server/home-serving';
+import { nativeAppInfo, type AppVersionSource } from '@/lib/app-version';
 
 // ---------------------------------------------------------------------------
 // relay_status_update history — the broadcasts are the only push channel for
@@ -60,6 +61,9 @@ export function buildDiagnosticsBundle(extra?: Record<string, unknown>) {
       apiUrl: config.apiUrl,
       isCommunity: config.isCommunity,
       isStaging: config.isStaging,
+      // The web commit above is not the app: an iOS or Mac fault turns on
+      // which native build is installed, and nothing else in a report says.
+      native: nativeAppInfo(window as unknown as AppVersionSource),
     },
     connection: {
       state: conn.connectionState,
