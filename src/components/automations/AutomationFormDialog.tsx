@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ import { canonicalCharacteristic } from '@/lib/characteristic-aliases';
 import { defaultValueFor, findAccessoryById, getWritableCharacteristics, isHiddenChar } from './characteristics';
 import { translateHomeKitError, homeEditPermissionFix, HOMEKIT_EDIT_PERMISSION_ALIAS } from '@/lib/homekit-errors';
 import { useHomeRelayKind } from '@/hooks/useRelayCannotEdit';
+import { changedAutomationParts, type AutomationEditParts } from '@/lib/automation-edit';
 import type { HomeKitAutomation, HomeKitAccessory, HomeKitHome, CreateAutomationResponse, UpdateAutomationResponse } from '@/lib/graphql/types';
 
 type TriggerCategory = 'time' | 'accessory' | 'sensor';
@@ -139,6 +140,8 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
+  // What the automation serialised to when the dialog opened, so a save sends only what changed
+  const initialPartsRef = useRef<AutomationEditParts | null>(null);
 
   const { data: accessoriesData } = useQuery<{ accessories: HomeKitAccessory[] }>(GET_ACCESSORIES, { variables: { homeId }, skip: !open || !homeId, fetchPolicy: 'cache-first' });
   const { data: homesData } = useQuery<{ homes: HomeKitHome[] }>(GET_HOMES, { skip: !open, fetchPolicy: 'cache-first' });
@@ -242,11 +245,16 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
   useEffect(() => {
     if (open && initialSnapshot === null) {
       // Defer to next tick so state from the open effect has settled
-      const timer = setTimeout(() => setInitialSnapshot(currentSnapshot), 0);
+      const timer = setTimeout(() => {
+        setInitialSnapshot(currentSnapshot);
+        initialPartsRef.current = isEditing ? buildParts() : null;
+      }, 0);
       return () => clearTimeout(timer);
     }
-    if (!open) setInitialSnapshot(null);
-  }, [open, initialSnapshot, currentSnapshot]);
+    if (!open) { setInitialSnapshot(null); initialPartsRef.current = null; }
+  // buildParts reads the same state currentSnapshot is built from
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialSnapshot, currentSnapshot, isEditing]);
 
   const isDirty = isEditing ? (initialSnapshot !== null && currentSnapshot !== initialSnapshot) : true;
 
@@ -285,22 +293,32 @@ export function AutomationFormDialog({ open, onOpenChange, homeId, automation, o
     return { type: 'event', events: [] };
   };
 
+  const validActionsOf = () => actions.filter(a => a.accessoryId && a.characteristicType);
+
+  /** The automation as the mutations send it: the trigger carries its conditions. */
+  const buildParts = (): AutomationEditParts => {
+    const payload: Record<string, unknown> = { ...buildTrigger() };
+    const validConditions = conditions.filter(c => c.accessoryId && c.characteristicType);
+    if (validConditions.length > 0) {
+      payload.conditions = validConditions.map(c => ({ type: 'characteristic', accessoryId: c.accessoryId, characteristicType: c.characteristicType, operator: c.operator, value: c.value }));
+    }
+    return { name, trigger: JSON.stringify(payload), actions: JSON.stringify(validActionsOf()) };
+  };
+
   const handleSave = async () => {
     if (!name.trim()) { setErrors({ name: 'Name is required' }); return; }
-    const validActions = actions.filter(a => a.accessoryId && a.characteristicType);
-    if (validActions.length === 0) { setErrors({ actions: 'Add at least one action' }); setStep('actions'); return; }
+    if (validActionsOf().length === 0) { setErrors({ actions: 'Add at least one action' }); setStep('actions'); return; }
     setSaving(true);
     try {
-      const trigger = buildTrigger();
-      const validConditions = conditions.filter(c => c.accessoryId && c.characteristicType);
-      const payload: Record<string, unknown> = { ...trigger };
-      if (validConditions.length > 0) {
-        payload.conditions = validConditions.map(c => ({ type: 'characteristic', accessoryId: c.accessoryId, characteristicType: c.characteristicType, operator: c.operator, value: c.value }));
-      }
+      const parts = buildParts();
       if (isEditing && automation) {
-        await updateAutomation({ variables: { automationId: automation.id, homeId, name, trigger: JSON.stringify(payload), actions: JSON.stringify(validActions) } });
+        // Only what the user changed — see automation-edit.ts for why the rest must not be resent
+        const changed = changedAutomationParts(initialPartsRef.current, parts);
+        if (Object.keys(changed).length > 0) {
+          await updateAutomation({ variables: { automationId: automation.id, homeId, ...changed } });
+        }
       } else {
-        await createAutomation({ variables: { homeId, name, trigger: JSON.stringify(payload), actions: JSON.stringify(validActions) } });
+        await createAutomation({ variables: { homeId, ...parts } });
       }
       onOpenChange(false); onSaved?.();
     } catch (error) { setErrors({ save: translateHomeKitError(error) }); } finally { setSaving(false); }

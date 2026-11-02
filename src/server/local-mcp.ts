@@ -418,8 +418,11 @@ const TOOLS = [
       'enabled=true/false enables or disables it (the usual way to turn automations on/off). ' +
       'trigger and actions use exactly the create_automation format; supplying actions REPLACES all existing actions. ' +
       'Names must end with a letter or number (HomeKit rejects trailing punctuation). ' +
-      'IMPORTANT: changing trigger deletes and recreates the automation inside HomeKit, so the result may have a NEW id — ' +
-      'always use the id from the response afterwards. ' +
+      'Send only what you are changing: to rename it or change its actions, leave trigger out. A trigger you do send is the ' +
+      'whole trigger, conditions included (omitted conditions mean none). Each part is compared with HomeKit and edited in ' +
+      'place, so the automation keeps its id — except when the trigger switches between timer and event, or on older relays, ' +
+      'which recreate it whenever the trigger changes. Always use the id from the response afterwards. ' +
+      'Actions of an automation made in the Apple Home app can only be changed there. ' +
       'Automations with editable=false (presence/location/app-specific triggers) accept only name and enabled changes. ' +
       'Requires the Homecast relay\'s Apple ID to have edit access in Apple Home ' +
       '("Add & Edit Accessories" / "Allow Editing"); if it doesn\'t, the error will say so.',
