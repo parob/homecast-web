@@ -87,6 +87,38 @@ describe('the diagnostics bundle a report ships', () => {
   });
 });
 
+describe('which app the report came from', () => {
+  type NativeGlobals = { homecastAppVersion?: string; homecastAppBuildNumber?: string; homecastAppBuild?: string };
+  const win = window as unknown as NativeGlobals;
+  beforeEach(() => {
+    delete win.homecastAppVersion;
+    delete win.homecastAppBuildNumber;
+    delete win.homecastAppBuild;
+  });
+
+  it('records the native version and build inside the app', () => {
+    // homecast-cloud#228: an iOS status-bar fault whose fix shipped only in
+    // 1.2.6, and nothing in the report said whether the phone had it.
+    win.homecastAppVersion = '1.2.6';
+    win.homecastAppBuildNumber = '80';
+    win.homecastAppBuild = '90835cb';
+    const app = (buildDiagnosticsBundle() as { app: Record<string, unknown> }).app;
+    expect(app.native).toEqual({ version: '1.2.6', buildNumber: '80', build: '90835cb' });
+  });
+
+  it('drops the generator placeholder rather than reporting it as a hash', () => {
+    win.homecastAppVersion = '1.2.5';
+    win.homecastAppBuild = 'unknown';
+    const app = (buildDiagnosticsBundle() as { app: Record<string, unknown> }).app;
+    expect(app.native).toEqual({ version: '1.2.5', buildNumber: null, build: null });
+  });
+
+  it('is null in a browser', () => {
+    const app = (buildDiagnosticsBundle() as { app: Record<string, unknown> }).app;
+    expect(app.native).toBeNull();
+  });
+});
+
 describe('browserLogger under a state-broadcast storm', () => {
   beforeEach(() => {
     browserLogger.clear();
