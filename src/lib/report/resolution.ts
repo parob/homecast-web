@@ -276,6 +276,15 @@ export const BLOCKED_LABEL = 'blocked-upstream';
 /** Deliberately parked for a person to decide. */
 export const NEEDS_HUMAN_LABEL = 'needs-human';
 
+/** The routine asked the reporter one question and is waiting for the answer. */
+export const WAITING_ON_REPORTER_LABEL = 'waiting-on-reporter';
+
+/** The open PR is a draft built from a diagnosis; only a phone can say it works. */
+export const NEEDS_DEVICE_CHECK_LABEL = 'needs-device-check';
+
+/** Merged native code, waiting for a TestFlight/App Store build to carry it. */
+export const AWAITING_RELEASE_LABEL = 'awaiting-release';
+
 /**
  * Whether a row should offer its resolution at all.
  *
@@ -310,19 +319,33 @@ export function offersResolution(issue: Pick<ReportedIssue, 'labels' | 'state'>)
  *
  * Ordered most-resolved first: a closed report is fixed whatever else it
  * carries, and a pull request outranks the investigation that produced it.
+ * Anything waiting on the reporter comes next after Fixed (homecast-cloud#188):
+ * a question, a decision or a device check sits *beside* a draft PR or a claim,
+ * and if the row reads "Fix proposed" or "Investigating" instead, the one
+ * person who can move it never learns it is his move. Of those, the question
+ * wins — answering it may change what the draft should be.
+ *
+ * The words are the routine's own vocabulary (prompts/routines, homecast issue
+ * routine §1), so the screen and the routine say the same thing.
  */
 export type FixStatus =
   | 'Fixed'
-  | 'Fix proposed'
+  | 'Needs your answer'
+  | 'Needs your decision'
+  | 'Try on your phone'
   | 'Blocked upstream'
-  | 'Needs review'
+  | 'Waiting for app build'
+  | 'Fix proposed'
   | 'Investigating'
   | 'Not picked up yet';
 
 export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): FixStatus {
   if (issue.state === 'closed') return 'Fixed';
+  if (issue.labels.includes(WAITING_ON_REPORTER_LABEL)) return 'Needs your answer';
+  if (issue.labels.includes(NEEDS_HUMAN_LABEL)) return 'Needs your decision';
+  if (issue.labels.includes(NEEDS_DEVICE_CHECK_LABEL)) return 'Try on your phone';
   if (issue.labels.includes(BLOCKED_LABEL)) return 'Blocked upstream';
-  if (issue.labels.includes(NEEDS_HUMAN_LABEL)) return 'Needs review';
+  if (issue.labels.includes(AWAITING_RELEASE_LABEL)) return 'Waiting for app build';
   if (issue.labels.includes(PR_OPEN_LABEL)) return 'Fix proposed';
   if (issue.labels.includes(ATTEMPTED_LABEL)) return 'Investigating';
   return 'Not picked up yet';
@@ -333,7 +356,10 @@ export function mergedReportMessage(status: FixStatus): string {
   const merged = 'All linked pull requests are merged.';
   if (status === 'Fixed') return merged;
   if (status === 'Investigating') return 'This report is still being investigated. Earlier code changes have been merged.';
-  if (status === 'Needs review') return `${merged} This report still needs review; see the updates below.`;
+  if (status === 'Needs your answer') return `${merged} This report is waiting on your answer; see the updates below.`;
+  if (status === 'Needs your decision') return `${merged} This report still needs your decision; see the updates below.`;
+  if (status === 'Try on your phone') return `${merged} This report is waiting for you to try the fix on your phone.`;
+  if (status === 'Waiting for app build') return `${merged} The fix ships with the next app build.`;
   if (status === 'Blocked upstream') return `${merged} This report is still blocked upstream; see the updates below.`;
   return `${merged} This report is still open pending verification.`;
 }
@@ -352,8 +378,11 @@ export function fixStatusTone(status: FixStatus): 'done' | 'active' | 'waiting' 
     case 'Fix proposed':
     case 'Investigating':
       return 'active';
+    case 'Needs your answer':
+    case 'Needs your decision':
+    case 'Try on your phone':
     case 'Blocked upstream':
-    case 'Needs review':
+    case 'Waiting for app build':
       return 'waiting';
     case 'Not picked up yet':
       return 'idle';

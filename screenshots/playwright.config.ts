@@ -29,6 +29,7 @@ export default defineConfig({
     'automation-toggle-centring.spec.ts',
     'report-sheet.spec.ts',
     'issue-181-status.spec.ts',
+    'issue-188-status-words.spec.ts',
     'resolution-view.spec.ts',
     'resolution-feedback.spec.ts',
     'tab-bar-unpin-badge.spec.ts',
