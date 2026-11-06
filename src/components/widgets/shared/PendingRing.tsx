@@ -3,11 +3,9 @@ import { usePendingWrite } from '@/hooks/usePendingWrite';
 
 interface PendingRingProps {
   /**
-   * Which registry key to watch. Undefined never rings — which is what keeps
-   * the MQTT browser's widgets inert. Its handlers are fire-and-forget publishes
-   * with no promise to track, so nothing ever registers their synthetic ids and
-   * the ring is off by construction rather than by a flag someone has to
-   * remember to pass.
+   * Which registry key to watch. Undefined never rings. MQTT Explorer registers
+   * its synthetic accessory IDs until matching state arrives; dashboard writes
+   * remain registered until their relay request settles.
    */
   pendingKey?: string;
   /**
