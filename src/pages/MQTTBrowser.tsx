@@ -20,6 +20,7 @@ import {
   getEffectivePayload as getEffectivePayloadPure, rowTypeForTopic,
 } from './mqtt-browser/topic-tree';
 import type { TopicMessage } from './mqtt-browser/topic-tree';
+import { pendingPayload, usePendingMqttWrites } from './mqtt-browser/usePendingMqttWrites';
 // The browser's homes come from GraphQL rather than homes.list, so it feeds
 // the serving store itself and reads the fact back like every other surface.
 import { beginHomesList, ingestHomesList, invalidateHomeServing, isHomesListCurrent, type HomeServing } from '@/server/home-serving';
@@ -60,6 +61,8 @@ export default function MQTTBrowser() {
   // grows a Sign in button — the page otherwise has no auth UI at all.
   const [authBlocked, setAuthBlocked] = useState(false);
   const [messages, setMessages] = useState<Record<string, TopicMessage>>({});
+  const { pending, errors: publishErrors, begin: beginWrite, receive: receiveState,
+    fail: failWrite, forget: forgetWrite, disconnect: disconnectWrites } = usePendingMqttWrites();
   const [filter, setFilter] = useState(() => searchParams.get('filter') || '');
   // The tree row whose inspector is showing. Selection never collapses or
   // expands tree sections — those are the open* sets below.
@@ -105,8 +108,9 @@ export default function MQTTBrowser() {
   const slugToTopic = useMemo(() => buildSlugToTopicMap(messages), [messages]);
   const memberTopicSet = useMemo(() => buildMemberTopicSet(groupMembers, slugToTopic), [groupMembers, slugToTopic]);
   const getEffectivePayloadFor = useCallback(
-    (topic: string, payload: string) => getEffectivePayloadPure(topic, payload, groupMembers, slugToTopic, messages),
-    [groupMembers, slugToTopic, messages],
+    (topic: string, payload: string) => pendingPayload(topic,
+      getEffectivePayloadPure(topic, payload, groupMembers, slugToTopic, messages), pending),
+    [groupMembers, slugToTopic, messages, pending],
   );
 
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
@@ -429,7 +433,8 @@ export default function MQTTBrowser() {
         setConnStats({ connectedAt: Date.now(), totalMessages: 0, clientId: cid });
         client.subscribe('homecast/#');
       });
-      client.on('message', (topic: string, payload: Buffer) => {
+      client.on('message', (topic: string, payload: Buffer, packet?: { retain?: boolean }) => {
+        if (clientRef.current !== client) return;
         const text = payload.toString();
         msgTimestamps.current.push(Date.now());
         setConnStats(prev => ({ ...prev, totalMessages: prev.totalMessages + 1 }));
@@ -488,6 +493,7 @@ export default function MQTTBrowser() {
         // Skip /set echo topics
         if (topic.endsWith('/set')) return;
         if (isTombstone) {
+          forgetWrite(topic);
           setMessages(prev => {
             if (!(topic in prev)) return prev;
             const { [topic]: _gone, ...rest } = prev;
@@ -496,10 +502,17 @@ export default function MQTTBrowser() {
           setSelectedTopic(prev => (prev === topic ? null : prev));
           return;
         }
+        receiveState(topic, text, packet?.retain);
         setMessages(prev => ({ ...prev, [topic]: { payload: text, timestamp: Date.now(), updates: (prev[topic]?.updates ?? 0) + 1 } }));
       });
-      client.on('error', (err: Error) => { setError(err.message); setConnecting(false); setConnected(false); });
+      client.on('error', (err: Error) => {
+        if (clientRef.current !== client) return;
+        disconnectWrites();
+        setError(err.message); setConnecting(false); setConnected(false);
+      });
       client.on('close', () => {
+        if (clientRef.current !== client) return;
+        disconnectWrites();
         setConnected(false);
         setConnecting(false);
         if (!userDisconnected.current) failureCountRef.current += 1;
@@ -510,12 +523,13 @@ export default function MQTTBrowser() {
       setConnecting(false);
       failureCountRef.current += 1;
     }
-  }, []);
+  }, [receiveState, forgetWrite, disconnectWrites]);
 
   const disconnect = useCallback(() => {
     userDisconnected.current = true;
+    disconnectWrites();
     clientRef.current?.end(); clientRef.current = null; setConnected(false);
-  }, []);
+  }, [disconnectWrites]);
 
   const addToHistory = useCallback((topic: string, payload: string) => {
     setPublishHistory(prev => [{ topic, payload, timestamp: Date.now() }, ...prev].slice(0, 20));
@@ -556,25 +570,32 @@ export default function MQTTBrowser() {
       } catch { /* keep raw */ }
       return { ...prev, [base]: { payload: nextPayload, timestamp: Date.now(), updates: (prevMsg?.updates || 0) + 1 } };
     });
+    try { receiveState(base, JSON.stringify(simulateRelay(JSON.parse(payload)))); } catch { /* invalid JSON is rejected before publishing */ }
     addToHistory(topic.endsWith('/set') ? topic : topic + '/set', payload);
-  }, [addToHistory]);
+  }, [addToHistory, receiveState]);
 
   const publishToSet = useCallback((topic: string, payload: string) => {
-    if (mockMode) { mockPublish(topic, payload); return; }
-    if (!clientRef.current || !connected) return;
-    const t = topic.endsWith('/set') ? topic : topic + '/set';
-    clientRef.current.publish(t, payload);
-    addToHistory(t, payload);
-  }, [connected, addToHistory, mockMode, mockPublish]);
+    const base = topic.replace(/\/set$/, '');
+    if (!mockMode && (!clientRef.current || !connected)) {
+      failWrite(base, undefined, 'Not connected. Reconnect to send a change.');
+      return;
+    }
+    const requestId = beginWrite(base, payload);
+    if (requestId === null) return;
+    if (mockMode) { mockPublish(base, payload); return; }
+    const failed = () => failWrite(base, requestId, 'Could not send the change. Showing last reported state.');
+    try {
+      clientRef.current.publish(base + '/set', payload, { retain: false }, (err?: Error) => {
+        if (err) failed();
+        // Success only means sent to the broker. receiveState confirms it.
+      });
+      addToHistory(base + '/set', payload);
+    } catch { failed(); }
+  }, [connected, addToHistory, mockMode, mockPublish, beginWrite, failWrite]);
 
   const publishProp = useCallback((topic: string, key: string, value: unknown) => {
-    if (mockMode) { mockPublish(topic, JSON.stringify({ [key]: value })); return; }
-    if (!clientRef.current || !connected) return;
-    const t = topic.endsWith('/set') ? topic : topic + '/set';
-    const p = JSON.stringify({ [key]: value });
-    clientRef.current.publish(t, p);
-    addToHistory(t, p);
-  }, [connected, addToHistory, mockMode, mockPublish]);
+    publishToSet(topic, JSON.stringify({ [key]: value }));
+  }, [publishToSet]);
 
   // Auto-connect with exponential backoff. On each consecutive failure we wait
   // longer (500ms, 1s, 2s, … capped at 10s) so a broken token or broker doesn't
@@ -648,6 +669,8 @@ export default function MQTTBrowser() {
       topic={selectedTopic}
       message={selectedMessage}
       effectivePayload={selectedEp}
+      pending={!!pending[selectedTopic]}
+      publishError={publishErrors[selectedTopic]}
       info={deviceInfo[selectedTopic]}
       rowType={rowTypeForTopic(selectedTopic, groupMembers)}
       home={homeForSlug(selectedTopic.split('/')[1] || '')}

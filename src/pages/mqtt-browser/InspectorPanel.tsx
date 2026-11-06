@@ -1,6 +1,6 @@
 import { useHomeServing } from '@/hooks/useHomeServing';
 import { homeRelayStatus } from './home-relay-status';
-import { Send, X } from 'lucide-react';
+import { Loader2, Send, X } from 'lucide-react';
 import { AccessoryWidget } from '@/components/widgets/AccessoryWidget';
 import { PropertyEditor, TopicPath, TypeBadge } from './helpers';
 import { mqttToAccessory, mqttPublishFor, type DeviceInfo } from './widget-adapter';
@@ -10,6 +10,8 @@ interface InspectorPanelProps {
   topic: string;
   message: TopicMessage | undefined;
   effectivePayload: string;
+  pending?: boolean;
+  publishError?: string;
   /** The retained `/info` for this topic, when the bridge published one. */
   info?: DeviceInfo | null;
   rowType: MqttRowType;
@@ -32,7 +34,7 @@ interface InspectorPanelProps {
 // property editor for unknown types) plus the JSON payload editor that
 // publishes to <topic>/set.
 export function InspectorPanel({
-  topic, message, effectivePayload, info, rowType, home, managed,
+  topic, message, effectivePayload, pending = false, publishError, info, rowType, home, managed,
   rawMode, onRawModeChange, publishValue, onPublishValueChange,
   onPublishToSet, onPublishProp, onClose, variant,
 }: InspectorPanelProps) {
@@ -76,7 +78,7 @@ export function InspectorPanel({
   const showJson = variant === 'pane' || rawMode;
 
   return (
-    <div className="rounded-lg border bg-muted/20 shadow-sm overflow-hidden">
+    <div data-mqtt-inspector className="rounded-lg border bg-muted/20 shadow-sm overflow-hidden">
       {/* Header: badge + full topic path + meta + close */}
       <div className="flex items-center justify-between gap-2 border-b bg-background/60 px-3 py-2">
         <span className="flex min-w-0 items-center gap-2">
@@ -84,13 +86,20 @@ export function InspectorPanel({
           <span className="min-w-0 truncate font-mono text-xs" title={topic}><TopicPath topic={topic} /></span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-[10px] text-muted-foreground">
-          {message && message.updates > 1 && <span className="tabular-nums">{message.updates} updates</span>}
-          {message && <span className="tabular-nums">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
+          {pending ? (
+            <span role="status" className="flex items-center gap-1 text-foreground" title="Waiting for a matching state update">
+              <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin motion-reduce:animate-none" /> Updating…
+            </span>
+          ) : <>
+            {message && message.updates > 1 && <span className="tabular-nums">{message.updates} updates</span>}
+            {message && <span className="tabular-nums">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
+          </>}
           <button onClick={onClose} title="Close (Esc)" className="-m-1 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
             <X className="h-3.5 w-3.5" />
           </button>
         </span>
       </div>
+      {publishError && <p role="alert" className="px-3 py-2 text-xs text-destructive">{publishError}</p>}
       {/* Controls/JSON tabs (sheet variant only) */}
       {variant === 'sheet' && (
         <div className="flex items-center gap-2 px-3 py-1.5 text-[10px]">
@@ -108,7 +117,7 @@ export function InspectorPanel({
       )}
       <div className="space-y-3 p-3">
         {showControls && (
-          <section className="w-full min-w-0 rounded-md border border-border/70 bg-background/50 p-2">
+          <section aria-busy={pending} className="w-full min-w-0 rounded-md border border-border/70 bg-background/50 p-2">
             {renderControls()}
           </section>
         )}
