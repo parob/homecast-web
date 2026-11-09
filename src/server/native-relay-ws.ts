@@ -20,6 +20,10 @@ type RelayWsSend = { action: 'send'; socketId: string; data: string };
 type RelayWsClose = { action: 'close'; socketId: string; code: number; reason?: string };
 type RelayWsAction = RelayWsConnect | RelayWsSend | RelayWsClose;
 
+// Independent of URLSession callbacks: a native handshake can remain silent
+// through a network interruption. The relay must still reach its retry loop.
+const CONNECT_TIMEOUT_MS = 30_000;
+
 type RelayWsEvent =
   | { socketId: string; type: 'sent'; bytes: number }
   | { socketId: string; type: 'open' }
@@ -46,8 +50,7 @@ function relayWin(): RelayWsWindow {
 function post(msg: RelayWsAction): void {
   const handler = relayWin().webkit?.messageHandlers?.relayWs;
   if (!handler) {
-    console.error('[RelayWS] Native bridge missing when posting', msg.action);
-    return;
+    throw new Error(`Native relay bridge missing: ${msg.action}`);
   }
   handler.postMessage(msg);
 }
@@ -78,6 +81,7 @@ export class NativeRelayWebSocket {
   onclose: ((ev: CloseEvent) => void) | null = null;
 
   private readonly socketId: string;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(url: string) {
     this.url = url;
@@ -85,7 +89,33 @@ export class NativeRelayWebSocket {
     const win = relayWin();
     const sockets = (win.__relay_ws_sockets = win.__relay_ws_sockets ?? {});
     sockets[this.socketId] = this;
-    post({ action: 'connect', socketId: this.socketId, url });
+    this.connectTimer = setTimeout(() => {
+      if (this.readyState !== this.CONNECTING) return;
+      console.warn('[RelayWS] Native connection opening timed out after 30000ms');
+      this.retireFailedAttempt('connect-timeout');
+    }, CONNECT_TIMEOUT_MS);
+    try {
+      post({ action: 'connect', socketId: this.socketId, url });
+    } catch {
+      // ServerWebSocket installs its handlers immediately after construction.
+      queueMicrotask(() => this.retireFailedAttempt('native-bridge-unavailable'));
+    }
+  }
+
+  private clearConnectTimer(): void {
+    if (this.connectTimer !== null) clearTimeout(this.connectTimer);
+    this.connectTimer = null;
+  }
+
+  private retireFailedAttempt(reason: string): void {
+    if (this.readyState !== this.CONNECTING) return;
+    this.readyState = this.CLOSING;
+    this.clearConnectTimer();
+    try {
+      post({ action: 'close', socketId: this.socketId, code: 4000, reason });
+    } catch { /* Synthetic close below is independent of the native bridge. */ }
+    this._onError(reason);
+    this._onClose(1006, reason, false);
   }
 
   send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
@@ -118,16 +148,18 @@ export class NativeRelayWebSocket {
       return;
     }
     this.readyState = this.CLOSING;
-    post({
-      action: 'close',
-      socketId: this.socketId,
-      code: code ?? 1000,
-      reason,
-    });
+    this.clearConnectTimer();
+    try {
+      post({ action: 'close', socketId: this.socketId, code: code ?? 1000, reason });
+    } catch { /* Cleanup must work even after the native handler disappears. */ }
+    // Retire the JS registry too; a silent native layer may never confirm.
+    this._onClose(code ?? 1000, reason, true);
   }
 
   /** @internal — invoked by the dispatcher in window.__relay_ws_event */
   _onOpen(): void {
+    if (this.readyState !== this.CONNECTING) return;
+    this.clearConnectTimer();
     this.readyState = this.OPEN;
     try {
       this.onopen?.(new Event('open'));
@@ -138,6 +170,7 @@ export class NativeRelayWebSocket {
 
   /** @internal */
   _onMessage(data: string): void {
+    if (this.readyState !== this.OPEN) return;
     try {
       this.onmessage?.(new MessageEvent('message', { data }));
     } catch (e) {
@@ -147,6 +180,7 @@ export class NativeRelayWebSocket {
 
   /** @internal */
   _onError(_message?: string): void {
+    if (this.readyState === this.CLOSED) return;
     try {
       this.onerror?.(new Event('error'));
     } catch (e) {
@@ -157,6 +191,7 @@ export class NativeRelayWebSocket {
   /** @internal */
   _onClose(code: number, reason: string | undefined, wasClean: boolean): void {
     if (this.readyState === this.CLOSED) return;
+    this.clearConnectTimer();
     this.readyState = this.CLOSED;
     this.bufferedAmount = 0;
     try {
