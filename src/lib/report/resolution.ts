@@ -15,7 +15,7 @@
 
 import { config } from '@/lib/config';
 
-import type { ReportedIssue } from './issues';
+import type { LastComment, LinkedPr, ReportedIssue } from './issues';
 
 export interface ResolutionPr {
   /** `owner/name`, e.g. `parob/homecast-web`. */
@@ -42,11 +42,14 @@ export type MergeAction = 'merged' | 'merge' | 'wait_deploy' | 'after' | 'blocke
 
 export interface MergePlanEntry extends ResolutionPr {
   title: string | null;
+  /** GitHub's own: `open` or `closed` — a merged PR is `closed` with `merged`. */
   state: string | null;
   merged: boolean;
   mergeSha: string | null;
   mergeable: boolean | null;
   checks: 'success' | 'failure' | 'pending' | 'none' | 'unknown';
+  /** Absent only on an entry GitHub could not be read for. */
+  draft?: boolean;
   action: MergeAction;
   reason: string | null;
   serving?: boolean | null;
@@ -264,32 +267,320 @@ export function planStatus(entry: MergePlanEntry): string {
   }
 }
 
-/** The label the routine puts on an issue while it has a PR open for it. */
+/**
+ * What the plan adds to a pull request's own word, or null when the word
+ * already says it.
+ *
+ * The word ({@link prWord}) is the PR as GitHub holds it; the plan is where it
+ * stands in the merge order. The two part ways only when a PR is fine on its
+ * own and still will not merge on this tap — Ready, but waiting for the cloud
+ * PR ahead of it to deploy — and that is the one case worth a second phrase.
+ * A draft, a conflict or red checks are already the word.
+ */
+export function planNote(entry: MergePlanEntry): string | null {
+  if (entry.action === 'wait_deploy' || entry.action === 'after') return planStatus(entry);
+  if (entry.action === 'blocked') {
+    const word = prWord(planEntryPr(entry));
+    if (word === 'Ready' || word === 'Open') return planStatus(entry);
+  }
+  return null;
+}
+
+/**
+ * What to say once every linked pull request has merged — read from the
+ * report's state and the plan, not a label.
+ *
+ * Merged code is only part of an open report's resolution: until the report
+ * is closed it is waiting on someone to see the fix work, and a cloud PR that
+ * is merged but not yet serving cannot be seen working at all.
+ */
+export function mergedReportMessage(issueState: string | null, plan: MergePlanEntry[]): string {
+  const merged = 'All linked pull requests are merged.';
+  const deploying = plan.filter((entry) => entry.action === 'merged' && entry.serving === false);
+  if (deploying.length > 0) {
+    return `${merged} ${deploying.map(shortPr).join(', ')} ${deploying.length === 1 ? 'is' : 'are'} still deploying.`;
+  }
+  if (issueState === 'closed') return merged;
+  return `${merged} This report is still open pending verification.`;
+}
+
+/* ------------------------------------------------------------------------
+ * Where a report stands, read from GitHub.
+ *
+ * The word on a row used to be computed from labels the routine had to
+ * remember to add and take off, and it drifted: a PR merged with
+ * `claude-pr-open` still on, a report worked in depth and never labelled at
+ * all. The server now sends each report's linked pull requests as GitHub
+ * holds them — draft, open, merged, closed, mergeable, CI — and the word is
+ * read from those. No label decides anything here any more.
+ *
+ * A question put to the owner is not a status. It is the latest comment, and
+ * the row shows it as one ("Claude: …"), where it can be read as what it is.
+ * ---------------------------------------------------------------------- */
+
+/** How loudly a status reads. Decided beside the word: they are one fact. */
+export type StatusTone = 'done' | 'active' | 'waiting' | 'idle';
+
+/** One pull request, in a word — what GitHub says about it right now. */
+export type PrWord =
+  | 'Draft'
+  | 'Conflict'
+  | 'Checks failing'
+  | 'Checks running'
+  | 'Ready'
+  | 'Open'
+  | 'Merged · live'
+  | 'Merged · deploying'
+  | 'Merged'
+  | 'Closed';
+
+/**
+ * The word for one linked pull request.
+ *
+ * `Ready` is a non-draft whose checks are green (or it has none) and that
+ * GitHub has not said conflicts — an uncomputed `mergeable: null` counts, the
+ * same as it does for the row's headline, so a row never reads "Ready" over a
+ * chip that says otherwise. `Open` is what is left: CI that could not be read.
+ */
+export function prWord(pr: Pick<LinkedPr, 'state' | 'draft' | 'mergeable' | 'checks' | 'serving'>): PrWord {
+  if (pr.state === 'merged') {
+    if (pr.serving === true) return 'Merged · live';
+    if (pr.serving === false) return 'Merged · deploying';
+    return 'Merged';
+  }
+  if (pr.state === 'closed') return 'Closed';
+  if (pr.draft) return 'Draft';
+  if (pr.mergeable === false) return 'Conflict';
+  if (pr.checks === 'failure') return 'Checks failing';
+  if (pr.checks === 'pending') return 'Checks running';
+  if (pr.checks === 'success' || pr.checks === 'none') return 'Ready';
+  return 'Open';
+}
+
+/** How loudly one pull request's word reads: what can merge stands out. */
+export function prWordTone(word: PrWord): StatusTone {
+  switch (word) {
+    case 'Merged · live':
+    case 'Merged · deploying':
+    case 'Merged':
+      return 'done';
+    case 'Ready':
+      return 'active';
+    case 'Conflict':
+    case 'Checks failing':
+      return 'waiting';
+    case 'Draft':
+    case 'Open':
+    case 'Checks running':
+    case 'Closed':
+      return 'idle';
+  }
+}
+
+/** Repositories named by the part that tells them apart. Native stays `homecast`. */
+const CHIP_REPO_NAMES: Record<string, string> = {
+  'homecast-cloud': 'cloud',
+  'homecast-web': 'web',
+};
+
+/**
+ * `cloud#232`, `web#296`, `homecast#83` — short enough for two on one line of
+ * a phone-width row. The issue screen keeps {@link shortPr}'s full names,
+ * where there is room and the Merge button has to be unambiguous.
+ */
+export function prChipName(pr: Pick<ResolutionPr, 'repo' | 'number'>): string {
+  const name = pr.repo.split('/').pop() ?? pr.repo;
+  return `${CHIP_REPO_NAMES[name] ?? name}#${pr.number}`;
+}
+
+/** A report's one word, read from its state and its pull requests. */
+export type Headline =
+  | 'Duplicate'
+  | 'Not planned'
+  | 'Closed'
+  | 'No PR yet'
+  | 'Merged'
+  | 'PR closed'
+  | 'Conflict'
+  | 'Checks failing'
+  | 'Ready'
+  | `${number} ready`
+  | 'Checks running'
+  | 'Draft'
+  | 'PR open';
+
+/**
+ * Where a report stands, in one word, from GitHub's state alone.
+ *
+ * A closed report says why it was closed. An open one is read from its open
+ * pull requests, the first match winning — what blocks a merge, then what can
+ * merge, then what is still on its way:
+ *
+ *   Conflict → Checks failing → Ready / N ready → Checks running → Draft
+ *
+ * With nothing open, it is `Merged` if anything merged (a superseded PR that
+ * was closed alongside does not undo that), `PR closed` if every one was
+ * closed unmerged, and `No PR yet` with none at all. `PR open` is the last
+ * resort, for open PRs whose CI could not be read.
+ */
+export function issueHeadline(issue: {
+  state: string | null;
+  stateReason?: ReportedIssue['stateReason'];
+  prs: readonly LinkedPr[];
+}): Headline {
+  if (issue.state === 'closed') {
+    if (issue.stateReason === 'duplicate') return 'Duplicate';
+    if (issue.stateReason === 'not_planned') return 'Not planned';
+    return 'Closed';
+  }
+
+  const open = issue.prs.filter((pr) => pr.state === 'open');
+  if (open.length === 0) {
+    if (issue.prs.some((pr) => pr.state === 'merged')) return 'Merged';
+    return issue.prs.length === 0 ? 'No PR yet' : 'PR closed';
+  }
+
+  const words = open.map(prWord);
+  if (words.includes('Conflict')) return 'Conflict';
+  if (words.includes('Checks failing')) return 'Checks failing';
+  const ready = words.filter((word) => word === 'Ready').length;
+  if (ready === 1) return 'Ready';
+  if (ready > 1) return `${ready} ready`;
+  if (words.includes('Checks running')) return 'Checks running';
+  if (words.includes('Draft') && words.every((word) => word === 'Draft' || word === 'Open')) return 'Draft';
+  return 'PR open';
+}
+
+/**
+ * How loudly a headline reads. `No PR yet` is muted on purpose — the absence
+ * of news should be legible without competing with the rows that have some —
+ * and the two a person has to act on are the loud ones.
+ */
+export function headlineTone(headline: Headline): StatusTone {
+  if (headline === 'Closed' || headline === 'Merged') return 'done';
+  if (headline === 'Conflict' || headline === 'Checks failing') return 'waiting';
+  if (
+    headline === 'No PR yet' || headline === 'PR closed'
+    || headline === 'Duplicate' || headline === 'Not planned'
+  ) return 'idle';
+  return 'active';
+}
+
+/** A report's status: its word, and how loudly that reads. */
+export interface ReportStatus {
+  word: string;
+  tone: StatusTone;
+}
+
+/**
+ * The status a row (or the issue screen's header) shows.
+ *
+ * From GitHub wherever the server sent `prs`; from the labels, exactly as
+ * before, where it did not. The web ships to production on merge and may
+ * well land before the server, and a missing field is not "no pull request".
+ */
+export function reportStatus(
+  issue: Pick<ReportedIssue, 'state' | 'labels' | 'stateReason' | 'prs'>,
+): ReportStatus {
+  if (issue.prs === undefined) {
+    const word = fixStatus(issue);
+    return { word, tone: fixStatusTone(word) };
+  }
+  const word = issueHeadline({ state: issue.state, stateReason: issue.stateReason, prs: issue.prs });
+  return { word, tone: headlineTone(word) };
+}
+
+/** A merge plan entry, read as the linked pull request it describes. */
+export function planEntryPr(entry: MergePlanEntry): LinkedPr {
+  return {
+    repo: entry.repo,
+    number: entry.number,
+    url: entry.url,
+    title: entry.title,
+    state: entry.merged ? 'merged' : entry.state === 'closed' ? 'closed' : 'open',
+    draft: entry.draft ?? false,
+    mergeable: entry.mergeable ?? null,
+    checks: entry.checks ?? 'unknown',
+    serving: entry.serving,
+  };
+}
+
+/**
+ * The pull requests the issue screen reads its status from.
+ *
+ * The merge plan where the server could build one — it is read when the
+ * screen opens, and re-read after every merge, so it is the freshest there
+ * is — else the list row's. `undefined` on a server that predates linked PRs,
+ * which is the cue for the labels.
+ */
+export function livePrs(
+  issue: Pick<ReportedIssue, 'prs'>,
+  resolution: Pick<Resolution, 'merge'> | null,
+): LinkedPr[] | undefined {
+  if (issue.prs === undefined) return undefined;
+  const merge = resolution?.merge;
+  if (merge?.configured && !merge.error) return merge.plan.map(planEntryPr);
+  return issue.prs;
+}
+
+/** Who said the last thing, as a row prints it. `app` and `person` are the owner. */
+export function commentWho(comment: Pick<LastComment, 'by' | 'author'>): string {
+  if (comment.by === 'claude') return 'Claude';
+  if (comment.by === 'app' || comment.by === 'person') return 'You';
+  return comment.author || 'A bot';
+}
+
+/**
+ * Whether a row carries its latest comment.
+ *
+ * Where nothing is waiting to merge — no PR yet, only drafts, everything
+ * merged but the report still open — the conversation *is* the news: it is
+ * where a question to the owner, or the reason a fix is parked, lives. Where
+ * a PR is ready, conflicting or in CI, its chip already says what happens
+ * next, and one more line per row costs a phone more than it tells. Closed
+ * reports are history.
+ */
+export function showsLastComment(issue: Pick<ReportedIssue, 'state' | 'prs' | 'lastComment'>): boolean {
+  if (!issue.lastComment || !issue.lastComment.text || issue.prs === undefined) return false;
+  if (issue.state === 'closed') return false;
+  return !issue.prs.some((pr) => pr.state === 'open' && !pr.draft);
+}
+
+/* ------------------------------------------------------------------------
+ * The old server's answer: labels.
+ *
+ * Kept only for a server that sends no `prs` — the web reaches production
+ * first — and read through `reportStatus`, never directly. Delete once every
+ * server sends linked pull requests.
+ * ---------------------------------------------------------------------- */
+
+/** Old-server fallback: the label the routine puts on an issue while it has a PR open for it. */
 export const PR_OPEN_LABEL = 'claude-pr-open';
 
-/** The label that means an agent has read the issue — "someone is on this". */
+/** Old-server fallback: an agent has read the issue — "someone is on this". */
 export const ATTEMPTED_LABEL = 'claude-attempted';
 
-/** Waiting on a fix in a repository this product does not own. */
+/** Old-server fallback: waiting on a fix in a repository this product does not own. */
 export const BLOCKED_LABEL = 'blocked-upstream';
 
-/** Deliberately parked for a person to decide. */
+/** Old-server fallback: deliberately parked for a person to decide. */
 export const NEEDS_HUMAN_LABEL = 'needs-human';
 
 /**
  * Whether a row should offer its resolution at all.
  *
- * A PR is open for it, or it is closed — a closed report is usually a fixed
- * one, and the label comes off once the PR has merged. A closed issue with no
- * PR (a duplicate, not a bug) shows an empty resolution, which is the honest
- * answer and costs one tap.
+ * Every row, wherever the server says what is linked: the screen is where a
+ * report's conversation and pull requests are read, whether or not there is
+ * a fix yet. On an old server, as before — a PR is open for it, or it is
+ * closed.
  */
-export function offersResolution(issue: Pick<ReportedIssue, 'labels' | 'state'>): boolean {
+export function offersResolution(issue: Pick<ReportedIssue, 'labels' | 'state' | 'prs'>): boolean {
+  if (issue.prs !== undefined) return true;
   return issue.labels.includes(PR_OPEN_LABEL) || issue.state === 'closed';
 }
 
 /**
- * Where a report stands, in one word.
+ * Old-server fallback: where a report stands, in one word, from its labels.
  *
  * Every open row gets one, and the reason is homecast-cloud#181. This used to
  * answer `null` for anything without a pull request, which made two very
@@ -328,24 +619,13 @@ export function fixStatus(issue: Pick<ReportedIssue, 'labels' | 'state'>): FixSt
   return 'Not picked up yet';
 }
 
-/** Merged code is only part of an open report's resolution. */
-export function mergedReportMessage(status: FixStatus): string {
-  const merged = 'All linked pull requests are merged.';
-  if (status === 'Fixed') return merged;
-  if (status === 'Investigating') return 'This report is still being investigated. Earlier code changes have been merged.';
-  if (status === 'Needs review') return `${merged} This report still needs review; see the updates below.`;
-  if (status === 'Blocked upstream') return `${merged} This report is still blocked upstream; see the updates below.`;
-  return `${merged} This report is still open pending verification.`;
-}
-
 /**
- * How loudly a status reads. Here rather than in the view so the word and its
- * weight are decided in one place — they are one fact about the row.
+ * Old-server fallback: how loudly a label status reads.
  *
  * `Not picked up yet` is muted on purpose. It is the absence of news, and an
  * absence that shouts is worse than one that is simply legible.
  */
-export function fixStatusTone(status: FixStatus): 'done' | 'active' | 'waiting' | 'idle' {
+export function fixStatusTone(status: FixStatus): StatusTone {
   switch (status) {
     case 'Fixed':
       return 'done';
@@ -359,6 +639,8 @@ export function fixStatusTone(status: FixStatus): 'done' | 'active' | 'waiting' 
       return 'idle';
   }
 }
+
+/* -- end of the old-server fallback ----------------------------------- */
 
 /** The part of a PR URL worth reading: `homecast-web#208`. */
 export function shortPr(pr: ResolutionPr): string {

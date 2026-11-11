@@ -21,26 +21,93 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  CheckCircle2, ChevronLeft, ChevronRight, CircleDot, Loader2, Plus,
+  Check, CheckCircle2, ChevronLeft, ChevronRight, Circle, CircleAlert, CircleDashed, CircleDot,
+  CircleDotDashed, CircleSlash, CircleX, Loader2, MessageSquare, Plus, type LucideIcon,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
-  fetchReportedIssues, relativeAge, type IssueFilter, type ReportedIssue,
+  fetchReportedIssues, relativeAge, relativeMoment, type IssueFilter, type LinkedPr, type ReportedIssue,
 } from '@/lib/report/issues';
-import { fixStatus, fixStatusTone } from '@/lib/report/resolution';
+import {
+  commentWho, prChipName, prWord, prWordTone, reportStatus, showsLastComment,
+  type PrWord, type StatusTone,
+} from '@/lib/report/resolution';
 
 /**
- * How each status reads. Muted for `idle` on purpose: "not picked up yet" is
- * the absence of news, and it should be legible without competing with the
- * rows that actually have some.
+ * How each status reads. Muted for `idle` on purpose: "No PR yet" is the
+ * absence of news, and it should be legible without competing with the rows
+ * that actually have some.
  */
-const STATUS_TONE: Record<ReturnType<typeof fixStatusTone>, string> = {
+const STATUS_TONE: Record<StatusTone, string> = {
   done: 'bg-green-600/15 text-green-700 dark:text-green-400',
   active: 'bg-primary/15 text-primary',
   waiting: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
   idle: 'bg-muted text-muted-foreground',
 };
+
+/** The same tones as ink alone, for a chip that has no pill of its own. */
+const INK_TONE: Record<StatusTone, string> = {
+  done: 'text-green-700 dark:text-green-400',
+  active: 'text-primary',
+  waiting: 'text-amber-700 dark:text-amber-400',
+  idle: 'text-muted-foreground',
+};
+
+/**
+ * One glyph per word, after GitHub's own: a dashed ring is a draft, a filled
+ * dot is ready, a tick is merged. Shape as well as colour, so the row reads
+ * the same in either theme and to someone who does not see the colour.
+ */
+const PR_GLYPH: Record<PrWord, LucideIcon> = {
+  Draft: CircleDashed,
+  Open: Circle,
+  Ready: Circle,
+  'Checks running': CircleDotDashed,
+  'Checks failing': CircleX,
+  Conflict: CircleAlert,
+  'Merged · live': Check,
+  'Merged · deploying': Check,
+  Merged: Check,
+  Closed: CircleSlash,
+};
+
+/**
+ * One linked pull request: its glyph, its short name and its word.
+ *
+ * Text, not a link. The row is the tap target — it opens the issue, where
+ * each pull request is listed with its full address — and an 11px link
+ * inside it would be a target too small to hit and one that fights the row
+ * for every tap near it.
+ */
+function PrChip({ pr }: { pr: LinkedPr }) {
+  const word = prWord(pr);
+  const ink = INK_TONE[prWordTone(word)];
+  const Glyph = PR_GLYPH[word];
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1" data-pr-chip={pr.url}>
+      {/* A filled dot reads heavier than a ring, so it is drawn a size down. */}
+      <Glyph
+        aria-hidden
+        className={`shrink-0 ${ink} ${word === 'Ready' ? 'mx-px h-2.5 w-2.5 fill-current' : 'h-3 w-3'}`}
+      />
+      <span className="min-w-0 truncate text-muted-foreground">{prChipName(pr)}</span>{' '}
+      <span className={`shrink-0 ${ink}`}>{word}</span>
+    </span>
+  );
+}
+
+/**
+ * Open, closed as done, or closed without a fix. A duplicate or a "not
+ * planned" is not a green tick: nothing was fixed.
+ */
+export function ReportStateIcon({ state, word }: { state: string | null; word: string }) {
+  if (state !== 'closed') return <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />;
+  if (word === 'Duplicate' || word === 'Not planned') {
+    return <CircleSlash className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />;
+  }
+  return <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />;
+}
 
 const FILTERS: { value: IssueFilter; label: string }[] = [
   { value: 'open', label: 'Open' },
@@ -150,8 +217,11 @@ export function ReportedIssues({ onAddTo, onOpen }: ReportedIssuesProps = {}) {
         )}
 
         {!loading && !error && issues.map((issue) => {
-          const status = fixStatus(issue);
+          const status = reportStatus(issue);
           const age = relativeAge(issue.createdAt);
+          const prs = issue.prs ?? [];
+          const comment = showsLastComment(issue) ? issue.lastComment ?? null : null;
+          const said = comment ? relativeMoment(comment.at) : '';
           // In the app, or chosen: the row's one tap. A row with neither
           // is a plain reference (nothing here does that today).
           const onRow = onOpen ?? onAddTo;
@@ -170,36 +240,64 @@ export function ReportedIssues({ onAddTo, onOpen }: ReportedIssuesProps = {}) {
               aria-label={onOpen ? `Open #${issue.issueNumber}` : undefined}
               className="flex min-w-0 flex-1 items-start gap-2 rounded-l-md p-2 text-left transition-colors hover:bg-muted/50"
             >
-              {issue.state === 'closed' ? (
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-              ) : (
-                <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              )}
+              <ReportStateIcon state={issue.state} word={status.word} />
               <div className="min-w-0 flex-1">
                 {/* Two lines, then ellipsis. `truncate` at one line lost the end of
                     almost every real issue title; a bug report's title is where
                     the information is, so give it the room to be read. */}
                 <div className="line-clamp-2 break-words text-sm">{issue.title}</div>
                 {/* Wraps: the status word is additive, and on a narrow row it must
-                    take its own line rather than eat the comment count beside it. */}
+                    take its own line rather than eat the comment count beside it.
+                    The count is a glyph and a number so that, on a 390pt phone,
+                    it rarely has to: "3 comments" alone pushed most words down. */}
                 <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
                   <span className="truncate">
                     #{issue.issueNumber}
                     {age && ` · ${age}`}
-                    {issue.commentCount > 0 &&
-                      ` · ${issue.commentCount} ${issue.commentCount === 1 ? 'comment' : 'comments'}`}
+                    {issue.commentCount > 0 && (
+                      <>
+                        {' · '}
+                        <MessageSquare aria-hidden className="mb-px inline h-3 w-3" />
+                        <span className="sr-only">
+                          {issue.commentCount === 1 ? 'comment' : 'comments'}:
+                        </span>
+                        {' '}{issue.commentCount}
+                      </>
+                    )}
                   </span>
                   {/* A word, not a button: where the report stands is a fact
                       about the row, and the row itself is what opens it. Every
                       open row carries one — a row with no news used to render
                       blank, which read as "being worked on" and was the whole
-                      of homecast-cloud#181. */}
+                      of homecast-cloud#181. Read from GitHub, not labels,
+                      wherever the server sends the linked PRs. */}
                   <span
-                    className={`shrink-0 rounded-full px-1.5 py-px text-[11px] ${STATUS_TONE[fixStatusTone(status)]}`}
+                    className={`shrink-0 rounded-full px-1.5 py-px text-[11px] ${STATUS_TONE[status.tone]}`}
                   >
-                    {status}
+                    {status.word}
                   </span>
                 </div>
+                {/* One chip per linked PR, so a row with three says which of
+                    the three is holding it up. Wraps rather than truncating
+                    the set: a hidden chip would be the one that mattered. */}
+                {prs.length > 0 && (
+                  <span className="mt-0.5 flex min-w-0 flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]">
+                    {prs.map((pr) => <PrChip key={pr.url} pr={pr} />)}
+                  </span>
+                )}
+                {/* The latest word on the report, where it is the news — a
+                    question from Claude is not a status, so it reads as what
+                    it is. Two lines, because one cut every real question off
+                    before its question mark; the age leads, so a long line
+                    never clips it. */}
+                {comment && (
+                  <span className="mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground/80">
+                      {commentWho(comment)}{said && `, ${said}`}:
+                    </span>{' '}
+                    {comment.text}
+                  </span>
+                )}
               </div>
               {onOpen && (
                 <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />

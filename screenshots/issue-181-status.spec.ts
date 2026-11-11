@@ -1,13 +1,20 @@
 /**
  * homecast-cloud#181 — what the Previous list says about a report nobody has
  * opened yet. The rows are the real Open list as /rest/issue-report returned
- * it at 2026-09-22T00:04Z, labels and all.
+ * it at 2026-09-22T00:04Z, labels and all, with the linked pull requests the
+ * server now reads from GitHub: the status comes from those, not the labels,
+ * so each row carries one chip per PR and a no-PR row its latest comment.
  */
-import { test, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { setupMocks } from './mocks';
 import { MOCK_USER } from './fixtures';
 
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+const pr = (repo: string, number: number, over: Record<string, unknown> = {}) => ({
+  repo: `parob/${repo}`, number, url: `https://github.com/parob/${repo}/pull/${number}`, title: null,
+  state: 'open', draft: false, mergeable: true, checks: 'success', ...over,
+});
 
 const REPORTED_ISSUES = {
   page: 1,
@@ -20,6 +27,7 @@ const REPORTED_ISSUES = {
       url: 'https://github.com/parob/homecast-cloud/issues/181',
       labels: ['bug', 'issue-reporter', 'app-homecast', 'fp-70e0032d04a6da07'],
       createdAt: ago(1), updatedAt: ago(1), commentCount: 0,
+      prs: [], lastComment: null,
     },
     {
       issueNumber: 178,
@@ -28,6 +36,11 @@ const REPORTED_ISSUES = {
       url: 'https://github.com/parob/homecast-cloud/issues/178',
       labels: ['bug', 'issue-reporter', 'app-homecast', 'fp-2ce4500b48f052b0'],
       createdAt: ago(4), updatedAt: ago(1), commentCount: 1,
+      prs: [pr('homecast-web', 222, { state: 'merged' })],
+      lastComment: {
+        by: 'claude', author: 'robjampar', at: ago(0.2), url: null,
+        text: 'The third ask is a product decision, not a bug — say the word and it gets its own PR.',
+      },
     },
     {
       issueNumber: 175,
@@ -36,6 +49,11 @@ const REPORTED_ISSUES = {
       url: 'https://github.com/parob/homecast-cloud/issues/175',
       labels: ['bug', 'issue-reporter', 'app-homecast', 'fp-cefd17ceb60c0a9e'],
       createdAt: ago(9), updatedAt: ago(1), commentCount: 2,
+      prs: [pr('homecast-web', 219, { draft: true, mergeable: null, checks: 'pending' })],
+      lastComment: {
+        by: 'claude', author: 'robjampar', at: ago(1), url: null,
+        text: 'Does it happen in Safari too, or only in the app?',
+      },
     },
     {
       issueNumber: 163,
@@ -44,6 +62,12 @@ const REPORTED_ISSUES = {
       url: 'https://github.com/parob/homecast-cloud/issues/163',
       labels: ['bug', 'issue-reporter', 'app-homecast', 'claude-attempted', 'claude-pr-open', 'fp-da230e304503a8e5'],
       createdAt: ago(17), updatedAt: ago(6), commentCount: 5,
+      prs: [
+        pr('homecast-cloud', 170),
+        pr('homecast-web', 214),
+        pr('homecast', 61, { draft: true, mergeable: null, checks: 'none' }),
+      ],
+      lastComment: null,
     },
     {
       issueNumber: 119,
@@ -52,6 +76,8 @@ const REPORTED_ISSUES = {
       url: 'https://github.com/parob/homecast-cloud/issues/119',
       labels: ['bug', 'claude-attempted'],
       createdAt: ago(240), updatedAt: ago(6), commentCount: 6,
+      prs: [pr('homecast-cloud', 150, { checks: 'failure' })],
+      lastComment: null,
     },
   ],
 };
@@ -90,6 +116,11 @@ test('previous reports — where each one stands', async ({ page }) => {
   await page.waitForTimeout(1200);
   await page.getByRole('tab', { name: 'Existing' }).click();
   await page.waitForTimeout(1000);
+  await expect(page.getByRole('button', { name: 'Open #181' })).toContainText('No PR yet');
+  await expect(page.getByRole('button', { name: 'Open #178' })).toContainText(/Claude, \d+m ago: The third ask/);
+  await expect(page.getByRole('button', { name: 'Open #175' })).toContainText('Draft');
+  await expect(page.getByRole('button', { name: 'Open #163' })).toContainText('2 ready');
+  await expect(page.getByRole('button', { name: 'Open #119' })).toContainText('Checks failing');
   await page.locator('[role="dialog"]').screenshot({
     path: process.env.SHOT_PATH || 'screenshots/output/issue-181-previous-status.png',
   });

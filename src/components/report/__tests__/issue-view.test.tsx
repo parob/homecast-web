@@ -4,7 +4,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 
 import { ReportedIssues } from '../ReportedIssues';
 import { IssueView } from '../IssueView';
-import type { ReportedIssue } from '@/lib/report/issues';
+import type { LinkedPr, ReportedIssue } from '@/lib/report/issues';
 import type { MergePlanEntry, MergeState, Resolution, ResolutionUpdate } from '@/lib/report/resolution';
 
 /**
@@ -77,9 +77,11 @@ const nudgeConflicts = vi.fn();
 const sendFeedback = vi.fn();
 const openExternalUrl = vi.fn();
 
+const fetchReportedIssues = vi.fn();
+
 vi.mock('@/lib/report/issues', async (importActual) => ({
   ...(await importActual<typeof import('@/lib/report/issues')>()),
-  fetchReportedIssues: async () => ({ issues: [FIXED, UNTOUCHED], page: 1, hasMore: false }),
+  fetchReportedIssues: (...args: unknown[]) => fetchReportedIssues(...args),
 }));
 
 vi.mock('@/lib/report/resolution', async (importActual) => ({
@@ -96,6 +98,8 @@ vi.mock('@/lib/open-url', () => ({
 
 beforeEach(() => {
   localStorage.setItem('homecast-token', 'tok');
+  fetchReportedIssues.mockReset();
+  fetchReportedIssues.mockResolvedValue({ issues: [FIXED, UNTOUCHED], page: 1, hasMore: false });
   fetchResolution.mockReset();
   mergeResolution.mockReset();
   nudgeConflicts.mockReset();
@@ -320,7 +324,7 @@ describe('merging from the issue view', () => {
     });
     render(<IssueView issue={FIXED} onBack={() => {}} />);
     await screen.findByText('All linked pull requests are merged. This report is still open pending verification.');
-    expect(screen.getByRole('button', { name: /Open homecast-cloud#170 on GitHub/ }).textContent).toContain('Merged · serving');
+    expect(screen.getByRole('button', { name: /Open homecast-cloud#170 on GitHub/ }).textContent).toContain('Merged · live');
     expect(screen.queryByRole('button', { name: /^Merge / })).toBeNull();
   });
 });
@@ -811,15 +815,187 @@ describe('everything that happened to the fix', () => {
 });
 
 
-it('keeps an outstanding review visible after all PRs merge', async () => {
-  fetchResolution.mockResolvedValue({
-    ...RESOLUTION, labels: ['needs-human', 'claude-pr-open'],
-    merge: { configured: true, servingSha: 'abc', plan: [
-      entry(WEB_PR, { action: 'merged', merged: true, state: 'closed' }),
-    ] },
+/**
+ * Where a report stands, read from GitHub rather than labels.
+ *
+ * The server sends each report's linked pull requests as GitHub holds them.
+ * The row's word and one chip per PR come from those, the issue screen's
+ * header from the same function, and none of it from a label. Merge all stays
+ * exactly as it was: the server still decides the order and the gates.
+ */
+const linked = (repo: string, number: number, over: Partial<LinkedPr> = {}): LinkedPr => ({
+  repo, number, url: `https://github.com/${repo}/pull/${number}`, title: null,
+  state: 'open', draft: false, mergeable: true, checks: 'success', ...over,
+});
+
+const NO_PR: ReportedIssue = {
+  ...UNTOUCHED, issueNumber: 259, title: 'Scenes hidden by default',
+  labels: ['bug', 'claude-attempted', 'needs-human'], prs: [],
+  lastComment: {
+    by: 'claude', author: 'robjampar', at: new Date(Date.now() - 2 * 60_000).toISOString(),
+    text: 'Does it happen in Safari too?', url: null,
+  },
+};
+
+const THREE_PRS: ReportedIssue = {
+  ...FIXED, issueNumber: 228, title: 'Tray hidden in Analytics',
+  // A label that would once have said "Needs review" — it must say nothing now.
+  labels: ['bug', 'needs-human'],
+  prs: [
+    linked('parob/homecast-cloud', 232),
+    linked('parob/homecast-web', 296),
+    linked('parob/homecast', 83, { draft: true, mergeable: null, checks: 'none' }),
+  ],
+  lastComment: { by: 'claude', author: 'robjampar', at: null, text: 'Both are green.', url: null },
+};
+
+const MERGED_ROW: ReportedIssue = {
+  ...FIXED, issueNumber: 222, title: 'Collections on iOS', labels: ['bug', 'claude-pr-open'],
+  prs: [linked('parob/homecast-cloud', 284, { state: 'merged', serving: true })],
+};
+
+describe('a row, read from GitHub', () => {
+  it('shows the headline and one chip per linked pull request', async () => {
+    fetchReportedIssues.mockResolvedValue({ issues: [THREE_PRS], page: 1, hasMore: false });
+    render(<ReportedIssues onOpen={() => {}} />);
+
+    const row = await screen.findByRole('button', { name: 'Open #228' });
+    const chips = row.querySelectorAll('[data-pr-chip]');
+    expect(chips).toHaveLength(3);
+    expect(chips[0].textContent).toBe('cloud#232 Ready');
+    expect(chips[1].textContent).toBe('web#296 Ready');
+    expect(chips[2].textContent).toBe('homecast#83 Draft');
+    expect(row.textContent).toContain('2 ready');
+    // No label reaches the status any more.
+    expect(row.textContent).not.toContain('Needs review');
+    // A chip says what is next, so the comment line is left off.
+    expect(row.textContent).not.toContain('Both are green.');
   });
-  render(<IssueView issue={FIXED} onBack={() => {}} />);
-  await screen.findByText('All linked pull requests are merged. This report still needs review; see the updates below.');
-  expect(screen.getByText(/#167.*Needs review/)).toBeTruthy();
-  expect(screen.queryByText('All merged.')).toBeNull();
+
+  it('says No PR yet, and the latest comment, where nothing is linked', async () => {
+    fetchReportedIssues.mockResolvedValue({ issues: [NO_PR], page: 1, hasMore: false });
+    render(<ReportedIssues onOpen={() => {}} />);
+
+    const row = await screen.findByRole('button', { name: 'Open #259' });
+    expect(row.textContent).toContain('No PR yet');
+    expect(row.textContent).toContain('Claude, 2m ago: Does it happen in Safari too?');
+    expect(row.querySelectorAll('[data-pr-chip]')).toHaveLength(0);
+    expect(row.textContent).not.toContain('Needs review');
+  });
+
+  it('reads Merged, with the deploy, once everything merged', async () => {
+    fetchReportedIssues.mockResolvedValue({ issues: [MERGED_ROW], page: 1, hasMore: false });
+    render(<ReportedIssues onOpen={() => {}} />);
+    const row = await screen.findByRole('button', { name: 'Open #222' });
+    expect(row.textContent).toContain('cloud#284 Merged · live');
+    expect(row.textContent).not.toContain('Fix proposed');
+  });
+
+  it('falls back to the labels, and never says No PR yet, when the server sends no prs', async () => {
+    render(<ReportedIssues onOpen={() => {}} />);
+    const row = await screen.findByRole('button', { name: 'Open #167' });
+    expect(row.textContent).toContain('Fix proposed');
+    expect(screen.getByRole('button', { name: 'Open #170' }).textContent).toContain('Not picked up yet');
+    expect(document.body.textContent).not.toContain('No PR yet');
+    expect(row.querySelectorAll('[data-pr-chip]')).toHaveLength(0);
+  });
+
+  it('opens a row with no PR in the app, like any other', async () => {
+    fetchReportedIssues.mockResolvedValue({ issues: [NO_PR], page: 1, hasMore: false });
+    const onOpen = vi.fn();
+    render(<ReportedIssues onOpen={onOpen} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open #259' }));
+    expect(onOpen).toHaveBeenCalledWith(NO_PR);
+    expect(openExternalUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe('the issue screen, read from GitHub', () => {
+  const CLOUD = linked('parob/homecast-cloud', 232);
+  const WEB = linked('parob/homecast-web', 296);
+  const NATIVE = linked('parob/homecast', 83, { draft: true, mergeable: null, checks: 'none' });
+
+  const PLAN: MergeState = {
+    configured: true, servingSha: '4ae7930',
+    plan: [
+      entry(CLOUD, { action: 'merge', draft: false }),
+      entry(WEB, { action: 'merge', draft: false }),
+      entry(NATIVE, { action: 'blocked', reason: 'pull request is still a draft', draft: true, mergeable: null, checks: 'none' }),
+    ],
+  };
+
+  const LIVE: Resolution = {
+    ...RESOLUTION, issueNumber: 228, labels: THREE_PRS.labels,
+    prs: [CLOUD, WEB, NATIVE], primary: CLOUD, merge: PLAN,
+  };
+
+  it('heads the screen with the same word as the row, from the plan', async () => {
+    fetchResolution.mockResolvedValue(LIVE);
+    render(<IssueView issue={THREE_PRS} onBack={() => {}} />);
+    await screen.findByText(/#228 · reported 3d ago · 2 ready/);
+    expect(screen.queryByText(/Needs review/)).toBeNull();
+  });
+
+  it('gives each pull request its chip word, and keeps Merge all', async () => {
+    fetchResolution.mockResolvedValue(LIVE);
+    render(<IssueView issue={THREE_PRS} onBack={() => {}} />);
+
+    const native = await screen.findByRole('button', { name: /Open homecast#83 on GitHub/ });
+    expect(native.textContent).toContain('Draft');
+    expect(screen.getByRole('button', { name: /Open homecast-cloud#232 on GitHub/ }).textContent).toContain('Ready');
+    // The server still decides what one tap merges; the draft is not in it.
+    fireEvent.click(screen.getByRole('button', { name: 'Merge 2 pull requests' }));
+    expect(screen.getByText(/Merges homecast-cloud#232, homecast-web#296 to/)).toBeTruthy();
+    expect(mergeResolution).not.toHaveBeenCalled();
+  });
+
+  it('says a Ready PR waits for the deploy ahead of it, beside its word', async () => {
+    fetchResolution.mockResolvedValue({
+      ...LIVE,
+      merge: { ...PLAN, plan: [
+        entry(CLOUD, { action: 'merged', merged: true, state: 'closed', serving: false, draft: false }),
+        entry(WEB, { action: 'wait_deploy', reason: 'homecast-cloud#232 is merged but not serving yet', draft: false }),
+      ] },
+    });
+    render(<IssueView issue={THREE_PRS} onBack={() => {}} />);
+    const web = await screen.findByRole('button', { name: /Open homecast-web#296 on GitHub/ });
+    expect(web.textContent).toContain('Ready');
+    expect(web.textContent).toContain('Waits for deploy');
+    expect(screen.getByRole('button', { name: /Open homecast-cloud#232 on GitHub/ }).textContent).toContain('Merged · deploying');
+    expect(screen.getByText(/#228 · reported 3d ago · Ready/)).toBeTruthy();
+  });
+
+  it('says an open report whose pull requests all merged is still open, whatever its labels say', async () => {
+    fetchResolution.mockResolvedValue({
+      ...RESOLUTION, labels: ['needs-human', 'claude-pr-open'],
+      merge: { configured: true, servingSha: 'abc', plan: [
+        entry(WEB_PR, { action: 'merged', merged: true, state: 'closed' }),
+      ] },
+    });
+    render(<IssueView issue={{ ...FIXED, prs: [] }} onBack={() => {}} />);
+    await screen.findByText('All linked pull requests are merged. This report is still open pending verification.');
+    expect(screen.getByText(/#167 · reported 3d ago · Merged/)).toBeTruthy();
+    expect(screen.queryByText(/Needs review/)).toBeNull();
+    expect(screen.getByRole('button', { name: /Open homecast-web#214 on GitHub/ }).textContent).toContain('Merged');
+  });
+
+  it('uses the row\'s PRs when the server has no plan, and the labels when it sends no PRs', async () => {
+    fetchResolution.mockResolvedValue({ ...LIVE, merge: undefined });
+    const { unmount } = render(<IssueView issue={THREE_PRS} onBack={() => {}} />);
+    const native = await screen.findByRole('button', { name: /Open homecast#83 on GitHub/ });
+    expect(native.textContent).toContain('Draft');
+    expect(screen.getByText(/#228 · reported 3d ago · 2 ready/)).toBeTruthy();
+    unmount();
+
+    fetchResolution.mockResolvedValue({ ...LIVE, merge: undefined });
+    render(<IssueView issue={{ ...THREE_PRS, prs: undefined }} onBack={() => {}} />);
+    await screen.findByRole('button', { name: /Open homecast#83 on GitHub/ });
+    expect(screen.getByText(/#228 · reported 3d ago · Needs review/)).toBeTruthy();
+  });
+
+  it('says why a closed report was closed', async () => {
+    fetchResolution.mockResolvedValue({ ...RESOLUTION, state: 'closed', prs: [], evidence: [], summary: null, primary: null });
+    render(<IssueView issue={{ ...NO_PR, state: 'closed', stateReason: 'not_planned' }} onBack={() => {}} />);
+    await screen.findByText(/#259 · reported 3d ago · Not planned/);
+  });
 });

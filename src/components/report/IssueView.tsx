@@ -6,8 +6,9 @@
  * screenshot — and then see what has been done about it without leaving the
  * app. So the report comes first, in the words they wrote; the fix second,
  * pictures before prose, because a before/after answers "does it look right"
- * faster than a PR body; and the pull requests as a short list with their
- * place in the merge plan.
+ * faster than a PR body; and the pull requests as a short list, each with the
+ * same word its chip carries on the list — draft, ready, conflict, merged —
+ * read from GitHub rather than from any label.
  *
  * Then **Updates** — what has been said on the report, newest first. The fix
  * above it is four machine-readable things; this is the prose, and it is where
@@ -34,7 +35,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  CheckCircle2, ChevronLeft, CircleDot, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
+  ChevronLeft, ExternalLink, GitMerge, GitPullRequest, Loader2, MessageSquareWarning,
   Bot, GitCommitHorizontal, MessageSquare, RefreshCw, Send, Sparkles, User,
 } from 'lucide-react';
 
@@ -42,13 +43,16 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { openExternalUrl } from '@/lib/open-url';
 import { readComment, type Block, type Inline } from '@/lib/report/comment-markdown';
-import { relativeAge, relativeMoment, type ReportedIssue } from '@/lib/report/issues';
+import { relativeAge, relativeMoment, type LinkedPr, type ReportedIssue } from '@/lib/report/issues';
 import {
-  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus, mergeLabel, mergedReportMessage,
-  mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planStatus, sendFeedback, shortPr,
+  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, livePrs, mergeLabel, mergedReportMessage,
+  mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, planEntryPr, planNote, planStatus, prWord, prWordTone,
+  reportStatus, sendFeedback, shortPr,
   type ConflictNudge, type FeedbackResult, type FeedbackTarget, type MergePlanEntry, type MergeState,
-  type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate, type FixStatus,
+  type Resolution, type ResolutionImage, type ResolutionPr, type ResolutionUpdate, type StatusTone,
 } from '@/lib/report/resolution';
+
+import { ReportStateIcon } from './ReportedIssues';
 
 interface IssueViewProps {
   issue: ReportedIssue;
@@ -85,8 +89,17 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
   useEffect(() => load(), [load]);
 
-  const reportStatus = fixStatus({ state: resolution?.state ?? issue.state, labels: resolution?.labels ?? issue.labels });
-  const fixed = reportStatus === 'Fixed';
+  // The same word the row showed, read from the freshest PRs there are — the
+  // plan, which is re-read after every merge — and from the labels only on a
+  // server that sends no linked PRs.
+  const issueState = resolution?.state ?? issue.state;
+  const status = reportStatus({
+    state: issueState,
+    labels: resolution?.labels ?? issue.labels,
+    stateReason: issue.stateReason,
+    prs: livePrs(issue, resolution),
+  });
+  const closed = issueState === 'closed';
   const age = relativeAge(resolution?.createdAt ?? issue.createdAt);
   const reportedText = (resolution?.reportedText ?? '').trim();
   const reported = resolution?.reported ?? [];
@@ -96,6 +109,9 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
   const plan = resolution?.merge?.plan ?? [];
   const planByUrl = new Map(plan.map((entry) => [entry.url, entry]));
+  // Without a plan (merging not set up here), the row's own linked PRs still
+  // say where each one stands.
+  const linkedByUrl = new Map((issue.prs ?? []).map((pr) => [pr.url, pr]));
 
   return (
     <div className="w-full min-w-0 space-y-4">
@@ -112,17 +128,13 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
             without the list to compare against. Not a link: where it goes
             on GitHub is printed at the bottom, in full. */}
         <div className="flex min-w-0 flex-1 items-start gap-2 py-1">
-          {fixed ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-          ) : (
-            <CircleDot className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          )}
+          <ReportStateIcon state={issueState} word={status.word} />
           <div className="min-w-0 flex-1">
             <h2 className="line-clamp-3 break-words text-sm font-medium">{issue.title}</h2>
             <div className="text-xs text-muted-foreground">
               #{issue.issueNumber}
               {age && ` · reported ${age}`}
-              {` · ${reportStatus}`}
+              {` · ${status.word}`}
             </div>
           </div>
         </div>
@@ -174,7 +186,7 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
           <section aria-label="Proposed fix" className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {fixed ? 'The fix' : 'Proposed fix'}
+              {closed ? 'The fix' : 'Proposed fix'}
             </h3>
 
             {!hasFix && (
@@ -205,6 +217,7 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
                         key={pr.url}
                         pr={pr}
                         entry={planByUrl.get(pr.url)}
+                        linked={linkedByUrl.get(pr.url)}
                         primary={resolution.primary?.url === pr.url && resolution.prs.length > 1}
                         reach={resolution.reach}
                       />
@@ -214,7 +227,7 @@ export function IssueView({ issue, onBack }: IssueViewProps) {
 
                 {resolution.merge && resolution.prs.length > 0 && (
                   <MergeControls
-                    reportStatus={reportStatus}
+                    issueState={issueState}
                     issueNumber={issue.issueNumber}
                     merge={resolution.merge}
                     onMerged={(state) => setResolution({ ...resolution, merge: state })}
@@ -281,18 +294,30 @@ function ExternalRow({ label, url, children }: { label: string; url: string; chi
 interface PullRequestRowProps {
   pr: ResolutionPr;
   entry?: MergePlanEntry;
+  /** The list row's own record of this PR, for when there is no plan. */
+  linked?: LinkedPr;
   primary: boolean;
   reach: string | null;
 }
 
-/** One pull request: its short name, where it stands, and its full address. */
-function PullRequestRow({ pr, entry, primary, reach }: PullRequestRowProps) {
+/**
+ * One pull request: its short name, where it stands, and its full address.
+ *
+ * Where it stands is the same word its chip on the list row carries — read
+ * from GitHub through the plan — with the plan's own phrase beside it only
+ * when the two part ways: Ready, but waiting for the cloud PR to deploy.
+ */
+function PullRequestRow({ pr, entry, linked, primary, reach }: PullRequestRowProps) {
+  const note = entry ? planNote(entry) : null;
+  const live = entry ? planEntryPr(entry) : linked;
   return (
     <ExternalRow label={shortPr(pr)} url={pr.url}>
       <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1" />
-      {entry ? (
-        <PlanPill entry={entry} />
+      <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+        {note}
+      </span>
+      {live ? (
+        <PrPill pr={live} />
       ) : (
         <>
           {primary && (
@@ -313,22 +338,26 @@ function PullRequestRow({ pr, entry, primary, reach }: PullRequestRowProps) {
   );
 }
 
-/** The pill beside a PR: its place in the merge plan, in a word or two. */
-function PlanPill({ entry }: { entry: MergePlanEntry }) {
-  const tone =
-    entry.action === 'merged' ? 'bg-green-600/15 text-green-700 dark:text-green-400'
-    : entry.action === 'merge' ? 'bg-primary/15 text-primary'
-    : entry.action === 'blocked' ? 'bg-destructive/15 text-destructive'
-    : 'bg-muted text-muted-foreground';
+const PILL_TONE: Record<StatusTone, string> = {
+  done: 'bg-green-600/15 text-green-700 dark:text-green-400',
+  active: 'bg-primary/15 text-primary',
+  waiting: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  idle: 'bg-muted text-muted-foreground',
+};
+
+/** The pill beside a PR: the word GitHub's state comes to. */
+function PrPill({ pr }: { pr: LinkedPr }) {
+  const word = prWord(pr);
   return (
-    <span className={`max-w-[45%] shrink-0 truncate rounded-full px-2 py-0.5 text-[11px] ${tone}`}>
-      {planStatus(entry)}
+    <span className={`max-w-[45%] shrink-0 truncate rounded-full px-2 py-0.5 text-[11px] ${PILL_TONE[prWordTone(word)]}`}>
+      {word}
     </span>
   );
 }
 
 interface MergeControlsProps {
-  reportStatus: FixStatus;
+  /** The report's own state — whether merged code still waits on verification. */
+  issueState: string | null;
   issueNumber: number;
   merge: MergeState;
   onMerged: (state: MergeState) => void;
@@ -351,7 +380,7 @@ interface MergeControlsProps {
  * posted is shown, with the comment's address, or that it had already been
  * asked.
  */
-function MergeControls({ issueNumber, merge, onMerged, onCheckAgain, reportStatus }: MergeControlsProps) {
+function MergeControls({ issueNumber, merge, onMerged, onCheckAgain, issueState }: MergeControlsProps) {
   const [confirming, setConfirming] = useState(false);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
@@ -504,7 +533,7 @@ function MergeControls({ issueNumber, merge, onMerged, onCheckAgain, reportStatu
       )}
 
       {!label && !outstanding && plan.length > 0 && (
-        <p className="text-sm text-muted-foreground">{mergedReportMessage(reportStatus)}</p>
+        <p className="text-sm text-muted-foreground">{mergedReportMessage(issueState, plan)}</p>
       )}
 
       {!label && (
