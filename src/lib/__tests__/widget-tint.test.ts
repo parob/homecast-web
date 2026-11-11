@@ -178,12 +178,21 @@ describe('resolveWidgetTint — ink', () => {
     expect(resolveWidgetTint(onDark({ intensity: 0, wallpaperLuminance: 0.03 })).tone).toBe('light');
   });
 
-  it('uses dark ink on mid-grey glass even when the wallpaper mood is dark', () => {
+  it('gives every off tile the page\'s ink, whatever is sampled under it (homecast-cloud#258)', () => {
+    // A mid-tone photograph the app calls dark. Sampling put black ink on the
+    // tiles over its lighter patches and white on the rest — a mix on one
+    // screen. Off tiles now all take the page's ink.
     for (const wallpaperLuminance of [0.4, 0.5, 0.65, 0.79]) {
-      const result = resolveWidgetTint(onDark({ isOn: false, wallpaperLuminance }));
-      expect(result.tone).toBe('dark');
-      expect(result.backgroundColor).toBe(rgbaToCss(OFF_TINT_DARK));
+      for (const wallpaperRgb of [[230, 170, 180], [200, 150, 160], [120, 90, 100], null]) {
+        const result = resolveWidgetTint(onDark({ isOn: false, wallpaperLuminance, wallpaperRgb }));
+        expect(result.tone).toBe('light');
+        expect(result.backgroundColor).toBe(rgbaToCss(OFF_TINT_DARK));
+      }
     }
+  });
+
+  it('goes dark on an off tile only once the app calls the wallpaper light', () => {
+    expect(resolveWidgetTint(onWhite({ isOn: false, wallpaperLuminance: 0.85 })).tone).toBe('dark');
   });
 
   it('keeps white ink over genuinely dark glass', () => {

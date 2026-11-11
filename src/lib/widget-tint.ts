@@ -219,6 +219,36 @@ export interface TintResult {
 }
 
 /**
+ * Which ink a tile takes.
+ *
+ * **The off end follows the page, not the patch of wallpaper under the tile.**
+ * Choosing it per tile from a sampled region (homecast-web#232) gave one
+ * screen a mix — white on one off tile, black on its neighbour, over the same
+ * photograph — which reads as broken (homecast-cloud#258). An off tile is a
+ * faint wash, so its ink is the page's: white unless the app calls the
+ * wallpaper light, which `isDarkLuminance` only does for a very bright one.
+ *
+ * **The on end is decided by contrast**, because a full-strength accent is an
+ * opaque-ish pale fill whatever the wallpaper is, and needs dark ink.
+ *
+ * Between them the tile keeps the off end's ink until the fill is past half
+ * strength, so a dimming light crosses over once, not at an arbitrary point
+ * set by whatever image is behind it.
+ */
+function inkTone(
+  level: number,
+  on: Rgba,
+  backdrop: number,
+  wallpaperRgb: readonly number[] | null | undefined,
+  isDarkWallpaper: boolean,
+): Tone {
+  const offTone: Tone = isDarkWallpaper ? 'light' : 'dark';
+  const onTone: Tone = surfaceLuminance(compositeSurface(on, backdrop, wallpaperRgb)) < INK_CROSSOVER ? 'light' : 'dark';
+  if (offTone === onTone) return offTone;
+  return level < 0.5 ? offTone : onTone;
+}
+
+/**
  * Resolve everything a tile needs to paint itself at a given intensity.
  *
  * The fill and ring retain the wallpaper's appearance; text follows the
@@ -249,7 +279,7 @@ export function resolveWidgetTint({
     (isDarkWallpaper ? ASSUMED_LUMINANCE_DARK : ASSUMED_LUMINANCE_LIGHT);
 
   const surface = compositeSurface(fill, backdrop, wallpaperRgb);
-  const tone: Tone = surfaceLuminance(surface) < INK_CROSSOVER ? 'light' : 'dark';
+  const tone = inkTone(level, on, backdrop, wallpaperRgb, isDarkWallpaper);
   const channel = tone === 'light' ? 255 : 0;
 
   // The ring marks an off tile's edge. Dropping it at the on/off boundary made
