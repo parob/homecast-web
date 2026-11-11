@@ -9448,7 +9448,10 @@ const Dashboard = () => {
                     // again the moment you went looking for it.
                     const roomRevealed = revealHiddenRooms && !!room && !!selectedHomeId
                       && isRoomHiddenState(selectedHomeId, room.id, 'home');
-                    if (!showHiddenItems && !roomRevealed && roomGroups.length === 0 && displayAccessories.length === 0 && roomSceneCards.length === 0) return null;
+                    const isEmpty = roomGroups.length === 0 && displayAccessories.length === 0 && roomSceneCards.length === 0;
+                    // The home's own shelf has no room to unhide from its
+                    // heading, so Show Hidden has nothing to keep it open for.
+                    if (isEmpty && (roomName === HOME_LEVEL_ROOM || (!showHiddenItems && !roomRevealed))) return null;
 
                     const isFirstVisibleRoom = visibleRoomIdx === 0;
                     visibleRoomIdx++;
@@ -9462,7 +9465,11 @@ const Dashboard = () => {
                        either. See `[data-hidden-exiting]` in index.css. */
                     <div key={roomName} data-room-container data-room-name={roomName} {...(roomRevealed ? { 'data-hidden-item': 'true' } : {})} {...(isFirstVisibleRoom ? { 'data-tour': 'widget-area' } : {})}>
                       {/* Only show room name header when viewing all rooms (not a specific room) */}
-                      {groupByRoom && !selectedRoomId && (() => {
+                      {/* The home's shelf is called Scenes, but roomless helper
+                          accessories live on it too. With no scene card on it
+                          the word names something that is not there
+                          (homecast-cloud#259), so the helpers go unheaded. */}
+                      {groupByRoom && !selectedRoomId && !(roomName === HOME_LEVEL_ROOM && roomSceneCards.length === 0) && (() => {
                         // A hidden room only reaches here while hidden things are
                         // being shown, and it comes last — see filteredRooms.
                         const roomHidden = !!(room && selectedHomeId && isRoomHiddenState(selectedHomeId, room.id, 'home'));
