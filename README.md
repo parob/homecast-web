@@ -10,6 +10,9 @@ npm run dev     # Dev server on port 8080
 npm run build   # Production build → dist/
 ```
 
+Browser tests (Playwright, mocked data — including how to reproduce reports
+from the iOS app) are described in [`screenshots/README.md`](screenshots/README.md).
+
 ## Community Server Modules
 
 The `src/server/` directory contains the Community mode server logic:
