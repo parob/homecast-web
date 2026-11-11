@@ -16,6 +16,10 @@ import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+function isCoarsePointer(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+}
+
 interface CreateCollectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,7 +62,16 @@ export function CreateCollectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
+      {/* On a phone the keyboard must not open with the dialog. Focusing the
+          field during the open animation raises the keyboard while the dialog
+          is still centred on the full-height viewport, and the iOS app scrolls
+          the heading above the screen (homecast-web#299). A tap on the field
+          opens it once the dialog has settled. A mouse still gets the field
+          focused, since Radix focuses the first tabbable element. */}
+      <DialogContent
+        className="sm:max-w-[400px]"
+        onOpenAutoFocus={(e) => { if (isCoarsePointer()) e.preventDefault(); }}
+      >
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Create Collection</DialogTitle>
@@ -74,7 +87,6 @@ export function CreateCollectionDialog({
               onChange={(e) => setName(e.target.value)}
               placeholder="My Collection"
               className="mt-2"
-              autoFocus
             />
           </div>
           <DialogFooter>
