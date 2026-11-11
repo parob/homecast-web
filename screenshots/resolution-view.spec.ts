@@ -4,7 +4,8 @@
  * Drives the real sheet on a phone with the reported-issues list and one
  * resolution served from route mocks — the same shape the server answers with
  * for homecast-cloud#167, pictures included. Captures: the Existing list with
- * a word on the row that has a fix (and none on the row that does not), the
+ * each row's word read from its linked pull requests — one chip per PR, and
+ * "No PR yet" on the row that has none — the
  * issue itself on one screen — what was reported, then the fix, then the
  * GitHub links printed in full — and the merge flow.
  *
@@ -34,6 +35,13 @@ const REPORTED_ISSUES = {
       createdAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
       updatedAt: new Date(Date.now() - 3_600_000).toISOString(),
       commentCount: 3,
+      // Read from GitHub by the server; the labels above no longer decide anything.
+      prs: [{
+        repo: 'parob/homecast-web', number: 208, url: 'https://github.com/parob/homecast-web/pull/208',
+        title: "The battery line on an expanded lock takes the tile's ink", state: 'open', draft: false,
+        mergeable: true, checks: 'success',
+      }],
+      lastComment: null,
     },
     {
       issueNumber: 170,
@@ -44,6 +52,8 @@ const REPORTED_ISSUES = {
       createdAt: new Date(Date.now() - 3_600_000).toISOString(),
       updatedAt: new Date(Date.now() - 3_600_000).toISOString(),
       commentCount: 0,
+      prs: [],
+      lastComment: null,
     },
   ],
 };
@@ -70,7 +80,7 @@ const RESOLUTION = {
     plan: [{
       repo: 'parob/homecast-web', number: 208, url: 'https://github.com/parob/homecast-web/pull/208',
       title: "The battery line on an expanded lock takes the tile's ink", state: 'open', merged: false,
-      mergeSha: null, mergeable: true, checks: 'success', action: 'merge', reason: null,
+      mergeSha: null, mergeable: true, checks: 'success', draft: false, action: 'merge', reason: null,
     }],
   },
 };
@@ -146,7 +156,7 @@ const sheet = (page: Page) => page.locator('[role="dialog"]');
 
 test.use({ viewport: { width: 428, height: 926 }, deviceScaleFactor: 2 });
 
-test('the sheet is Issues, with Create new and Existing; a row says where its fix stands', async ({ page }) => {
+test('the sheet is Issues, with Create new and Existing; a row says where its PRs stand', async ({ page }) => {
   await asAdminReporter(page);
   await openExisting(page);
 
@@ -157,8 +167,9 @@ test('the sheet is Issues, with Create new and Existing; a row says where its fi
   await expect(sheet(page).getByRole('heading', { name: 'Issues' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Create new' })).toBeVisible();
   const withFix = page.getByRole('button', { name: 'Open #167' });
-  await expect(withFix).toContainText('Fix proposed');
-  await expect(page.getByRole('button', { name: 'Open #170' })).not.toContainText('Fix');
+  await expect(withFix).toContainText('Ready');
+  await expect(withFix).toContainText('web#208 Ready');
+  await expect(page.getByRole('button', { name: 'Open #170' })).toContainText('No PR yet');
 
   await sheet(page).screenshot({ path: 'screenshots/output/resolution-row.png' });
 });
@@ -170,7 +181,7 @@ test('the issue on one screen: what was reported, the fix, and the links printed
 
   // The report first, in the reporter's words.
   await expect(page.getByText(/white text on a white background/)).toBeVisible();
-  await expect(page.getByText(/#167 · reported today · Fix proposed/)).toBeVisible();
+  await expect(page.getByText(/#167 · reported today · Ready/)).toBeVisible();
 
   const picture = page.getByRole('img', { name: /Before: Battery 100% invisible/ });
   await expect(picture).toBeVisible();
@@ -207,13 +218,14 @@ test('Merge names what it merges, asks once, and shows what happened', async ({ 
 
   await confirm.click();
   await expect(page.getByText('Merged homecast-web#208.')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Open homecast-web#208 on GitHub/ })).toContainText('Code merged');
+  await expect(page.getByRole('button', { name: /Open homecast-web#208 on GitHub/ })).toContainText('Merged');
+  await expect(page.getByText(/#167 · reported today · Merged/)).toBeVisible();
   await expect(page.getByRole('button', { name: /^Merge / })).toHaveCount(0);
   await page.waitForTimeout(300);
   await sheet(page).screenshot({ path: 'screenshots/output/resolution-merged.png' });
 });
 
-test('a merged change still explains the report needs review', async ({ page }) => {
+test('a merged change on an open report says it is still open, whatever its labels say', async ({ page }) => {
   await asAdminReporter(page);
   await page.route(/\/rest\/issue-report\/167\/resolution$/, route => route.fulfill({
     status: 200, contentType: 'application/json',
@@ -221,20 +233,26 @@ test('a merged change still explains the report needs review', async ({ page }) 
   }));
   await openExisting(page);
   await openIssue(page);
-  await expect(page.getByText(/#167.*Needs review/)).toBeVisible();
-  await expect(page.getByText('All linked pull requests are merged. This report still needs review; see the updates below.')).toBeVisible();
-  await sheet(page).screenshot({ path: test.info().outputPath('report-needs-review.png') });
+  await expect(page.getByText(/#167.*Merged/)).toBeVisible();
+  await expect(page.getByText(/Needs review/)).toHaveCount(0);
+  await expect(page.getByText('All linked pull requests are merged. This report is still open pending verification.')).toBeVisible();
+  await sheet(page).screenshot({ path: test.info().outputPath('report-merged-still-open.png') });
 });
 
-test('opening investigating report #178 does not present its earlier merged change as resolution', async ({ page }) => {
+test('#178: merged code with the conversation still going reads Merged, and shows the latest word', async ({ page }) => {
   await asAdminReporter(page);
+  const pr = { repo: 'parob/homecast-web', number: 222, url: 'https://github.com/parob/homecast-web/pull/222' };
   const issue = {
     ...REPORTED_ISSUES.issues[0], issueNumber: 178,
     title: 'Widgets do not change correctly with the background brightness',
     url: 'https://github.com/parob/homecast-cloud/issues/178',
     labels: ['bug', 'claude-attempted'],
+    prs: [{ ...pr, title: 'The picker layout', state: 'merged', draft: false, mergeable: null, checks: 'success' }],
+    lastComment: {
+      by: 'claude', author: 'robjampar', at: new Date(Date.now() - 11 * 60_000).toISOString(), url: null,
+      text: 'Widget contrast is a product decision — say the word and it gets its own PR.',
+    },
   };
-  const pr = { repo: 'parob/homecast-web', number: 222, url: 'https://github.com/parob/homecast-web/pull/222' };
   await page.route(/\/rest\/issue-report(\?|$)/, route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ page: 1, hasMore: false, issues: [issue] }),
@@ -254,15 +272,16 @@ test('opening investigating report #178 does not present its earlier merged chan
   await sheet(page).waitFor({ state: 'visible' });
   await page.getByRole('tab', { name: 'Existing' }).click();
   const row = page.getByRole('button', { name: 'Open #178' });
-  await expect(row).toContainText('Investigating');
+  await expect(row).toContainText('Merged');
+  await expect(row).toContainText(/Claude, \d+m ago: Widget contrast is a product decision/);
   await row.click();
-  await expect(page.getByText(/#178.*Investigating/)).toBeVisible();
+  await expect(page.getByText(/#178.*Merged/)).toBeVisible();
   const linkedChange = page.getByRole('button', { name: /Open homecast-web#222 on GitHub/ });
   await expect(linkedChange).toBeVisible();
-  await sheet(page).screenshot({ path: test.info().outputPath('investigating-with-merged-code.png') });
-  await expect(linkedChange).toContainText('Code merged');
-  await expect(page.getByText('This report is still being investigated. Earlier code changes have been merged.')).toBeVisible();
+  await sheet(page).screenshot({ path: test.info().outputPath('merged-code-conversation-open.png') });
+  await expect(linkedChange).toContainText('Merged');
+  await expect(page.getByText('All linked pull requests are merged. This report is still open pending verification.')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Merge / })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back to issues' }).click();
-  await expect(row).toContainText('Investigating');
+  await expect(row).toContainText('Merged');
 });

@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
-  conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus,
-  fixStatusTone, mergeLabel,
+  commentWho, conflictsIn, feedbackPr, feedbackSiblings, feedbackTargets, fetchResolution, fixStatus,
+  fixStatusTone, headlineTone, issueHeadline, livePrs, mergeLabel, mergedReportMessage,
   mergeOutstanding, mergeResolution, mergesNow, nudgeConflicts, offersResolution,
-  planStatus, sendFeedback, shortPr, type MergePlanEntry, type Resolution,
+  planEntryPr, planNote, planStatus, prChipName, prWord, prWordTone, reportStatus, sendFeedback,
+  shortPr, showsLastComment, type MergePlanEntry, type Resolution,
 } from '../resolution';
+import type { LinkedPr } from '../issues';
 
 /**
  * Which rows offer a fix, and how the fetch degrades.
@@ -32,9 +34,184 @@ describe('offersResolution', () => {
     expect(offersResolution(row(['bug', 'claude-attempted']))).toBe(false);
     expect(offersResolution(row([]))).toBe(false);
   });
+
+  it('offers every row once the server says what is linked, PRs or not', () => {
+    expect(offersResolution({ ...row([]), prs: [] })).toBe(true);
+    expect(offersResolution({ ...row(['bug']), prs: [linked({})] })).toBe(true);
+  });
 });
 
-describe('fixStatus — the word on a row', () => {
+/**
+ * Where a report stands, read from GitHub.
+ *
+ * The labels drifted — a routine has to remember to add and remove them — so
+ * the word is now read from the linked pull requests themselves. Every branch
+ * of the headline is pinned here, and the fallback: a server that sends no
+ * `prs` gets exactly the old label word, never "No PR yet".
+ */
+const linked = (over: Partial<LinkedPr>): LinkedPr => ({
+  repo: 'parob/homecast-web', number: 296, url: 'https://github.com/parob/homecast-web/pull/296',
+  title: null, state: 'open', draft: false, mergeable: true, checks: 'success', ...over,
+});
+
+const draft = linked({ number: 83, repo: 'parob/homecast', draft: true, mergeable: null, checks: 'none' });
+const ready = linked({});
+const conflict = linked({ number: 297, mergeable: false });
+const failing = linked({ number: 298, checks: 'failure' });
+const running = linked({ number: 299, checks: 'pending' });
+const merged = linked({ number: 284, state: 'merged' });
+const closedPr = linked({ number: 285, state: 'closed' });
+
+const open = (prs: LinkedPr[]) => issueHeadline({ state: 'open', prs });
+
+describe('issueHeadline — the word on a row, from GitHub', () => {
+  it('says why a closed report was closed', () => {
+    expect(issueHeadline({ state: 'closed', stateReason: 'duplicate', prs: [] })).toBe('Duplicate');
+    expect(issueHeadline({ state: 'closed', stateReason: 'not_planned', prs: [] })).toBe('Not planned');
+    expect(issueHeadline({ state: 'closed', stateReason: 'completed', prs: [merged] })).toBe('Closed');
+    // An unknown reason reads as done: that is what closing a report usually means.
+    expect(issueHeadline({ state: 'closed', stateReason: null, prs: [] })).toBe('Closed');
+    expect(issueHeadline({ state: 'closed', prs: [ready] })).toBe('Closed');
+  });
+
+  it('says No PR yet only when the server says there are none', () => {
+    expect(open([])).toBe('No PR yet');
+  });
+
+  it('reads Merged once nothing is open and something merged', () => {
+    expect(open([merged])).toBe('Merged');
+    expect(open([merged, { ...merged, number: 286 }])).toBe('Merged');
+    // A superseded PR closed alongside the one that merged does not undo it.
+    expect(open([merged, closedPr])).toBe('Merged');
+  });
+
+  it('reads PR closed when every one was closed without merging', () => {
+    expect(open([closedPr])).toBe('PR closed');
+  });
+
+  it('puts what blocks a merge first, then what can merge', () => {
+    expect(open([ready, conflict])).toBe('Conflict');
+    expect(open([ready, failing, running])).toBe('Checks failing');
+    expect(open([conflict, failing])).toBe('Conflict');
+  });
+
+  it('counts the ready ones, and ignores drafts beside them', () => {
+    expect(open([ready])).toBe('Ready');
+    expect(open([ready, { ...ready, number: 232, repo: 'parob/homecast-cloud' }, draft])).toBe('2 ready');
+    expect(open([ready, running])).toBe('Ready');
+    expect(open([ready, merged])).toBe('Ready');
+    // GitHub not having worked out mergeability yet is not a conflict.
+    expect(open([{ ...ready, mergeable: null }])).toBe('Ready');
+    expect(open([{ ...ready, checks: 'none' }])).toBe('Ready');
+  });
+
+  it('says Checks running when nothing is ready yet', () => {
+    expect(open([running, draft])).toBe('Checks running');
+  });
+
+  it('says Draft when only drafts are open', () => {
+    expect(open([draft])).toBe('Draft');
+    expect(open([draft, { ...draft, number: 84 }, merged])).toBe('Draft');
+  });
+
+  it('a draft is a draft whatever its checks or mergeability say', () => {
+    expect(open([{ ...draft, mergeable: false, checks: 'failure' }])).toBe('Draft');
+  });
+
+  it('falls back to PR open for an open PR whose CI could not be read', () => {
+    expect(open([{ ...ready, checks: 'unknown' }])).toBe('PR open');
+  });
+
+  it('weighs each word: done, the two to act on, what is moving, and no news', () => {
+    expect(headlineTone('Merged')).toBe('done');
+    expect(headlineTone('Closed')).toBe('done');
+    expect(headlineTone('Conflict')).toBe('waiting');
+    expect(headlineTone('Checks failing')).toBe('waiting');
+    expect(headlineTone('Ready')).toBe('active');
+    expect(headlineTone('3 ready')).toBe('active');
+    expect(headlineTone('Checks running')).toBe('active');
+    expect(headlineTone('Draft')).toBe('active');
+    expect(headlineTone('No PR yet')).toBe('idle');
+    expect(headlineTone('PR closed')).toBe('idle');
+    expect(headlineTone('Duplicate')).toBe('idle');
+    expect(headlineTone('Not planned')).toBe('idle');
+  });
+});
+
+describe('prWord — one chip per pull request', () => {
+  it('names each state GitHub can be in', () => {
+    expect(prWord(draft)).toBe('Draft');
+    expect(prWord(conflict)).toBe('Conflict');
+    expect(prWord(failing)).toBe('Checks failing');
+    expect(prWord(running)).toBe('Checks running');
+    expect(prWord(ready)).toBe('Ready');
+    expect(prWord({ ...ready, mergeable: null })).toBe('Ready');
+    expect(prWord({ ...ready, checks: 'unknown' })).toBe('Open');
+    expect(prWord({ ...merged, serving: true })).toBe('Merged · live');
+    expect(prWord({ ...merged, serving: false })).toBe('Merged · deploying');
+    expect(prWord(merged)).toBe('Merged');
+    expect(prWord({ ...merged, serving: null })).toBe('Merged');
+    expect(prWord(closedPr)).toBe('Closed');
+  });
+
+  it('makes what can merge stand out, and what is stuck amber', () => {
+    expect(prWordTone('Ready')).toBe('active');
+    expect(prWordTone('Conflict')).toBe('waiting');
+    expect(prWordTone('Checks failing')).toBe('waiting');
+    expect(prWordTone('Merged · live')).toBe('done');
+    expect(prWordTone('Draft')).toBe('idle');
+    expect(prWordTone('Closed')).toBe('idle');
+  });
+
+  it('names the repo by the part that tells it apart', () => {
+    expect(prChipName({ repo: 'parob/homecast-cloud', number: 232 })).toBe('cloud#232');
+    expect(prChipName({ repo: 'parob/homecast-web', number: 296 })).toBe('web#296');
+    expect(prChipName({ repo: 'parob/homecast', number: 83 })).toBe('homecast#83');
+  });
+});
+
+describe('reportStatus — GitHub where the server says, labels where it does not', () => {
+  it('falls back to the label word exactly when prs is absent', () => {
+    expect(reportStatus(row(['bug', 'claude-pr-open']))).toEqual({ word: 'Fix proposed', tone: 'active' });
+    expect(reportStatus(row(['bug']))).toEqual({ word: 'Not picked up yet', tone: 'idle' });
+    expect(reportStatus(row(['needs-human']))).toEqual({ word: 'Needs review', tone: 'waiting' });
+    expect(reportStatus(row([], 'closed'))).toEqual({ word: 'Fixed', tone: 'done' });
+  });
+
+  it('ignores every label once the server sends prs', () => {
+    expect(reportStatus({ ...row(['claude-pr-open', 'needs-human']), prs: [] }))
+      .toEqual({ word: 'No PR yet', tone: 'idle' });
+    expect(reportStatus({ ...row(['bug']), prs: [draft] })).toEqual({ word: 'Draft', tone: 'active' });
+    expect(reportStatus({ ...row([], 'closed'), stateReason: 'not_planned', prs: [] }))
+      .toEqual({ word: 'Not planned', tone: 'idle' });
+  });
+});
+
+describe('the latest comment on a row', () => {
+  const said = { by: 'claude' as const, author: 'robjampar', at: null, text: 'Does it happen in Safari too?', url: null };
+
+  it('names Claude, the owner as You, and a bot by its account', () => {
+    expect(commentWho(said)).toBe('Claude');
+    expect(commentWho({ ...said, by: 'app' })).toBe('You');
+    expect(commentWho({ ...said, by: 'person' })).toBe('You');
+    expect(commentWho({ ...said, by: 'bot', author: 'github-actions[bot]' })).toBe('github-actions[bot]');
+  });
+
+  it('shows it where nothing is waiting to merge, and not where a chip already says what is next', () => {
+    const issue = (prs: LinkedPr[] | undefined, state = 'open') => ({ state, prs, lastComment: said });
+    expect(showsLastComment(issue([]))).toBe(true);
+    expect(showsLastComment(issue([draft]))).toBe(true);
+    expect(showsLastComment(issue([merged]))).toBe(true);
+    expect(showsLastComment(issue([ready]))).toBe(false);
+    expect(showsLastComment(issue([draft, conflict]))).toBe(false);
+    // History, and an old server, carry none.
+    expect(showsLastComment(issue([], 'closed'))).toBe(false);
+    expect(showsLastComment(issue(undefined))).toBe(false);
+    expect(showsLastComment({ state: 'open', prs: [], lastComment: null })).toBe(false);
+  });
+});
+
+describe('fixStatus — the old server\'s word, from labels', () => {
   it('reads Fix proposed while a PR is open, and Fixed once closed', () => {
     expect(fixStatus(row(['bug', 'claude-pr-open']))).toBe('Fix proposed');
     expect(fixStatus(row(['bug', 'claude-pr-open'], 'closed'))).toBe('Fixed');
@@ -167,6 +344,56 @@ describe('the merge plan, read for the button', () => {
     expect(planStatus({ ...web, action: 'merged', merged: true })).toBe('Code merged');
     expect(planStatus({ ...web, action: 'after', reason: 'after homecast-web#214' })).toBe('after homecast-web#214');
     expect(planStatus({ ...web, action: 'blocked', reason: 'merge conflict' })).toBe('merge conflict');
+  });
+
+  it('reads a plan entry as the PR it describes, so a row and its chip agree', () => {
+    expect(prWord(planEntryPr(cloud))).toBe('Ready');
+    expect(planEntryPr({ ...cloud, state: 'closed', merged: true, action: 'merged', serving: true }).state).toBe('merged');
+    expect(prWord(planEntryPr({ ...cloud, state: 'closed', merged: true, action: 'merged', serving: true }))).toBe('Merged · live');
+    expect(prWord(planEntryPr({ ...cloud, state: 'closed', action: 'blocked', reason: 'closed without merging' }))).toBe('Closed');
+    expect(prWord(planEntryPr({ ...cloud, draft: true, action: 'blocked', reason: 'pull request is still a draft' }))).toBe('Draft');
+  });
+
+  it('adds the plan\'s phrase only where the word does not already say it', () => {
+    // Ready on its own, and still not merging on this tap.
+    expect(planNote(web)).toBe('Waits for deploy');
+    expect(planNote({ ...web, action: 'after', reason: 'after homecast-cloud#170' })).toBe('after homecast-cloud#170');
+    expect(planNote({ ...web, action: 'blocked', mergeable: null, reason: 'GitHub is still working out whether it merges' }))
+      .toBe('GitHub is still working out whether it merges');
+    // The word already says these.
+    expect(planNote(cloud)).toBeNull();
+    expect(planNote({ ...web, action: 'blocked', mergeable: false, reason: 'merge conflict' })).toBeNull();
+    expect(planNote({ ...web, action: 'blocked', draft: true, reason: 'pull request is still a draft' })).toBeNull();
+    expect(planNote({ ...web, action: 'merged', merged: true, state: 'closed' })).toBeNull();
+  });
+
+  it('says what merged code still waits on, from the report and the plan rather than a label', () => {
+    const done = { ...cloud, action: 'merged' as const, merged: true, state: 'closed', serving: true };
+    expect(mergedReportMessage('closed', [done])).toBe('All linked pull requests are merged.');
+    expect(mergedReportMessage('open', [done]))
+      .toBe('All linked pull requests are merged. This report is still open pending verification.');
+    expect(mergedReportMessage('open', [{ ...done, serving: false }]))
+      .toBe('All linked pull requests are merged. homecast-cloud#170 is still deploying.');
+  });
+});
+
+describe('livePrs — what the issue screen reads its word from', () => {
+  const cloud = planEntry('parob/homecast-cloud', 170, {});
+  const fromList = [linked({ number: 214 })];
+  const merge = { configured: true, servingSha: 'x', plan: [cloud] };
+
+  it('is undefined on a server that predates linked PRs, which means labels', () => {
+    expect(livePrs({}, { merge })).toBeUndefined();
+  });
+
+  it('prefers the plan, which is re-read after every merge', () => {
+    expect(livePrs({ prs: fromList }, { merge })?.map((pr) => pr.number)).toEqual([170]);
+  });
+
+  it('uses the row\'s PRs when there is no plan to read', () => {
+    expect(livePrs({ prs: fromList }, null)).toBe(fromList);
+    expect(livePrs({ prs: fromList }, { merge: { ...merge, configured: false, plan: [] } })).toBe(fromList);
+    expect(livePrs({ prs: fromList }, { merge: { ...merge, plan: [], error: 'GitHub unreachable' } })).toBe(fromList);
   });
 });
 

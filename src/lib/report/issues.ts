@@ -7,6 +7,46 @@
 
 import { config } from '@/lib/config';
 
+/**
+ * One pull request linked to a report, as GitHub holds it right now.
+ *
+ * Read by the server from GitHub itself — not from a label or a record the
+ * routine wrote — so it cannot drift from what is actually there.
+ */
+export interface LinkedPr {
+  /** `owner/name`, e.g. `parob/homecast-web`. */
+  repo: string;
+  number: number;
+  url: string;
+  title: string | null;
+  /** `merged` wins over `closed`: a merged PR is closed too. */
+  state: 'open' | 'closed' | 'merged';
+  draft: boolean;
+  /** `false` is a merge conflict; `null` is GitHub not having worked it out yet. */
+  mergeable: boolean | null;
+  /**
+   * The head commit's CI. The list never sends `unknown`; a merge plan entry
+   * can, when the server could not read the checks.
+   */
+  checks: 'success' | 'failure' | 'pending' | 'none' | 'unknown';
+  /**
+   * Only on a merged homecast-cloud PR of an open report: whether production
+   * is running it yet. Absent everywhere else.
+   */
+  serving?: boolean | null;
+}
+
+/** The newest comment on a report, cut to its first line. */
+export interface LastComment {
+  /** Same meaning as `ResolutionUpdate.by`: `app` and `person` are the owner. */
+  by: 'claude' | 'app' | 'person' | 'bot';
+  author: string | null;
+  at: string | null;
+  /** First line, at most 140 characters, with the record and footer taken out. */
+  text: string;
+  url: string | null;
+}
+
 export interface ReportedIssue {
   issueNumber: number;
   title: string;
@@ -16,6 +56,15 @@ export interface ReportedIssue {
   createdAt: string | null;
   updatedAt: string | null;
   commentCount: number;
+  /** Why a closed report was closed, as GitHub records it. */
+  stateReason?: 'completed' | 'not_planned' | 'duplicate' | 'reopened' | null;
+  /**
+   * Every pull request linked to the report, cloud → web → native. **Absent**
+   * means a server that predates it, or GitHub could not be read — which is
+   * the signal to fall back to the labels, never to say there is no PR.
+   */
+  prs?: LinkedPr[];
+  lastComment?: LastComment | null;
 }
 
 export interface ReportedIssuePage {
