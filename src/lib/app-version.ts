@@ -36,3 +36,21 @@ export function appVersionLabel(win: AppVersionSource): string | null {
   ].filter((d): d is string => !!d);
   return details.length ? `${version} (${details.join(' · ')})` : version;
 }
+
+/**
+ * The same three globals as data, for an issue report: which native build a
+ * fault came from is the first thing a native diagnosis needs, and a picture
+ * of the page cannot show it. Null off-app (browser, home-screen web app).
+ */
+export function nativeAppInfo(
+  win: AppVersionSource,
+): { version: string; buildNumber: string | null; build: string | null } | null {
+  const version = win.homecastAppVersion;
+  if (!version) return null;
+  const known = (v?: string) => (v && v !== 'unknown' ? v : null);
+  return {
+    version,
+    buildNumber: known(win.homecastAppBuildNumber),
+    build: known(win.homecastAppBuild),
+  };
+}
