@@ -249,6 +249,19 @@ function inkTone(
 }
 
 /**
+ * The glass an off tile is painted with: its fill, and the inset hairline it
+ * carries over a light wallpaper (transparent over a dark one). Other panels
+ * that sit on the wallpaper beside the tiles — the desktop navigation panel —
+ * read this so they are the same material (homecast-cloud#258).
+ */
+export function offGlass(isDarkWallpaper: boolean): { backgroundColor: string; ringColor: string } {
+  return {
+    backgroundColor: rgbaToCss(isDarkWallpaper ? OFF_TINT_DARK : OFF_TINT_LIGHT),
+    ringColor: isDarkWallpaper ? 'transparent' : rgbaToCss(OFF_RING),
+  };
+}
+
+/**
  * Resolve everything a tile needs to paint itself at a given intensity.
  *
  * The fill and ring retain the wallpaper's appearance; text follows the

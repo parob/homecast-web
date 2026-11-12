@@ -2,6 +2,7 @@ import { useHeadingVisibility } from '@/hooks/useHeadingVisibility';
 import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
+import { offGlass } from '@/lib/widget-tint';
 import { config, isCommunity, isClientMode, getRelayAddress, forgetRelay } from '@/lib/config';
 import { checkIsInMacApp, checkIsInMobileApp } from '@/lib/platform';
 import { headerControlClass, headerHaloNeedsReinforcing, headerGlassClass, headerGlassControlClass } from '@/lib/header-chrome';
@@ -6452,6 +6453,7 @@ const Dashboard = () => {
   );
   // Light background: has background but not dark enough for dark mode styling
   const isLightBackground = hasBackground && !isDarkBackground;
+  const sidebarGlass = offGlass(isDarkBackground);
 
   // Android Tauri app: sync status bar icon color with background darkness
   useEffect(() => {
@@ -8609,10 +8611,26 @@ const Dashboard = () => {
             } : undefined),
           }}
         >
-          <div className={`rounded-2xl scroll-clip transition-all duration-300 ${!isDarkBackground ? 'shadow-[0_4px_20px_rgba(0,0,0,0.04)]' : ''}`}>
+          {/* The panel is the same glass as an off tile beside it — fill, blur,
+              hairline and shadow from `offGlass` — so the two read as one
+              material over any wallpaper (homecast-cloud#258). */}
+          <div className="relative rounded-2xl scroll-clip shadow-sm">
+            {/* The hairline is its own layer over the clip box: in the app
+                shells the scroller below is widened past the clip
+                (`scroll-clip-inner`), so a ring on it would lose its right edge. */}
             <div
-              className={`rounded-2xl p-3 max-h-full overflow-y-auto scrollbar-hidden scroll-clip-inner transition-all duration-300 ${isDarkBackground ? 'material-regular-dark text-white' : ''}`}
-              style={{ '--scroll-clip-pad': '0.75rem' } as React.CSSProperties}
+              aria-hidden
+              data-sidebar-ring=""
+              className="pointer-events-none absolute inset-0 z-10 rounded-2xl ring-1 ring-inset transition-colors duration-300"
+              style={{ '--tw-ring-color': sidebarGlass.ringColor } as React.CSSProperties}
+            />
+            <div
+              data-sidebar-glass=""
+              className={`rounded-2xl p-3 max-h-full overflow-y-auto scrollbar-hidden scroll-clip-inner backdrop-blur-xl transition-colors duration-300 ${isDarkBackground ? 'text-white' : ''}`}
+              style={{
+                '--scroll-clip-pad': '0.75rem',
+                backgroundColor: sidebarGlass.backgroundColor,
+              } as React.CSSProperties}
             >
               {/* Header in sidebar */}
               <div className="flex items-center gap-2 mb-4">
