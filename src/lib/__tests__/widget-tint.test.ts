@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveWidgetTint,
+  offGlass,
   tintLevel,
   rgbaToCss,
   TINT_FLOOR,
@@ -267,5 +268,16 @@ describe('resolveWidgetTint — the inset hairline', () => {
     // `none`, so dropping the ring outright would snap.
     expect(resolveWidgetTint(onDark({ isOn: false })).ringColor).toBe('transparent');
     expect(resolveWidgetTint(onDark({ intensity: 1 })).ringColor).toBe('transparent');
+  });
+});
+
+describe('offGlass (homecast-cloud#258)', () => {
+  it('is exactly the fill and hairline an off tile paints', () => {
+    for (const isDarkWallpaper of [true, false]) {
+      const tile = resolveWidgetTint({ tint: null, intensity: null, isOn: false, isDarkWallpaper, wallpaperLuminance: null });
+      const glass = offGlass(isDarkWallpaper);
+      expect(glass.backgroundColor).toBe(tile.backgroundColor);
+      expect(glass.ringColor).toBe(tile.ringColor);
+    }
   });
 });
