@@ -9,6 +9,7 @@ import '../../src/index.css';
 
 // Identical painted pixels through all three production analysis paths.
 PRESET_SOLID_COLORS['solid-test-mid'] = '#bbbbbb';
+PRESET_SOLID_COLORS['solid-test-light'] = '#f2f2f2';
 PRESET_GRADIENTS['gradient-test-mid'] = 'linear-gradient(#bbbbbb, #bbbbbb)';
 PRESET_IMAGES['image-test-mid'] = '/screenshots/fixtures/flat-mid.svg';
 const query = new URLSearchParams(location.search);

@@ -1,5 +1,4 @@
 import { expect, test, type Page } from '@playwright/test';
-import sharp from 'sharp';
 
 async function open(page: Page, preset: string) {
   await page.goto(`/screenshots/fixtures/widget-contrast.html?preset=${preset}`);
@@ -21,6 +20,38 @@ test('identical solid, gradient and image pixels produce the same brightness', a
   for (const value of values) expect(value).toBeCloseTo(luminance([187, 187, 187]), 3);
 });
 
+/** WCAG contrast of `colour` composited over the painted glass of a tile. */
+function contrastOn(colour: string, fillCss: string, backdrop: readonly number[]) {
+  const fill = fillCss.match(/[\d.]+/g)!.map(Number);
+  const alpha = fill[3] ?? 1;
+  const painted = backdrop.map((channel, i) => fill[i] * alpha + channel * (1 - alpha));
+  const ink = colour.match(/[\d.]+/g)!.map(Number);
+  const inkAlpha = ink[3] ?? 1;
+  const paintedInk = painted.map((c, i) => ink[i] * inkAlpha + c * (1 - inkAlpha));
+  const [high, low] = [luminance(paintedInk), luminance(painted)].sort((a, b) => b - a);
+  return (high + 0.05) / (low + 0.05);
+}
+
+/**
+ * homecast-cloud#258. Off and dimmed tiles take the page's ink — white unless
+ * the app calls the wallpaper light — so one screen never mixes white and black
+ * names over the same wallpaper. A fully-on pale tile is still chosen by
+ * contrast. This deliberately replaced #232's 4.5:1 guarantee for every tile.
+ */
+async function names(page: Page) {
+  return Object.fromEntries(await page.locator('[data-tile]').evaluateAll(tiles => tiles.map(tile => [
+    tile.getAttribute('data-tile'),
+    {
+      name: getComputedStyle(tile.querySelector('h3')!).color,
+      state: getComputedStyle(tile.querySelector('p')!).color,
+      fill: getComputedStyle(tile.querySelector('.backdrop-blur-xl')!).backgroundColor,
+    },
+  ]))) as Record<'Off' | 'Dimmed' | 'On', { name: string; state: string; fill: string }>;
+}
+
+const WHITE = 'rgb(255, 255, 255)';
+const BLACK = 'rgb(0, 0, 0)';
+
 for (const [preset, backdrop] of [
   ['solid-test-mid', [187, 187, 187]],
   ['gradient-test-mid', [187, 187, 187]],
@@ -29,63 +60,44 @@ for (const [preset, backdrop] of [
   ['solid-green', [34, 197, 94]],
   ['solid-black', [10, 10, 10]],
 ] as const) {
-  test(`tile names and states contrast with their painted glass on ${preset}`, async ({ page }) => {
+  test(`off and dimmed tiles share the page's ink on ${preset}; a lit tile keeps its contrast`, async ({ page }) => {
     await open(page, preset);
-    const reports = await page.locator('[data-tile]').evaluateAll(tiles => tiles.map(tile => ({
-      label: tile.getAttribute('data-tile'),
-      inks: ['h3', 'p'].map(selector => getComputedStyle(tile.querySelector(selector)!).color),
-      fill: getComputedStyle(tile.querySelector('.backdrop-blur-xl')!).backgroundColor,
-    })));
+    const tiles = await names(page);
     await page.screenshot({ path: test.info().outputPath(`${preset}.png`) });
-    for (const report of reports) {
-      const fill = report.fill.match(/[\d.]+/g)!.map(Number);
-      const alpha = fill[3] ?? 1;
-      const painted = backdrop.map((channel, i) => fill[i] * alpha + channel * (1 - alpha));
-      for (const colour of report.inks) {
-        const ink = colour.match(/[\d.]+/g)!.map(Number);
-        const inkAlpha = ink[3] ?? 1;
-        const paintedInk = painted.map((c, i) => ink[i] * inkAlpha + c * (1 - inkAlpha));
-        const [high, low] = [luminance(paintedInk), luminance(painted)].sort((a, b) => b - a);
-        expect((high + 0.05) / (low + 0.05), `${preset} ${report.label}: ${colour} over ${report.fill}`).toBeGreaterThanOrEqual(4.5);
-      }
+    // Every one of these the app calls dark, so the page's ink is white.
+    expect(Number(await page.locator('main').getAttribute('data-luminance'))).toBeLessThan(0.8);
+    expect(tiles.Off.name, `${preset} Off`).toBe(WHITE);
+    expect(tiles.Dimmed.name, `${preset} Dimmed`).toBe(WHITE);
+    for (const colour of [tiles.On.name, tiles.On.state]) {
+      expect(contrastOn(colour, tiles.On.fill, backdrop), `${preset} On: ${colour} over ${tiles.On.fill}`).toBeGreaterThanOrEqual(4.5);
     }
   });
 }
 
-test('photo and gradient text contrasts with the pixels actually behind it', async ({ page }) => {
+test('off tiles go black only once the wallpaper is very light', async ({ page }) => {
+  await open(page, 'solid-test-light');
+  expect(Number(await page.locator('main').getAttribute('data-luminance'))).toBeGreaterThanOrEqual(0.8);
+  const tiles = await names(page);
+  expect(tiles.Off.name).toBe(BLACK);
+  expect(tiles.Dimmed.name).toBe(BLACK);
+  expect(tiles.On.name).toBe(BLACK);
+});
+
+test('photo and gradient wallpapers never mix inks across off tiles', async ({ page }) => {
   for (const preset of ['gradient-ocean', 'gradient-night', 'nature-beach', 'nature-forest']) {
     await open(page, preset);
     await expect(page.getByRole('heading', { name: 'Living room light' })).toHaveCount(3);
     await page.screenshot({ path: test.info().outputPath(`${preset}.png`) });
-    const labels = await page.locator('[data-tile] h3, [data-tile] p').evaluateAll(elements => elements.map(el => {
-      const rect = el.getBoundingClientRect();
-      const ink = getComputedStyle(el).color;
-      (el as HTMLElement).style.visibility = 'hidden';
-      return { text: el.textContent, ink, x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-    }));
-    // Read the rendered glass with only the glyphs hidden. This catches wrong
-    // crop, wrong region, and wrong CSS composition, independently of helpers.
-    const pixels = await page.screenshot({ path: test.info().outputPath(`${preset}-glass.png`) });
-    await page.locator('[data-tile] h3, [data-tile] p').evaluateAll(elements => elements.forEach(el => { (el as HTMLElement).style.visibility = ''; }));
-    const metadata = await sharp(pixels).metadata();
-    const scale = metadata.width! / page.viewportSize()!.width;
-    for (const label of labels) {
-      const region = await sharp(pixels).extract({ left: Math.round(label.x * scale), top: Math.round(label.y * scale), width: Math.floor(label.width * scale), height: Math.floor(label.height * scale) }).png().toBuffer();
-      const stats = await sharp(region).stats();
-      const surface = stats.channels.slice(0, 3).map(c => c.mean);
-      const ink = label.ink.match(/[\d.]+/g)!.map(Number);
-      const alpha = ink[3] ?? 1;
-      const painted = surface.map((c, i) => ink[i] * alpha + c * (1 - alpha));
-      const [high, low] = [luminance(painted), luminance(surface)].sort((a, b) => b - a);
-      expect((high + 0.05) / (low + 0.05), `${preset}: ${label.text} ${label.ink} on ${surface}`).toBeGreaterThanOrEqual(4.5);
-    }
+    const tiles = await names(page);
+    expect(tiles.Dimmed.name, preset).toBe(tiles.Off.name);
   }
 });
 
-test('ink updates as a tile scrolls from bright sand onto dark water', async ({ page }) => {
+test('ink stays put as a tile scrolls from bright sand onto dark water', async ({ page }) => {
   await open(page, 'nature-beach&scroll=1');
   const name = page.locator('[data-tile="Off"] h3');
-  await expect(name).toHaveCSS('color', 'rgb(0, 0, 0)');
+  const before = await name.evaluate(el => getComputedStyle(el).color);
   await page.evaluate(() => scrollTo(0, innerHeight * 0.6));
-  await expect(name).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await page.waitForTimeout(600);
+  await expect(name).toHaveCSS('color', before);
 });
