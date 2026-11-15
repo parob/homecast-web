@@ -69,7 +69,7 @@ function Shortcuts({ homeId = HOME_ID, ...props }: Partial<React.ComponentProps<
   ];
   return (
     <MockedProvider mocks={mocks}>
-      <ScenesSection homeLayout={null} {...props} homeId={homeId} open={props.open ?? true} />
+      <ScenesSection homeLayout={OPTED_IN} {...props} homeId={homeId} open={props.open ?? true} />
     </MockedProvider>
   );
 }
@@ -101,6 +101,8 @@ const alarm = acc('s1', 'security_system', [
 ]);
 
 /** Hidden lists, so absent means shown and no migration was ever needed. */
+/** Homecast scenes are off until a home opts in (homecast-cloud#259). */
+const OPTED_IN: HomeLayoutData = { visibility: { homecastScenes: true } };
 const HIDDEN_LIGHTS: HomeLayoutData = { visibility: { hiddenActions: ['lights'] } };
 
 /**
@@ -132,7 +134,7 @@ function renderSection(
     <LayoutEditProvider value={layoutEdit}>
       <Shortcuts
         accessories={accessories}
-        homeLayout={null}
+        homeLayout={OPTED_IN}
         open
         onRunAction={onRunAction}
         {...props}
@@ -259,7 +261,7 @@ describe('shortcut cards', () => {
       return new Promise<void>(resolve => { release = resolve; });
     });
     render(
-      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn]} homeLayout={OPTED_IN} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(switchOn('lights'));
@@ -280,7 +282,7 @@ describe('shortcut cards', () => {
     const resolvers: Array<() => void> = [];
     const onRunAction = vi.fn(() => new Promise<void>(resolve => { resolvers.push(resolve); }));
     render(
-      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn]} homeLayout={OPTED_IN} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(switchOn('lights'));
@@ -297,7 +299,7 @@ describe('shortcut cards', () => {
     const onRunAction = vi.fn((_a: unknown, _opts?: { signal?: AbortSignal }) =>
       new Promise<void>(resolve => { release = resolve; }));
     render(
-      <Shortcuts accessories={[lockOpen]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lockOpen]} homeLayout={OPTED_IN} open onRunAction={onRunAction} />
     );
 
     fireEvent.click(card('locks'));
@@ -315,7 +317,7 @@ describe('shortcut cards', () => {
     // the opposite exactly when the user had just overridden it.
     const onRunAction = vi.fn(() => new Promise<void>(() => {}));
     render(
-      <Shortcuts accessories={[lightOn, lightOff]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn, lightOff]} homeLayout={OPTED_IN} open onRunAction={onRunAction} />
     );
     fireEvent.click(half('lights', 'on'));
     expect(within(card('lights')).getByText(/Turning on/)).toBeTruthy();
@@ -339,7 +341,7 @@ describe('shortcut cards', () => {
     // enough to wrap into the two-line clamp and be cut off.
     const onRunAction = vi.fn(() => new Promise<void>(() => {}));
     render(
-      <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+      <Shortcuts accessories={[lightOn]} homeLayout={OPTED_IN} open onRunAction={onRunAction} />
     );
     fireEvent.click(switchOn('lights'));
 
@@ -356,7 +358,7 @@ describe('shortcut cards', () => {
       let release: () => void = () => {};
       const onRunAction = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
       render(
-        <Shortcuts accessories={[lightOn]} homeLayout={null} open onRunAction={onRunAction} />
+        <Shortcuts accessories={[lightOn]} homeLayout={OPTED_IN} open onRunAction={onRunAction} />
       );
 
       fireEvent.click(switchOn('lights'));
@@ -455,7 +457,7 @@ describe('shortcut cards', () => {
   it('renders nothing for a home with no actionable accessories', () => {
     const sensor = acc('m', 'motion_sensor', [['motion_detected', true]]);
     const { container } = render(
-      <Shortcuts accessories={[sensor]} homeLayout={null} open onRunAction={vi.fn()} />
+      <Shortcuts accessories={[sensor]} homeLayout={OPTED_IN} open onRunAction={vi.fn()} />
     );
     expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
   });

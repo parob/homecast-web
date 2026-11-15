@@ -84,6 +84,7 @@ interface VisibilityCarrier {
     hiddenSummarySections?: string[];
     hiddenActions?: string[];
     hiddenScenes?: string[];
+    homecastScenes?: boolean;
   };
 }
 
@@ -95,6 +96,42 @@ export function isSummarySectionVisible(
 }
 
 /**
+ * Are Homecast's derived scenes (the shortcut cards) shown for this home?
+ *
+ * **Off unless chosen** — the one flag here that defaults to hidden
+ * (homecast-cloud#259: a new home should not open on a shelf of cards it never
+ * asked for). In order:
+ *
+ *  1. `actions` in `hiddenSummarySections` → off. Older bundled builds read only
+ *     this, so every write keeps it in step.
+ *  2. `homecastScenes` set → that. It is the explicit choice from Settings.
+ *  3. Shortcuts hidden one by one (`hiddenActions` non-empty) → on. Someone
+ *     who curated the cards was using them; read as a choice, so an existing
+ *     home keeps what it has without a migration write.
+ *  4. Otherwise → off.
+ */
+export function isHomecastScenesVisible(layout: VisibilityCarrier | null | undefined): boolean {
+  const v = layout?.visibility;
+  if (v?.hiddenSummarySections?.includes('actions')) return false;
+  if (typeof v?.homecastScenes === 'boolean') return v.homecastScenes;
+  return (v?.hiddenActions?.length ?? 0) > 0;
+}
+
+/**
+ * The visibility fields to write when the Homecast scenes switch changes: the
+ * explicit choice, plus the legacy hidden-list kept in step for older builds.
+ */
+export function withHomecastScenesVisibility(
+  visibility: VisibilityCarrier['visibility'],
+  visible: boolean,
+): { hiddenSummarySections: SummarySectionId[]; homecastScenes: boolean } {
+  return {
+    hiddenSummarySections: withSummarySectionVisibility(visibility?.hiddenSummarySections, 'actions', visible),
+    homecastScenes: visible,
+  };
+}
+
+/**
  * Is the merged Scenes section worth a pill at all?
  *
  * It holds two kinds of card behind two switches, so it only disappears when
@@ -102,7 +139,7 @@ export function isSummarySectionVisible(
  * anyone who had hidden the Apple Home half.
  */
 export function isScenesSectionVisible(layout: VisibilityCarrier | null | undefined): boolean {
-  return isSummarySectionVisible(layout, 'scenes') || isSummarySectionVisible(layout, 'actions');
+  return isSummarySectionVisible(layout, 'scenes') || isHomecastScenesVisible(layout);
 }
 
 /** One Apple Home scene. Hidden by id, so a rename does not un-hide it. */

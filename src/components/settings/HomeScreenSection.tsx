@@ -3,8 +3,8 @@ import { toast } from 'sonner';
 import { useHomeLayout } from '@/hooks/useEntityLayout';
 import {
   SUMMARY_SECTION_META,
-  isSummarySectionVisible,
-  withSummarySectionVisibility,
+  isHomecastScenesVisible,
+  withHomecastScenesVisibility,
 } from '@/lib/summary-sections';
 import { describeError } from '@/lib/describe-error';
 
@@ -24,7 +24,7 @@ export function HomeScreenSection({ home }: { home: { id: string; name: string }
       ...prev,
       visibility: {
         ...prev?.visibility,
-        hiddenSummarySections: withSummarySectionVisibility(prev?.visibility?.hiddenSummarySections, 'actions', visible),
+        ...withHomecastScenesVisibility(prev?.visibility, visible),
       },
     })).catch(e => toast.error('Could not save', { description: describeError(e) }));
 
@@ -37,7 +37,7 @@ export function HomeScreenSection({ home }: { home: { id: string; name: string }
           <p className="text-xs text-muted-foreground">{meta.description}</p>
         </div>
         <Switch
-          checked={isSummarySectionVisible(layout, 'actions')}
+          checked={isHomecastScenesVisible(layout)}
           disabled={loading}
           onCheckedChange={setVisible}
         />

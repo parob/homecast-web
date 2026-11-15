@@ -3,6 +3,8 @@ import {
   SUMMARY_SECTION_ORDER,
   SUMMARY_PILL_ORDER,
   isScenesSectionVisible,
+  isHomecastScenesVisible,
+  withHomecastScenesVisibility,
   isSceneVisible,
   isSummarySectionVisible,
   withSceneVisibility,
@@ -116,7 +118,7 @@ describe('the merged Scenes section', () => {
 
   it('shows the section while either half is on', () => {
     expect(isScenesSectionVisible(null)).toBe(true);
-    expect(isScenesSectionVisible({ visibility: { hiddenSummarySections: ['scenes'] } })).toBe(true);
+    expect(isScenesSectionVisible({ visibility: { hiddenSummarySections: ['scenes'], homecastScenes: true } })).toBe(true);
     expect(isScenesSectionVisible({ visibility: { hiddenSummarySections: ['actions'] } })).toBe(true);
   });
 
@@ -183,5 +185,34 @@ describe('hiding an individual Apple Home scene', () => {
     const hidden = withSceneVisibility(['scene-from-an-offline-relay'], 'scene-1', false);
 
     expect(hidden).toContain('scene-from-an-offline-relay');
+  });
+});
+
+describe('Homecast scenes default (homecast-cloud#259)', () => {
+  it('is off for a home that never chose', () => {
+    expect(isHomecastScenesVisible(null)).toBe(false);
+    expect(isHomecastScenesVisible({})).toBe(false);
+    expect(isHomecastScenesVisible({ visibility: { hiddenScenes: ['s1'] } })).toBe(false);
+  });
+
+  it('follows the explicit choice', () => {
+    expect(isHomecastScenesVisible({ visibility: { homecastScenes: true } })).toBe(true);
+    expect(isHomecastScenesVisible({ visibility: { homecastScenes: false, hiddenActions: ['locks'] } })).toBe(false);
+  });
+
+  it('keeps them on for a home that curated its shortcuts one by one', () => {
+    expect(isHomecastScenesVisible({ visibility: { hiddenActions: ['locks', 'fans'] } })).toBe(true);
+  });
+
+  it('lets the legacy hidden-list win, so older builds and this one agree on off', () => {
+    expect(isHomecastScenesVisible({ visibility: { hiddenSummarySections: ['actions'], homecastScenes: true } })).toBe(false);
+  });
+
+  it('writes the choice and keeps the legacy list in step', () => {
+    expect(withHomecastScenesVisibility(undefined, true)).toEqual({ hiddenSummarySections: [], homecastScenes: true });
+    expect(withHomecastScenesVisibility({ hiddenSummarySections: ['status'] }, false))
+      .toEqual({ hiddenSummarySections: ['actions', 'status'], homecastScenes: false });
+    expect(withHomecastScenesVisibility({ hiddenSummarySections: ['actions'] }, true))
+      .toEqual({ hiddenSummarySections: [], homecastScenes: true });
   });
 });

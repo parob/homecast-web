@@ -20,7 +20,7 @@ import { DraggableGrid } from '@/components/shared/DraggableGrid';
 import { SortableItem } from '@/components/shared/SortableItem';
 import { DragHandleArea } from '@/components/shared/DragHandleArea';
 import {
-  isSummarySectionVisible, isHomeActionVisible, isSceneVisible, type HomeActionId,
+  isHomecastScenesVisible, isHomeActionVisible, isSceneVisible, type HomeActionId,
 } from '@/lib/summary-sections';
 import { homeCardKey, applyHomeCardOrder } from '@/lib/home-cards';
 import { deriveHomeActions, isExpandableAction, type HomeAction } from '@/components/actions/catalog';
@@ -74,7 +74,7 @@ function visibleActions(
   layout: HomeLayoutData | null | undefined,
   showHidden = false,
 ) {
-  if (!isSummarySectionVisible(layout, 'actions')) return [];
+  if (!isHomecastScenesVisible(layout)) return [];
   return deriveHomeActions(accessories).filter(a => showHidden || isHomeActionVisible(layout, a.id));
 }
 
