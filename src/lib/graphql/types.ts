@@ -1002,6 +1002,11 @@ export interface HomeLayoutData {
     hiddenRoomsMenu?: string[];
     /** Summary-row pills turned off for this home. Absent = all shown. */
     hiddenSummarySections?: SummarySectionId[];
+    /**
+     * Explicit Homecast scenes choice from Settings. Absent = off, unless
+     * shortcuts were hidden one by one. See isHomecastScenesVisible.
+     */
+    homecastScenes?: boolean;
     /** Individual Actions turned off for this home. Absent = all shown. */
     hiddenActions?: HomeActionId[];
     /** Individual Apple Home scenes turned off for this home, by scene id. */

@@ -57,6 +57,7 @@ export default defineConfig({
     'heading-native-metrics.spec.ts',
     'issue-199-menu-parity.spec.ts',
     'scenes-heading-empty.spec.ts',
+    'homecast-scenes-default-off.spec.ts',
   ],
   timeout: 60_000,
   retries: 0,

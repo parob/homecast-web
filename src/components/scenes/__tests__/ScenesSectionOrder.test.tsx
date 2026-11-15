@@ -52,6 +52,15 @@ const light = acc('l', 'lightbulb', 'power_state', true);
 
 const scene = (id: string, name: string): HomeKitScene => ({ id, name, actionCount: 2 } as HomeKitScene);
 
+/**
+ * Homecast scenes are off until a home opts in (homecast-cloud#259). These
+ * tests are about ordering and hiding, so they render an opted-in home unless
+ * the layout says otherwise.
+ */
+function optedIn(layout: HomeLayoutData | null): HomeLayoutData {
+  return { ...layout, visibility: { homecastScenes: true, ...layout?.visibility } };
+}
+
 function renderSection(
   scenes: HomeKitScene[],
   accessories: HomeKitAccessory[],
@@ -80,7 +89,7 @@ function renderSection(
           <ScenesSection
             homeId={HOME_ID}
             accessories={accessories}
-            homeLayout={layout}
+            homeLayout={optedIn(layout)}
             open
             onRunAction={async () => {}}
             onReorderCards={() => {}}
@@ -105,6 +114,11 @@ describe('the merged Scenes grid', () => {
   afterEach(cleanup);
   beforeEach(() => {
     (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+  });
+
+  it('shows no Homecast scenes on a home that never chose them', async () => {
+    renderSection([scene('s1', 'Movie Night')], [light], { visibility: { homecastScenes: false } });
+    expect(await names(1)).toEqual(['Movie Night']);
   });
 
   it('leads with the shortcuts before anything has been arranged', async () => {

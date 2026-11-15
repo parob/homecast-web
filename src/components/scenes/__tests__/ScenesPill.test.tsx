@@ -64,10 +64,12 @@ function renderPill(
       <ScenesPill
         homeId={HOME_ID}
         accessories={[]}
-        homeLayout={null}
         open={false}
         onToggle={() => {}}
         {...props}
+        // Homecast scenes are off until chosen (homecast-cloud#259); these
+        // tests count an opted-in home unless the layout says otherwise.
+        homeLayout={{ ...props.homeLayout, visibility: { homecastScenes: true, ...props.homeLayout?.visibility } }}
       />
     </MockedProvider>,
   );
